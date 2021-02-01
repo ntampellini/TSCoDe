@@ -3,6 +3,15 @@ import os
 import numpy as np
 # from spyrmsd import rmsd
 
+def obread(filename):
+    ext = filename.split('.')[-1]
+    mol = ob.OBMol()
+    mol_parser = ob.OBConversion()
+    mol_parser.SetInAndOutFormats(ext, 'xyz')
+    mol_parser.ReadFile(mol, filename)
+    return mol
+
+
 class Density_object:
     """
     Conformational density 3D object from a conformational ensemble
