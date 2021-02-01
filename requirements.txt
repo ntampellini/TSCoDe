@@ -2,3 +2,4 @@ matplotlib
 obabel
 cclib
 numpy
+pprint

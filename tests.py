@@ -1,52 +1,38 @@
 from openbabel import openbabel as ob
 import os
 import numpy as np
+from ensemble_to_object import align_ensemble
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.chdir('Resources')
-
-
-def align_ensemble(filename):
-    ext = filename.split('.')[-1]
-    mol = ob.OBMol()
-    mol_parser = ob.OBConversion()
-    mol_parser.SetInAndOutFormats(ext, 'xyz')
-    more = mol_parser.ReadFile(mol, filename)
-    # constructor = ob.OBAlign(mol., targetmol)
-    # constructor.SetTargetMol()
-    # mol_parser.WriteFile(mol, filename.split('.')[:-1] + '_aligned.xyz')
-    print(mol.NumConformers())
-
-
 align_ensemble('dienamine.xyz')
 
-quit()
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from cclib.io import ccread
+
+original = ccread('dienamine.xyz')
+aligned = ccread('dienamine_aligned.xyz')
+
+structs = zip(np.array(original.atomcoords), np.array(aligned.atomcoords))
+diffs = [np.sum(tup[0] - tup[1]) for tup in structs]
+for i, v in enumerate(diffs):
+    print(f'Structure {i} - {v} differences')
 
 
-name, ext = os.path.splitext(infile)
-ext = ext[1:].lower()
-# initialize mol parser
-mol_parser = ob.OBConversion()
-mol_parser.SetInAndOutFormats(ext,'smi')
-# initialize class
-bottch = BottchScore(verbose, debug)
-# load the first molecule found in the file
-mol = ob.OBMol()
-more = mol_parser.ReadFile(mol, infile)
-while more:
-    ob.PerceiveStereo(mol)
-    # score the molecule
-    score=bottch.score(mol, disable_mesomeric)
-    if not verbose:
-        if show_counter:
-            print("%d: %4.2f\t %s"% (counter,score,mol.GetTitle()))
-        else:
-            print("%4.2f\t %s"% (score,mol.GetTitle()))
-    if save_png:
-        name = mol.GetTitle()
-        if name.strip()=="":
-            name = "mol_%d" % counter
-        mol_parser.SetOutFormat('png')
-        mol_parser.WriteFile(mol, '%s_image.png' % name)
-    more = mol_parser.Read(mol)
-    counter+=1
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+original_atoms = np.array([atom for structure in original.atomcoords for atom in structure])
+x1 = [atom[0] for atom in original_atoms]
+y1 = [atom[1] for atom in original_atoms]
+z1 = [atom[2] for atom in original_atoms]
+
+aligned_atoms = np.array([atom for structure in aligned.atomcoords for atom in structure])
+x2 = [atom[0] for atom in aligned_atoms]
+y2 = [atom[1] for atom in aligned_atoms]
+z2 = [atom[2] for atom in aligned_atoms]
+
+plot = ax.scatter(x1, y1, z1, color='r')
+plot = ax.scatter(x2, y2, z2, color='b')
+plt.show()
