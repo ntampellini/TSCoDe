@@ -1,12 +1,12 @@
 from openbabel import openbabel as ob
 import os
 import numpy as np
-from ensemble_to_object import align_ensemble
+from ensemble_to_object import Density_object
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.chdir('Resources')
-align_ensemble('dienamine.xyz')
-
+Density_object('dienamine.xyz')
+ 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from cclib.io import ccread
