@@ -3,3 +3,5 @@ obabel
 cclib
 numpy
 pprint
+mayavi
+PyQt5
