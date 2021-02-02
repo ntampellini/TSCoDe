@@ -79,14 +79,14 @@ class Density_object:
 
         # self.old = np.array([atom for structure in coordinates for atom in structure])   # debug, kill this
         center_of_mass = np.sum(np.sum(coordinates, axis=0), axis=0) / (len(coordinates) * len(coordinates[0]))
-        if debug: print('DEBUG--> Center of mass is', center_of_mass)
+        if debug: print('DEBUG--> Center of mass was', center_of_mass)
         self.atomcoords = coordinates - center_of_mass
         # After reading aligned conformers, they are stored as self.atomcoords only after being aligned to origin
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
         if debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
 
-    def compute_CoDe(self, voxel_dim:float=0.1, stamp_size=1, hardness=5, debug=False):
+    def compute_CoDe(self, voxel_dim:float=0.1, stamp_size=1, hardness=1, debug=False):
         '''
         Computing conformational density for the ensemble.
 
@@ -104,26 +104,39 @@ class Density_object:
                 for z in range(stamp_len - 1):
                     r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
                     self.stamp[x, y, z] = np.exp(-hardness*r_2)
-        # defining single matrix to use as a stamp, basically a 3D sphere
+        # defining single matrix to use as a stamp, basically a 3D sphere with values decaying with e^(-kr^2)
 
         x_coords = np.array([pos[0] for pos in self.atoms])  # isolating x, y and z from self.atoms
         y_coords = np.array([pos[1] for pos in self.atoms])
         z_coords = np.array([pos[2] for pos in self.atoms])
-        size = (max(x_coords) - min(x_coords), max(y_coords) - min(y_coords), max(z_coords) - min(z_coords))
-        shape = (int(np.ceil(size[0]/voxel_dim)) + stamp_len, int(np.ceil(size[1]/voxel_dim)) + stamp_len, int(np.ceil(size[2]/voxel_dim)) + stamp_len)
+
+        min_x = min(x_coords)
+        min_y = min(y_coords)
+        min_z = min(z_coords)
+
+        size = (max(x_coords) - min_x,
+                max(y_coords) - min_y,
+                max(z_coords) - min_z)
+
+        outline = 2*stamp_len
+
+        shape = (int(np.ceil(size[0]/voxel_dim)) + outline,
+                 int(np.ceil(size[1]/voxel_dim)) + outline,
+                 int(np.ceil(size[2]/voxel_dim)) + outline)
+
         # size of box, in number of voxels (i.e. matrix items), is defined by how many of them are needed to include all atoms
-        # given the fact that they measure {voxel_dim} Angstroms. To these numbers, {stamp_len} voxels are added to each axis
-        # to ensure that there is enough space for upcoming stamping of density information for atoms close to the boundary.
-        if debug: print('DEBUG--> Box shape is', shape, 'voxels')
+        # given the fact that they measure {voxel_dim} Angstroms. To these numbers, an "outline" of 2{stamp_len} voxels is added to
+        # each axis to ensure that there is enough space for upcoming stamping of density information for atoms close to the boundary.
+
         self.box = np.zeros(shape, dtype=float)
+        if debug: print('DEBUG--> Box shape is', shape, 'voxels')
         # defining box dimensions based on molecule size and voxel input
 
-        offset = round(stamp_len/2)
         for atom in self.atoms:                                          # adding density to array elements
-            x_pos = round(atom[0]/voxel_dim) - offset
-            y_pos = round(atom[1]/voxel_dim) - offset
-            z_pos = round(atom[2]/voxel_dim) - offset
-            print('Stamping to xyz:', x_pos, y_pos, z_pos)
+            x_pos = round((atom[0] - min_x) / voxel_dim + outline/2)
+            y_pos = round((atom[1] - min_y) / voxel_dim + outline/2)
+            z_pos = round((atom[2] - min_z) / voxel_dim + outline/2)
+            # print('Stamping to xyz:', x_pos, y_pos, z_pos)
             self.box[x_pos : x_pos + stamp_len, y_pos : y_pos + stamp_len, z_pos : z_pos + stamp_len] += self.stamp
         # self.box = self.box / max(self.box.reshape((1,np.prod(shape))))  # normalize box values
 
@@ -165,7 +178,7 @@ if __name__ == '__main__':
     # plot = ax.scatter(x, y, z, color='b')
     # plt.show()
 
-    test.compute_CoDe(0.1, debug=True)
+    test.compute_CoDe(0.01, debug=True)
 
     src = mlab.pipeline.scalar_field(test.box)
     graph = mlab.pipeline.volume(src)
