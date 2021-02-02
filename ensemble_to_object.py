@@ -26,7 +26,7 @@ class Density_object:
         conformers to first and centering them in origin.
 
         '''
-        def _align_ensemble(filename, reactive_atoms):
+        def _align_ensemble(filename, reactive_atoms): # needs to be rewritten to align based on reactive atoms
 
             '''
             Align a set of conformers to the first one, writing a new ensemble file.
@@ -51,7 +51,7 @@ class Density_object:
                 notatend = mol_parser.Read(mol)
             # Crazy but this is standard Openbabel procedure. Anyway,looks like a pybel method is available
             # to doall this actually https://bmcchem.biomedcentral.com/articles/10.1186/1752-153X-2-5
-            
+
             del mol
             ref = allmols[0]                  # Setting reference molecule to align all others, and aligning all to first
             constructor = ob.OBAlign()
@@ -151,10 +151,19 @@ class Density_object:
             z_pos = round((atom[2] - min_z) / voxel_dim + outline/2)
             # print('Stamping to xyz:', x_pos, y_pos, z_pos)
             self.box[x_pos : x_pos + stamp_len, y_pos : y_pos + stamp_len, z_pos : z_pos + stamp_len] += self.stamp
-        # self.box = self.box / max(self.box.reshape((1,np.prod(shape))))  # normalize box values
+        self.box = self.box / max(self.box.reshape((1,np.prod(shape)))[0])  # normalize box values
 
 
 
+# TO DO: o = to do, x = done
+# 
+#   x   initialize density object class, loading conformer ensemble
+#   o   align conformer ensemble besed on reactive atoms
+#   x   write CoDe function, creating the scalar field
+#   o   CoDe: weigh conformations based on their energy in box stamping - requires
+#           substituting .xyz extension for ensemble or autonomously ranking conformations. We'll see.
+#   o   initialize function that docks another object to current CoDe object
+#   o   define the scoring function that ranks blob arrangements: reactive distance (+) and clashes (-)
 
 
 
