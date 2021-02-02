@@ -10,23 +10,32 @@ from mayavi import mlab
 
 class Density_object:
     '''
-    Conformational density 3D object from a conformational ensemble
+    Conformational density 3D object from a conformational ensemble.
+
+    filename            Input file name. Can be anything, .xyz preferred
+    reactive_atoms      Index of atoms that will link during the desired reaction.
+                        May be either int or list of int.
+    return              Writes a new filename_aligned.xyz file and returns its name
+
 
     '''
 
-    def __init__(self, filename, debug=False):
+    def __init__(self, filename, reactive_atoms, debug=False):
         '''
         Initializing class properties: reading conformational ensemble file, aligning
         conformers to first and centering them in origin.
 
         '''
-        def _align_ensemble(filename):
+        def _align_ensemble(filename, reactive_atoms):
 
             '''
-            Align a set of conformers to the first one, writing a new ensemble file
+            Align a set of conformers to the first one, writing a new ensemble file.
+            Alignment is done on reactive atom(s) and its immediate neighbors.
 
-            :param filename:  input file name. Can be anything, .xyz preferred
-            :return:          writes a new filename_aligned.xyz file and returns its name
+            filename            Input file name. Can be anything, .xyz preferred
+            reactive_atoms      Index of atoms that will link during the desired reaction.
+                                May be either int or list of int.
+            return              Writes a new filename_aligned.xyz file and returns its name
 
             '''
 
@@ -42,13 +51,14 @@ class Density_object:
                 notatend = mol_parser.Read(mol)
             # Crazy but this is standard Openbabel procedure. Anyway,looks like a pybel method is available
             # to doall this actually https://bmcchem.biomedcentral.com/articles/10.1186/1752-153X-2-5
+            
             del mol
             ref = allmols[0]                  # Setting reference molecule to align all others, and aligning all to first
             constructor = ob.OBAlign()
             constructor.SetRefMol(ref)
             for m in allmols[1:]:
                 constructor.SetTargetMol(m)
-                constructor.Align()
+                constructor.Align()           # TO DO: ALIGN TO REACTIVE INDEXES AND NOT RANDOMLY - NEIGHBORS OF INDEX 6 SHOULD BE 1, 7, 19
                 constructor.UpdateCoords(m)
 
             mol_parser.SetOutFormat('.xyz')
@@ -69,7 +79,11 @@ class Density_object:
                 os.remove(m)
             return name
 
-        ccread_object = ccread(_align_ensemble(filename))
+        if os.path.isfile(filename.split('.')[0] + '_aligned.xyz'):
+            ccread_object = ccread(filename.split('.')[0] + '_aligned.xyz')
+        else:
+            ccread_object = ccread(_align_ensemble(filename, reactive_atoms))
+
         coordinates = np.array(ccread_object.atomcoords)
 
         if all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))]):     # Checking that ensemble has constant lenght
@@ -77,10 +91,9 @@ class Density_object:
         else:
             raise Exception(f'Ensemble not recognized, no constant lenght. len are {[len(i) for i in coordinates]}')
 
-        # self.old = np.array([atom for structure in coordinates for atom in structure])   # debug, kill this
-        center_of_mass = np.sum(np.sum(coordinates, axis=0), axis=0) / (len(coordinates) * len(coordinates[0]))
-        if debug: print('DEBUG--> Center of mass was', center_of_mass)
-        self.atomcoords = coordinates - center_of_mass
+        self.centroid = np.sum(np.sum(coordinates, axis=0), axis=0) / (len(coordinates) * len(coordinates[0]))
+        if debug: print('DEBUG--> Centroid was', self.centroid)
+        self.atomcoords = coordinates - self.centroid
         # After reading aligned conformers, they are stored as self.atomcoords only after being aligned to origin
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
@@ -164,7 +177,7 @@ if __name__ == '__main__':
 
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('Resources')
-    test = Density_object('dienamine.xyz', debug=True)
+    test = Density_object('dienamine.xyz', 6, debug=True)
 
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
@@ -178,7 +191,7 @@ if __name__ == '__main__':
     # plot = ax.scatter(x, y, z, color='b')
     # plt.show()
 
-    test.compute_CoDe(0.01, debug=True)
+    test.compute_CoDe(0.5, debug=True)
 
     src = mlab.pipeline.scalar_field(test.box)
     graph = mlab.pipeline.volume(src)

@@ -5,14 +5,18 @@ from ensemble_to_object import Density_object
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.chdir('Resources')
-Density_object('dienamine.xyz')
+
+test = 'dienamine.xyz'
+test = 'funky.xyz'
+
+Density_object(test, 6)
  
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from cclib.io import ccread
 
-original = ccread('dienamine.xyz')
-aligned = ccread('dienamine_aligned.xyz')
+original = ccread(test)
+aligned = ccread(test.split('.')[0] + '_aligned.xyz')
 
 structs = zip(np.array(original.atomcoords), np.array(aligned.atomcoords))
 diffs = [np.sum(tup[0] - tup[1]) for tup in structs]
@@ -33,6 +37,7 @@ x2 = [atom[0] for atom in aligned_atoms]
 y2 = [atom[1] for atom in aligned_atoms]
 z2 = [atom[2] for atom in aligned_atoms]
 
-plot = ax.scatter(x1, y1, z1, color='r')
-plot = ax.scatter(x2, y2, z2, color='b')
+plot = ax.scatter(x1, y1, z1, color='r', label='original')
+plot = ax.scatter(x2, y2, z2, color='b', label='aligned')
+ax.legend()
 plt.show()
