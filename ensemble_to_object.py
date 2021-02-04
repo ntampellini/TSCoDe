@@ -350,14 +350,15 @@ class Density_object:
 # TO DO: o = to do, x = done, w=working on it
 # 
 #   x   initialize density object class, loading conformer ensemble
-#   o   align conformer ensemble based on reactive atoms
 #   x   write CoDe function, creating the scalar field
 #   x   set up the conformational analysis inside the program
 #   x   CoDe: weigh conformations based on their energy in box stamping
+#   w   write a function that exports self.box to gaussian .cube format (VMD-readable)
+#   w   fix .cube file generated not aligned with density object
+#   o   implement different radius for elements
+#   o   align conformer ensemble based on reactive atoms
 #   o   initialize function that docks another object to current CoDe object
 #   o   define the scoring function that ranks blob arrangements: reactive distance (+) and clashes (-)
-#   w   write a function that exports self.box to gaussian .cube format (VMD-readable)
-#   o   fix .cube file generated not aligned with density object
 #   o   prevent OpenBabel nasty prints (damn!)
 
 
