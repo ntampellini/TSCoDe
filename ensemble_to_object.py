@@ -73,7 +73,7 @@ class Density_object:
 
             try:
                 os.remove(rootname + '_ensemble.xyz')
-            except: pass
+            except Exception as e: pass
 
 
             mol_parser = ob.OBConversion()
@@ -93,7 +93,7 @@ class Density_object:
             try:
                 cs.Search()
                 cs.GetConformers(mol)            
-            except:
+            except Exception as e:
                 raise Exception('Error: Automatic conformational Search failed. Houston, we\'ve got a problem.')
             finally:
                 sys.stdout = old_stdout # reset old stdout
@@ -192,7 +192,7 @@ class Density_object:
                 filename = _generate_ensemble(filename)
             else:
                 self.energies = ccread_object.scfenergies
-        except:
+        except Exception as e:
             raise Exception('The input file cannot be read through cclib package. Try with a energy-containing conformational ensemble file or - recommended - a single .xyz file.')
 
         if os.path.isfile(self.rootname + '_aligned_ensemble.xyz'):
@@ -222,10 +222,10 @@ class Density_object:
         try:
             os.remove(self.rootname + '_ensemble.xyz')
             os.remove(self.rootname + '_ensemble_aligned.xyz')
-        except:
+        except Exception as e:
             try:
                 os.remove(self.rootname + '_aligned.xyz')
-            except: pass
+            except Exception as e: pass
 
     def compute_CoDe(self, voxel_dim:float=0.3, stamp_size=2, hardness=5, debug=False):
         '''
@@ -233,7 +233,7 @@ class Density_object:
 
         :param voxel_dim:    size of the square Voxel side, in Angstroms
         :param stamp_size:   radius of sphere used as stamp, in Angstroms
-        :hardness:           steepness of radial probability decay (gaussian, k in e^(-kr^2))
+        :param hardness:     steepness of radial probability decay (gaussian, k in e^(-kr^2))
         :return:             writes a new filename_aligned.xyz file and returns its name
 
         '''
@@ -343,7 +343,7 @@ class Density_object:
                 print_list.append('\n')
                 f.write(''.join(print_list))
                 print(f'Wrote file {cubename} - {total} scalar values')
-        except:
+        except Exception as e:
             raise Exception(f'No CoDe data in {self.name} Density Object Class: write_cube method should be called only after compute_CoDe method.')
 
 
@@ -394,9 +394,9 @@ if __name__ == '__main__':
     # import matplotlib.pyplot as plt
     # from mpl_toolkits.mplot3d import Axes3D
 
-    # from mayavi import mlab
-    # src = mlab.pipeline.scalar_field(test.box)
-    # graph = mlab.pipeline.volume(src)
-    # graph.edit_traits()
-    # mlab.show()
+    from mayavi import mlab
+    src = mlab.pipeline.scalar_field(test.box)
+    graph = mlab.pipeline.volume(src)
+    graph.edit_traits()
+    mlab.show()
 
