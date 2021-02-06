@@ -3,30 +3,14 @@
 from rdkit import Chem
 from rdkit.Chem import AllChem, TorsionFingerprints
 from rdkit.ML.Cluster import Butina
+from rdkit.Chem.Lipinski import NumRotatableBonds, NHOHCount
 
 def csearch(filename, debug=False):
 
     def _gen_conformers(mol, numConfs=100, maxAttempts=1000, pruneRmsThresh=0.1, useExpTorsionAnglePrefs=True, useBasicKnowledge=True, enforceChirality=True):
         ids = AllChem.EmbedMultipleConfs(mol, numConfs=numConfs, maxAttempts=maxAttempts, pruneRmsThresh=pruneRmsThresh, useExpTorsionAnglePrefs=useExpTorsionAnglePrefs, useBasicKnowledge=useBasicKnowledge, enforceChirality=enforceChirality, numThreads=0)
         return list(ids)
-        
-    # def write_conformers_to_sdf(mol, filename, rmsClusters, conformerPropsDict, minEnergy):
-    #     w = Chem.SDWriter(filename)
-    #     for cluster in rmsClusters:
-    #         for confId in cluster:
-    #             for name in mol.GetPropNames():
-    #                 mol.ClearProp(name)
-    #             conformerProps = conformerPropsDict[confId]
-    #             mol.SetIntProp("conformer_id", confId + 1)
-    #             for key in conformerProps.keys():
-    #                 mol.SetProp(key, str(conformerProps[key]))
-    #             e = conformerProps["energy_abs"]
-    #             if e:
-    #                 mol.SetDoubleProp("energy_delta", e - minEnergy)
-    #             w.write(mol, confId=confId)
-    #     w.flush()
-    #     w.close()
-        
+             
     def _calc_energy(mol, conformerId, minimizeIts):
         ff = AllChem.MMFFGetMoleculeForceField(mol, AllChem.MMFFGetMoleculeProperties(mol), confId=conformerId)
         ff.Initialize()
@@ -50,20 +34,20 @@ def csearch(filename, debug=False):
         AllChem.AlignMolConformers(mol, confIds=clust_ids, RMSlist=rmslist)
         return rmslist
             
+    suppl = Chem.ForwardSDMolSupplier(input_file)
+    mol = [m for m in suppl][0]
+    m = Chem.AddHs(mol)
         
     input_file = filename
-    numConfs = 100
+    numConfs = max(100, 10**(NumRotatableBonds(mol) + NHOHCount(mol)))
     maxAttempts = 1000
     pruneRmsThresh = 0.1
     clusterMethod = "RMSD"
     clusterThreshold = 2.0
     minimizeIterations = 0
+    if debug: print(f"Initializing CSearch: found {NumRotatableBonds(mol) + NHOHCount(mol)} rotable bonds, using {numConfs} steps")
 
-    suppl = Chem.ForwardSDMolSupplier(input_file)
-    i=0
-    mol = [m for m in suppl][0]
-    i = i+1
-    m = Chem.AddHs(mol)
+
     # generate the confomers
     conformerIds = _gen_conformers(m, numConfs, maxAttempts, pruneRmsThresh, True, True, True)
     conformerPropsDict = {}
@@ -74,7 +58,7 @@ def csearch(filename, debug=False):
     # cluster the conformers
     rmsClusters = _cluster_conformers(m, clusterMethod, clusterThreshold)
 
-    if debug: print("Molecule", i, ": generated", len(conformerIds), "conformers and", len(rmsClusters), "clusters")
+    if debug: print("Molecule", filename, ": generated", len(conformerIds), "conformers and", len(rmsClusters), "clusters")
     rmsClustersPerCluster = []
     clusterNumber = 0
     minEnergy = 9999999999999

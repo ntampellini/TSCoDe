@@ -6,15 +6,19 @@ from ensemble_to_object import Density_object
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.chdir('Resources')
 
-test = 'funky_single_aligned_rdkit.xyz'
-test = 'kill.xyz'
-
+test = 'funky_single_aligned_rdkit.sdf'
  
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from cclib.io import ccread
 
-aligned = ccread(test)
+if test.endswith('.sdf'):
+    outname = test.split('.')[0] + '.xyz'
+    os.system(f'obabel {test} -o xyz -O {outname}')
+    aligned = ccread(outname)
+    os.remove(outname)
+else:
+    aligned = ccread(test)
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
@@ -35,6 +39,12 @@ col_list_full = []
 for s in aligned.atomcoords:
     for c in col_list:
         col_list_full.append(c)
+
+# x = x[6:8]
+# y = y[6:8]
+# z = z[6:8]
+# col_list_full = col_list_full[6:8]
+
 
 plot = ax.scatter(x, y, z, c=col_list_full, label='aligned')
 ax.legend()

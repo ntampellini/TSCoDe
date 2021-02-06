@@ -95,6 +95,7 @@ class Density_object:
             self.energies = np.array(energies) - min(energies)
 
             Chem.rdMolAlign.AlignMolConformers(ensemble, reactive_atoms)
+            # http://rdkit.org/docs/source/rdkit.Chem.rdMolAlign.html?highlight=align#rdkit.Chem.rdMolAlign.AlignMolConformers
 
             outname = filename.split('.')[0] + '_aligned_rdkit.sdf'
             writer = Chem.SDWriter(outname)
@@ -104,14 +105,17 @@ class Density_object:
                     
             print(f'Conformational Search on {filename} : {len([e for e in energies if e < 10])} conformers found.')
 
-            # http://rdkit.org/docs/source/rdkit.Chem.rdMolAlign.html?highlight=align#rdkit.Chem.rdMolAlign.AlignMolConformers
 
-            return outname
+            ccread_object = ccread(outname)
+
+            # os.remove(outname)
+
+            return ccread_object
 
 
         self.rootname = filename.split('.')[0]
 
-        ccread_object = ccread(_generate_and_align_ensemble(filename, reactive_atoms))
+        ccread_object = _generate_and_align_ensemble(filename, reactive_atoms)
         coordinates = np.array(ccread_object.atomcoords)
 
         if all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))]):     # Checking that ensemble has constant lenght
@@ -294,7 +298,7 @@ if __name__ == '__main__':
     os.chdir('Resources')
 
     # test = Density_object('dienamine.xyz', 6, debug=True)
-    test = Density_object('funky_single.xyz', [7, 8], debug=True)
+    test = Density_object('funky_single.xyz', [6, 7], debug=True)
     # test = Density_object('CFClBrI.xyz', 1, debug=False)
 
     
