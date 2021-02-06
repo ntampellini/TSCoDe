@@ -65,6 +65,37 @@ class Density_object:
         conformers to first and centering them in origin.
 
         '''
+        def _indexes_update(oldmol, reactive_atoms, newmol):
+            '''
+            Converts the reactive atom indexes to the one of a new instance
+            of the same molecule, with mutated indexes.
+            '''
+            # ANDRE
+            return reactive_atoms
+
+        def _alignment_indexes(mol, reactive_atoms):
+            '''
+            Return the indexes to align the molecule to, given a list of
+            atoms that should be reacting. List is composed by reactive atoms
+            plus adjacent atoms.
+            :param mol: rdkit Mol class molecule object
+            :param reactive atoms: int or list of ints
+
+            '''
+            matrix = Chem.GetAdjacencyMatrix(mol)
+            graph = nx.from_numpy_matrix(matrix)
+
+            if type(reactive_atoms) is int:
+                indexes = list([(a, b) for a, b in graph.adjacency()][reactive_atoms][1].keys())
+                indexes.append(reactive_atoms)
+                return indexes
+
+            elif len(reactive_atoms) > 1:
+                indexes = set()
+                for atom in reactive_atoms:
+                    indexes |= set(list([(a, b) for a, b in graph.adjacency()][atom][1].keys()))
+                    indexes.add(atom)
+                return list(indexes)
 
         def _generate_and_align_ensemble(filename, reactive_atoms):
 
@@ -88,18 +119,17 @@ class Density_object:
             converted_name = filename.split('.')[0] + '.sdf'
             check_call(f'obabel {filename} -o sdf -O {converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
 
-            ensemble, energies = csearch(converted_name)
-
+            old_mol, ensemble, energies = csearch(converted_name)  # performs csearch, also returns old mol for aligment purposes
+            self.energies = np.array(energies) - min(energies)
             os.remove(converted_name)
 
-            self.energies = np.array(energies) - min(energies)
-
-            Chem.rdMolAlign.AlignMolConformers(ensemble, reactive_atoms)
+            new_indexes = _indexes_update(old_mol, reactive_atoms, ensemble)   # computes new indexes for aligning molecules
+            Chem.rdMolAlign.AlignMolConformers(ensemble, new_indexes)
             # http://rdkit.org/docs/source/rdkit.Chem.rdMolAlign.html?highlight=align#rdkit.Chem.rdMolAlign.AlignMolConformers
 
-            outname = filename.split('.')[0] + '_aligned_rdkit.sdf'
-            writer = Chem.SDWriter(outname)
-            for i, e in enumerate(self.energies):
+            outname = filename.split('.')[0] + '_aligned_rdkit.sdf' # Writes sigle conformers to files then convert them to one ensemble.
+            writer = Chem.SDWriter(outname)                         # Really not ideal but RDKit doesn't seem to be able to output the
+            for i, e in enumerate(self.energies):                   # .xyz ensemble required by ccread, so I don't see another way.
                 if e < 10:
                     writer.write(ensemble, confId=i)
             writer.close()        
@@ -107,7 +137,7 @@ class Density_object:
             print(f'Conformational Search on {filename} : {len([e for e in energies if e < 10])} conformers found.')
 
             xyz_outname = filename.split('.')[0] + '_aligned_rdkit.xyz'
-            check_call(f'obabel {outname} -o xyz -O {xyz_outname}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
+            check_call(f'obabel {outname} -o xyz -O {xyz_outname}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this(?)
             os.remove(outname)
 
             ccread_object = ccread(xyz_outname)
@@ -181,6 +211,7 @@ class Density_object:
         size = (max(x_coords) - min_x,
                 max(y_coords) - min_y,
                 max(z_coords) - min_z)
+        if debug: print('DEBUG--> Size of box in A is', size, 'A')
 
         outline = 2*stamp_len
 
@@ -210,9 +241,9 @@ class Density_object:
         for i, conformer in enumerate(self.atomcoords):                     # adding density to array elements
             if self.energies[i] < 10:                                       # cutting at rel. E +10 kcal/mol 
                 for atom in conformer:
-                    x_pos = round((atom[0] - min_x) / voxel_dim)
-                    y_pos = round((atom[1] - min_y) / voxel_dim)
-                    z_pos = round((atom[2] - min_z) / voxel_dim)
+                    x_pos = int(np.floor((atom[0] / voxel_dim) + shape[0]/2 - stamp_size/2))
+                    y_pos = int(np.floor((atom[1] / voxel_dim) + shape[1]/2 - stamp_size/2))
+                    z_pos = int(np.floor((atom[2] / voxel_dim) + shape[2]/2 - stamp_size/2))
                     weight = np.exp(-self.energies[i]*503.2475342795285/self.T)     # conformer structures are weighted on their relative energy (Boltzmann)
                     self.box[x_pos : x_pos + stamp_len, y_pos : y_pos + stamp_len, z_pos : z_pos + stamp_len] += self.stamp*weight
 
@@ -269,18 +300,28 @@ class Density_object:
 
         vmdname = self.name.split('.')[0] + '_CoDe.vmd'
         with open(vmdname, 'w') as f:
-            string ='''
-display resetview
-mol new {%s} type {cube} first 0 last -1 step 1 waitfor 1
-mol representation CPK 0.500000 0.300000 20.000000 15.000000
-mol color Name
-mol selection all
-mol material Opaque
-mol addrep top
-mol modcolor 1 top Volume 0
-mol modstyle 1 top Isosurface 10.000000 0 0 0 1 1\n''' % (cubename)
+            string = ('display resetview\n'
+                      'mol new {%s} type {cube} first 0 last -1 step 1 waitfor 1\n'
+                      'mol representation CPK 0.500000 0.300000 20.000000 15.000000\n'
+                      'mol color Name\n'
+                      'mol selection all\n'
+                      'mol material Opaque\n'
+                      'mol addrep top\n'
+                      'mol modcolor 1 top Volume 0\n'
+                      'mol modstyle 1 top Isosurface 10.000000 0 0 0 1 1\n'
+                      
+                    #   'mol color Volume 0\n'
+                    #   'mol representation Isosurface 10.000000 0 0 0 1 1\n'
+                    #   'mol selection all\n'
+                    #   'mol material Opaque\n'
+                      'mol addrep top\n'
+                      'mol modstyle 2 top Isosurface 10.000000 0 1 0 1 1\n'
+                      'mol modmaterial 2 top Transparent\n'
+                      
+                      
+                      
+                      ) % (cubename)
             f.write(string)
-            print(f'Wrote file {vmdname}')
 
 
 
@@ -288,7 +329,7 @@ mol modstyle 1 top Isosurface 10.000000 0 0 0 1 1\n''' % (cubename)
 
 
 
-# TO DO: o = to do, x = done, w=working on it
+# TO DO: o = to do, x = done, w = working on it
 # 
 #   x   initialize density object class, loading conformer ensemble
 #   x   write CoDe function, creating the scalar field
@@ -296,11 +337,11 @@ mol modstyle 1 top Isosurface 10.000000 0 0 0 1 1\n''' % (cubename)
 #   x   CoDe: weigh conformations based on their energy in box stamping
 #   w   write a function that exports self.box to gaussian .cube format (VMD-readable)
 #   w   fix .cube file generated not aligned with density object
-#   o   implement different radius for elements
-#   o   align conformer ensemble based on reactive atoms
+#   w   align conformer ensemble based on reactive atoms
+#
+#   o   implement different radius for different elements
 #   o   initialize function that docks another object to current CoDe object
 #   o   define the scoring function that ranks blob arrangements: reactive distance (+) and clashes (-)
-#   o   prevent OpenBabel nasty prints (damn!)
 
 
 
@@ -328,7 +369,7 @@ if __name__ == '__main__':
     test = Density_object('CFClBrI.xyz', 1, debug=False)
 
     
-    test.compute_CoDe()
+    test.compute_CoDe(debug=True)
 
     test.write_cubefile()
 

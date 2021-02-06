@@ -3,10 +3,18 @@
 from rdkit import Chem
 from rdkit.Chem import AllChem, TorsionFingerprints
 from rdkit.ML.Cluster import Butina
-from rdkit.Chem.Lipinski import NumRotatableBonds, NHOHCount
+from rdkit.Chem.Lipinski import NumRotatableBonds
 
 def csearch(filename, debug=False):
+    '''
+    Performs a randomic conformational search and returns the conformational ensemble,
+    pruned based on cluster analysis. 10**(number of heavy-atoms rotable bonds) steps.
 
+    :params filename: an input filename, must be a .sdf single molecule file
+    :return old_mol: returns the input molecule as an RDKit Mol class for later use
+    :return ensemble: returns the ensemble of conformers as an RDKit Mol class
+    :return energies: returns a list of absolute energies after MMFF minimization (kcal/mol)
+    '''
     def _gen_conformers(mol, numConfs=100, maxAttempts=1000, pruneRmsThresh=0.1, useExpTorsionAnglePrefs=True, useBasicKnowledge=True, enforceChirality=True):
         ids = AllChem.EmbedMultipleConfs(mol, numConfs=numConfs, maxAttempts=maxAttempts, pruneRmsThresh=pruneRmsThresh, useExpTorsionAnglePrefs=useExpTorsionAnglePrefs, useBasicKnowledge=useBasicKnowledge, enforceChirality=enforceChirality, numThreads=0)
         return list(ids)
@@ -38,15 +46,16 @@ def csearch(filename, debug=False):
     suppl = Chem.ForwardSDMolSupplier(input_file)
     mol = [m for m in suppl][0]
     m = Chem.AddHs(mol)
-        
-    # numConfs = max(100, 10**(NumRotatableBonds(mol) + NHOHCount(mol)))
-    numConfs = 100
+    old_mol = Chem.AddHs(mol)
+       
+    numConfs = max(100, 10**(NumRotatableBonds(mol)))
+    # numConfs = 100
     maxAttempts = 1000
     pruneRmsThresh = 0.1
     clusterMethod = "RMSD"
     clusterThreshold = 2.0
     minimizeIterations = 0
-    if debug: print(f"Initializing CSearch: found {NumRotatableBonds(mol) + NHOHCount(mol)} rotable bonds, using {numConfs} steps")
+    if debug: print(f"Initializing CSearch: found {NumRotatableBonds(mol)} rotable bonds, using {numConfs} steps")
 
 
     # generate the confomers
@@ -98,14 +107,15 @@ def csearch(filename, debug=False):
     # print('len m is', len(m.GetConformers()))
     # print('len energies is', len(energies))
 
-    return m, energies
+    return old_mol, m, energies
 
 if __name__ == '__main__':
     import os
     from pprint import pprint
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('Resources')
-    structures, energies = csearch('funky_single.sdf', debug=True)
-
-    
+    old_mol, ensemble, energies = csearch('funky_single.sdf', debug=True)
+    print(old_mol)
+    print(ensemble)
+    print(energies)
          
