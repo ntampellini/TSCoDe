@@ -34,12 +34,13 @@ def csearch(filename, debug=False):
         AllChem.AlignMolConformers(mol, confIds=clust_ids, RMSlist=rmslist)
         return rmslist
             
+    input_file = filename
     suppl = Chem.ForwardSDMolSupplier(input_file)
     mol = [m for m in suppl][0]
     m = Chem.AddHs(mol)
         
-    input_file = filename
-    numConfs = max(100, 10**(NumRotatableBonds(mol) + NHOHCount(mol)))
+    # numConfs = max(100, 10**(NumRotatableBonds(mol) + NHOHCount(mol)))
+    numConfs = 100
     maxAttempts = 1000
     pruneRmsThresh = 0.1
     clusterMethod = "RMSD"
@@ -97,9 +98,6 @@ def csearch(filename, debug=False):
     # print('len m is', len(m.GetConformers()))
     # print('len energies is', len(energies))
 
-    if debug:
-        return structures, energies, conformerPropsDict, good_dict
-
     return m, energies
 
 if __name__ == '__main__':
@@ -107,13 +105,7 @@ if __name__ == '__main__':
     from pprint import pprint
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('Resources')
-    structures, energies, conformerPropsDict, good_dict = csearch('funky_single.sdf', debug=True)
+    structures, energies = csearch('funky_single.sdf', debug=True)
 
-    pprint(conformerPropsDict)
-    print()
-    pprint(good_dict)
-    print()
-    pprint(structures)
-    print()
-    pprint(energies)
+    
          
