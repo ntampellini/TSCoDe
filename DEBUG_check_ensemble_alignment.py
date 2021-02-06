@@ -6,38 +6,36 @@ from ensemble_to_object import Density_object
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.chdir('Resources')
 
-test = 'dienamine.xyz'
-test = 'funky.xyz'
+test = 'funky_single_aligned_rdkit.xyz'
+test = 'kill.xyz'
 
-Density_object(test, 6)
  
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from cclib.io import ccread
 
-original = ccread(test)
-aligned = ccread(test.split('.')[0] + '_aligned.xyz')
-
-structs = zip(np.array(original.atomcoords), np.array(aligned.atomcoords))
-diffs = [np.sum(tup[0] - tup[1]) for tup in structs]
-for i, v in enumerate(diffs):
-    print(f'Structure {i} - {v} differences')
-
+aligned = ccread(test)
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 
-original_atoms = np.array([atom for structure in original.atomcoords for atom in structure])
-x1 = [atom[0] for atom in original_atoms]
-y1 = [atom[1] for atom in original_atoms]
-z1 = [atom[2] for atom in original_atoms]
-
 aligned_atoms = np.array([atom for structure in aligned.atomcoords for atom in structure])
-x2 = [atom[0] for atom in aligned_atoms]
-y2 = [atom[1] for atom in aligned_atoms]
-z2 = [atom[2] for atom in aligned_atoms]
+x = [atom[0] for atom in aligned_atoms]
+y = [atom[1] for atom in aligned_atoms]
+z = [atom[2] for atom in aligned_atoms]
 
-plot = ax.scatter(x1, y1, z1, color='r', label='original')
-plot = ax.scatter(x2, y2, z2, color='b', label='aligned')
+col = {
+    1:'gray',
+    6:'black',
+    7:'blue',
+    8:'red'
+}
+col_list = [col[i] for i in aligned.atomnos]
+col_list_full = []
+for s in aligned.atomcoords:
+    for c in col_list:
+        col_list_full.append(c)
+
+plot = ax.scatter(x, y, z, c=col_list_full, label='aligned')
 ax.legend()
 plt.show()
