@@ -89,6 +89,7 @@ class Density_object:
             if type(reactive_atoms) is int:
                 indexes = list([(a, b) for a, b in graph.adjacency()][reactive_atoms][1].keys())
                 indexes.append(reactive_atoms)
+                if debug: print('DEBUG--> Alignment indexes are', indexes)
                 return indexes
 
             elif len(reactive_atoms) > 1:
@@ -96,6 +97,7 @@ class Density_object:
                 for atom in reactive_atoms:
                     indexes |= set(list([(a, b) for a, b in graph.adjacency()][atom][1].keys()))
                     indexes.add(atom)
+                if debug: print('DEBUG--> Alignment indexes are', list(indexes))
                 return list(indexes)
 
         def _generate_and_align_ensemble(filename, reactive_atoms):
@@ -116,6 +118,7 @@ class Density_object:
             except:
                 raise Exception('Unrecognized reactive atoms IDs. Argument must either be one int or a list of ints.')
 
+            if debug: print()
 
             converted_name = filename.split('.')[0] + '.sdf'
             check_call(f'obabel {filename} -o sdf -O {converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
@@ -126,7 +129,13 @@ class Density_object:
 
             new_indexes = _indexes_update(old_mol, reactive_atoms, ensemble)   # computes new indexes for aligning molecules
             alignment_indexes = _alignment_indexes(ensemble, new_indexes)
-            Chem.rdMolAlign.AlignMolConformers(ensemble, alignment_indexes)
+
+            if alignment_indexes is None:               # Eventually we should raise an error I think, but we could also warn and leave this
+                Chem.rdMolAlign.AlignMolConformers(ensemble)
+                print(f'ATOM ALIGMENT INDEX(ES) NOT UNDERSTOOD: Ensemble for {self.rootname} aligned on all atoms, may generate undesired results.')
+            else:
+                Chem.rdMolAlign.AlignMolConformers(ensemble, alignment_indexes)
+                
             # http://rdkit.org/docs/source/rdkit.Chem.rdMolAlign.html?highlight=align#rdkit.Chem.rdMolAlign.AlignMolConformers
 
             outname = filename.split('.')[0] + '_aligned_rdkit.sdf' # Writes sigle conformers to files then convert them to one ensemble.
@@ -136,7 +145,9 @@ class Density_object:
                     writer.write(ensemble, confId=i)
             writer.close()        
 
-            print(f'Conformational Search on {filename} : {len([e for e in energies if e < 10])} conformers found.')
+            if debug: print(f'DEBUG--> Conformational Search on {filename} : {len(self.energies)} conformers found.')
+            if debug: print(f'DEBUG--> Relative energies are : {self.energies}')
+
 
             xyz_outname = filename.split('.')[0] + '_aligned_rdkit.xyz'
             check_call(f'obabel {outname} -o xyz -O {xyz_outname}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this(?)
@@ -230,9 +241,9 @@ class Density_object:
         #                                     (shape[1] + outline)/2*voxel_dim,
         #                                     (shape[2] + outline)/2*voxel_dim])        # vector connecting ensemble centroid with box origin (corner), used later
 
-        self.ensemble_origin = -1*np.array([(size[0] + 2*stamp_size)/2, 
-                                            (size[1] + 2*stamp_size)/2,
-                                            (size[2] + 2*stamp_size)/2])        # vector connecting ensemble centroid with box origin (corner), used later
+        self.ensemble_origin = -1*np.array([size[0]/2 + stamp_size, 
+                                            size[1]/2 + stamp_size,
+                                            size[2]/2 + stamp_size])        # vector connecting ensemble centroid with box origin (corner), used later
 
 
 
@@ -243,9 +254,9 @@ class Density_object:
         for i, conformer in enumerate(self.atomcoords):                     # adding density to array elements
             if self.energies[i] < 10:                                       # cutting at rel. E +10 kcal/mol 
                 for atom in conformer:
-                    x_pos = int(np.floor((atom[0] / voxel_dim) + shape[0]/2 - stamp_size/2))
-                    y_pos = int(np.floor((atom[1] / voxel_dim) + shape[1]/2 - stamp_size/2))
-                    z_pos = int(np.floor((atom[2] / voxel_dim) + shape[2]/2 - stamp_size/2))
+                    x_pos = round((atom[0] / voxel_dim) + shape[0]/2 - stamp_len/2)
+                    y_pos = round((atom[1] / voxel_dim) + shape[1]/2 - stamp_len/2)
+                    z_pos = round((atom[2] / voxel_dim) + shape[2]/2 - stamp_len/2)
                     weight = np.exp(-self.energies[i]*503.2475342795285/self.T)     # conformer structures are weighted on their relative energy (Boltzmann)
                     self.box[x_pos : x_pos + stamp_len, y_pos : y_pos + stamp_len, z_pos : z_pos + stamp_len] += self.stamp*weight
 
@@ -366,9 +377,9 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('Resources')
 
-    # test = Density_object('dienamine.xyz', 6, debug=True)
-    test = Density_object('funky_single.xyz', [6, 7], debug=True)
-    # test = Density_object('CFClBrI.xyz', 1, debug=False)
+    test = Density_object('dienamine.xyz', 6, debug=True)
+    # test = Density_object('funky_single.xyz', [6, 7], debug=True)
+    # test = Density_object('CFClBrI.xyz', 1, debug=True)
 
     
     test.compute_CoDe(debug=True)

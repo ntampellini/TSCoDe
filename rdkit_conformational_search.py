@@ -101,13 +101,13 @@ def csearch(filename, debug=False):
     structures = [good_dict[i]['mol'] for i in range(1, number_of_clusters+1)]
     energies = [good_dict[i]['energy_abs'] for i in range(1, number_of_clusters+1)]
 
-    m.RemoveAllConformers()
-    for c in structures:
-        m.AddConformer(c, assignId=True)
-    # print('len m is', len(m.GetConformers()))
-    # print('len energies is', len(energies))
+    ensemble = Chem.MolFromSmiles(Chem.MolToSmiles(m))
+    ensemble = Chem.AddHs(ensemble)
+    for s in structures:
+        ensemble.AddConformer(s, assignId=True)
+    ensemble.RemoveConformer(0)
 
-    return old_mol, m, energies
+    return old_mol, ensemble, energies
 
 if __name__ == '__main__':
     import os
