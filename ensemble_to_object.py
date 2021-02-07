@@ -2,6 +2,7 @@ from cclib.io import ccread
 import os
 import sys
 import numpy as np
+import networkx as nx
 from openbabel import openbabel as ob
 from time import time
 from subprocess import DEVNULL, STDOUT, check_call
@@ -124,7 +125,8 @@ class Density_object:
             os.remove(converted_name)
 
             new_indexes = _indexes_update(old_mol, reactive_atoms, ensemble)   # computes new indexes for aligning molecules
-            Chem.rdMolAlign.AlignMolConformers(ensemble, new_indexes)
+            alignment_indexes = _alignment_indexes(ensemble, new_indexes)
+            Chem.rdMolAlign.AlignMolConformers(ensemble, alignment_indexes)
             # http://rdkit.org/docs/source/rdkit.Chem.rdMolAlign.html?highlight=align#rdkit.Chem.rdMolAlign.AlignMolConformers
 
             outname = filename.split('.')[0] + '_aligned_rdkit.sdf' # Writes sigle conformers to files then convert them to one ensemble.
@@ -365,8 +367,8 @@ if __name__ == '__main__':
     os.chdir('Resources')
 
     # test = Density_object('dienamine.xyz', 6, debug=True)
-    # test = Density_object('funky_single.xyz', [6, 7], debug=True)
-    test = Density_object('CFClBrI.xyz', 1, debug=False)
+    test = Density_object('funky_single.xyz', [6, 7], debug=True)
+    # test = Density_object('CFClBrI.xyz', 1, debug=False)
 
     
     test.compute_CoDe(debug=True)
