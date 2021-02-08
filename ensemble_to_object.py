@@ -3,13 +3,15 @@ import os
 import sys
 import numpy as np
 import networkx as nx
-from openbabel import openbabel as ob
-from time import time
+# from openbabel import openbabel as ob
+# from time import time
 from subprocess import DEVNULL, STDOUT, check_call
 from rdkit_conformational_search import csearch
 from rdkit import Chem
 from rdkit.Chem import rdMolAlign, rdMolDescriptors, AllChem
 from rdkit_conformational_search import csearch
+from scipy.spatial.transform import Rotation as R
+
 
 
 def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
@@ -26,9 +28,9 @@ def _write_cube(array, voxdim):
         f.write(' OUTER LOOP: X, MIDDLE LOOP: Y, INNER LOOP: Z\n')
         f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(1, 0, 0, 0))
         
-        f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(array.shape[0], voxdim, 0.000000, 0.000000))
-        f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(array.shape[1], 0.000000, voxdim, 0.000000))
-        f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(array.shape[2], 0.000000, 0.000000, voxdim))
+        f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(array.shape[0], 1.88973*voxdim, 0.000000, 0.000000))
+        f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(array.shape[1], 0.000000, 1.88973*voxdim, 0.000000))
+        f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(array.shape[2], 0.000000, 0.000000, 1.88973*voxdim))
         f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(6, 0.000000, 0.000000, 0.000000))
 
         # number of voxels along x, x length of voxel. Minus in front of voxel number is for specifying Angstroms over Bohrs.
@@ -72,7 +74,8 @@ class Density_object:
             of the same molecule, with mutated indexes.
             '''
             # ANDRE
-            return reactive_atoms
+            self.reactive_indexes = reactive_atoms
+            return self.reactive_indexes
 
         def _alignment_indexes(mol, reactive_atoms):
             '''
@@ -158,6 +161,16 @@ class Density_object:
 
             return ccread_object
 
+        def _orient_along_x(array, vector):
+            '''
+            :params array:    array of atomic coordinates arrays: len(array) structures with len(array[i]) atoms
+            :params vector:   list of shape (1,3) with anchor vector to align to the x axis
+            :return:          array, aligned so that vector is on x
+            '''
+            assert array.shape[1] == 3
+            assert vector.shape == (3,)
+            rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
+            return np.array([rotation_matrix @ v for v in array])
 
         self.rootname = filename.split('.')[0]
 
@@ -172,7 +185,18 @@ class Density_object:
         self.centroid = np.sum(np.sum(coordinates, axis=0), axis=0) / (len(coordinates) * len(coordinates[0]))
         if debug: print('DEBUG--> Centroid was', self.centroid)
         self.atomcoords = coordinates - self.centroid
-        # After reading aligned conformers, they are stored as self.atomcoords only after being aligned to origin
+
+        if type(self.reactive_indexes) is int:
+            reactive_vector = np.mean(np.array([structure[self.reactive_indexes] for structure in self.atomcoords]), axis=0)
+        else:
+            reactive_vector = []
+            for structure in self.atomcoords:
+                for index in self.reactive_indexes:
+                    reactive_vector.append(structure[index])
+            reactive_vector = np.mean(np.array(reactive_vector), axis=0)
+            
+        self.atomcoords = np.array([_orient_along_x(structure, reactive_vector) for structure in self.atomcoords])
+        # After reading aligned conformers, they are stored as self.atomcoords after being translated to origin and aligned the reactive atom(s) to x axis.
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
         if debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
@@ -189,28 +213,43 @@ class Density_object:
                 os.remove(self.rootname + '_aligned.xyz')
             except Exception as e: pass
 
-    def compute_CoDe(self, voxel_dim:float=0.3, stamp_size=2, hardness=5, debug=False):
+    def compute_CoDe(self, voxel_dim:float=0.3, stamp_size=2, hardness=5, breadth=2, debug=False):
         '''
         Computing conformational density for the ensemble.
 
         :param voxel_dim:    size of the square Voxel side, in Angstroms
-        :param stamp_size:   radius of sphere used as stamp, in Angstroms
+        :param stamp_size:   radius of sphere used as stamp for carbon atoms, in Angstroms
         :param hardness:     steepness of radial probability decay (gaussian, k in e^(-kr^2))
-        :return:             writes a new filename_aligned.xyz file and returns its name
+        :param breadth:      value that divides relative energies before calculating relative Boltzmann weight.
+                             If = 1, normal Boltzmann distribution is used. If >1, keeps more high-energy conformers.
+        :return:             None
 
         '''
+        from periodictable import core, covalent_radius
+        pt = core.PeriodicTable(table="H=1")
+        covalent_radius.init(pt)
+
         stamp_len = round((stamp_size/voxel_dim))                    # size of the box, in voxels
-        if debug: print('DEBUG--> Stamp size (sphere diameter) is', stamp_len, 'voxels')
-        self.stamp = np.zeros((stamp_len, stamp_len, stamp_len))
-        for x in range(stamp_len):                                   # probably optimizable
-            for y in range(stamp_len):
-                for z in range(stamp_len):
-                    r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
-                    self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
-        # defining single matrix to use as a stamp, basically a 3D sphere with values decaying with e^(-kr^2)
+        self.stamp = {}
+        if debug: print('DEBUG--> Carbon stamp size (sphere diameter) is', stamp_len, 'voxels')
+
+        for atom in set(self.atomnos):
+            rel_radii = pt[atom].covalent_radius / pt[6].covalent_radius                   # relative radii based on sp3 carbon
+            if debug: print(f'DEBUG--> {pt[atom]} is {round(rel_radii, 2)} times the radius of C')
+            new_stamp_len = round(stamp_len*rel_radii)
+            new_stamp_size = stamp_size*rel_radii
+            self.stamp[atom] = np.zeros((new_stamp_len, new_stamp_len, new_stamp_len))
+            for x in range(new_stamp_len):                                   # probably optimizable
+                for y in range(new_stamp_len):
+                    for z in range(new_stamp_len):
+                        r_2 = (x - new_stamp_len/2)**2 + (y - new_stamp_len/2)**2 + (z - new_stamp_len/2)**2
+                        self.stamp[atom][x, y, z] = np.exp(-hardness*voxel_dim/new_stamp_size*r_2)
+
+        # defining matrices to use as stamps, basically 3D spheres with values decaying with e^(-kr^2)
+        # stamps for other elements are defined based on relative radii with carbon
         # https://www.desmos.com/calculator/3tdiw1of3r
 
-        # _write_cube(self.stamp, voxel_dim)         # DEBUG
+        # _write_cube(self.stamp[6], voxel_dim)         # DEBUG
 
 
         x_coords = np.array([pos[0] for pos in self.atoms])  # isolating x, y and z from self.atoms
@@ -228,6 +267,14 @@ class Density_object:
 
         outline = 2*stamp_len
 
+        # big_atoms = {el:el.covalent_radius for el in pt if el.covalent_radius != None and el.covalent_radius > 2*0.76}
+
+        # if any([pt[atom] in big_atoms for atom in self.atomnos]):
+        #     biggest_atom_size = max([big_atoms[atom] for atom in self.atomnos if atom in big_atoms.keys()])
+        #     outline = 2*biggest_atom_size
+        #     if debug: print(f'DEBUG--> Big atom found! ({list(big_atoms.keys())[list(big_atoms.values()).index(biggest_atom_size)]})')
+        # THIS SHOULD WORK BUT I NEED TO CHECK NOT TO MAKE CONFUSION WITH LATER "OUTLINE" DEFINITION
+
         shape = (int(np.ceil(size[0]/voxel_dim)) + outline,
                  int(np.ceil(size[1]/voxel_dim)) + outline,
                  int(np.ceil(size[2]/voxel_dim)) + outline)
@@ -235,11 +282,8 @@ class Density_object:
         # size of box, in number of voxels (i.e. matrix items), is defined by how many of them are needed to include all atoms
         # given the fact that they measure {voxel_dim} Angstroms. To these numbers, an "outline" of 2{stamp_len} voxels is added to
         # each axis to ensure that there is enough space for upcoming stamping of density information for atoms close to the boundary.
+        # This means we are safe to stamp every atom up to twice the carbon size.
 
-
-        # self.ensemble_origin = -1*np.array([(shape[0] + outline)/2*voxel_dim, 
-        #                                     (shape[1] + outline)/2*voxel_dim,
-        #                                     (shape[2] + outline)/2*voxel_dim])        # vector connecting ensemble centroid with box origin (corner), used later
 
         self.ensemble_origin = -1*np.array([size[0]/2 + stamp_size, 
                                             size[1]/2 + stamp_size,
@@ -251,14 +295,18 @@ class Density_object:
         if debug: print('DEBUG--> Box shape is', shape, 'voxels')
         # defining box dimensions based on molecule size and voxel input
 
+
         for i, conformer in enumerate(self.atomcoords):                     # adding density to array elements
             if self.energies[i] < 10:                                       # cutting at rel. E +10 kcal/mol 
-                for atom in conformer:
-                    x_pos = round((atom[0] / voxel_dim) + shape[0]/2 - stamp_len/2)
-                    y_pos = round((atom[1] / voxel_dim) + shape[1]/2 - stamp_len/2)
-                    z_pos = round((atom[2] / voxel_dim) + shape[2]/2 - stamp_len/2)
-                    weight = np.exp(-self.energies[i]*503.2475342795285/self.T)     # conformer structures are weighted on their relative energy (Boltzmann)
-                    self.box[x_pos : x_pos + stamp_len, y_pos : y_pos + stamp_len, z_pos : z_pos + stamp_len] += self.stamp*weight
+                for j, atom in enumerate(conformer):
+                    new_stamp_len = len(self.stamp[self.atomnos[j]][0])
+                    x_pos = round((atom[0] / voxel_dim) + shape[0]/2 - new_stamp_len/2)
+                    y_pos = round((atom[1] / voxel_dim) + shape[1]/2 - new_stamp_len/2)
+                    z_pos = round((atom[2] / voxel_dim) + shape[2]/2 - new_stamp_len/2)
+                    weight = np.exp(-self.energies[i] / breadth * 503.2475342795285 / self.T)                 # conformer structures are weighted on their relative energy (Boltzmann)
+                    self.box[x_pos : x_pos + new_stamp_len,
+                             y_pos : y_pos + new_stamp_len,
+                             z_pos : z_pos + new_stamp_len] += self.stamp[self.atomnos[j]] * weight
 
         self.box = 100 * self.box / max(self.box.reshape((1,np.prod(shape)))[0])  # normalize box values to the range 0 - 100
 
@@ -348,11 +396,12 @@ class Density_object:
 #   x   write CoDe function, creating the scalar field
 #   x   set up the conformational analysis inside the program
 #   x   CoDe: weigh conformations based on their energy in box stamping
-#   w   write a function that exports self.box to gaussian .cube format (VMD-readable)
-#   w   fix .cube file generated not aligned with density object
-#   w   align conformer ensemble based on reactive atoms
+#   x   write a function that exports self.box to gaussian .cube format (VMD-readable)
+#   x   implement different radius for different elements
+#   w   align entire ensemble based on reactive_vector and bulk around atom(s)
 #
-#   o   implement different radius for different elements
+#   w   align conformers based on reactive atoms
+#
 #   o   initialize function that docks another object to current CoDe object
 #   o   define the scoring function that ranks blob arrangements: reactive distance (+) and clashes (-)
 
