@@ -11,6 +11,8 @@ from rdkit import Chem
 from rdkit.Chem import rdMolAlign, rdMolDescriptors, AllChem
 from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
+import warnings
+warnings.simplefilter("ignore", UserWarning)
 
 
 
@@ -68,14 +70,8 @@ class Density_object:
         conformers to first and centering them in origin.
 
         '''
-        def _indexes_update(oldmol, reactive_atoms, newmol):
-            '''
-            Converts the reactive atom indexes to the one of a new instance
-            of the same molecule, with mutated indexes.
-            '''
-            # ANDRE
-            self.reactive_indexes = reactive_atoms
-            return self.reactive_indexes
+        def _sort_xyz(*args):
+            pass
 
         def _alignment_indexes(mol, reactive_atoms):
             '''
@@ -88,20 +84,13 @@ class Density_object:
             '''
             matrix = Chem.GetAdjacencyMatrix(mol)
             graph = nx.from_numpy_matrix(matrix)
+            indexes = set()
 
-            if type(reactive_atoms) is int:
-                indexes = list([(a, b) for a, b in graph.adjacency()][reactive_atoms][1].keys())
-                indexes.append(reactive_atoms)
-                if debug: print('DEBUG--> Alignment indexes are', indexes)
-                return indexes
-
-            elif len(reactive_atoms) > 1:
-                indexes = set()
-                for atom in reactive_atoms:
-                    indexes |= set(list([(a, b) for a, b in graph.adjacency()][atom][1].keys()))
-                    indexes.add(atom)
-                if debug: print('DEBUG--> Alignment indexes are', list(indexes))
-                return list(indexes)
+            for atom in reactive_atoms:
+                indexes |= set(list([(a, b) for a, b in graph.adjacency()][atom][1].keys()))
+                indexes.add(atom)
+            if debug: print('DEBUG--> Alignment indexes are', list(indexes))
+            return list(indexes)
 
         def _generate_and_align_ensemble(filename, reactive_atoms):
 
@@ -123,14 +112,18 @@ class Density_object:
 
             if debug: print()
 
-            converted_name = filename.split('.')[0] + '.sdf'
-            check_call(f'obabel {filename} -o sdf -O {converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
+            converted_name = filename.split('.')[0] + '_sorted.xyz'
+            check_call(f'obabel {filename} -o xyz -O {converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
+            new_indexes = _sort_xyz(converted_name, reactive_atoms)   # sorts atoms indexes so that hydrogen atoms are after heavy atoms. For aligment purposes
 
-            old_mol, ensemble, energies = csearch(converted_name)  # performs csearch, also returns old mol for aligment purposes
-            self.energies = np.array(energies) - min(energies)
+            sdf_converted_name = filename.split('.')[0] + '.sdf'
+            check_call(f'obabel {converted_name} -o sdf -O {sdf_converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
             os.remove(converted_name)
 
-            new_indexes = _indexes_update(old_mol, reactive_atoms, ensemble)   # computes new indexes for aligning molecules
+            old_mol, ensemble, energies = csearch(sdf_converted_name)  # performs csearch, also returns old mol for aligment purposes
+            self.energies = np.array(energies) - min(energies)
+            os.remove(sdf_converted_name)
+
             alignment_indexes = _alignment_indexes(ensemble, new_indexes)
 
             if alignment_indexes is None:               # Eventually we should raise an error I think, but we could also warn and leave this
@@ -291,7 +284,7 @@ class Density_object:
 
 
 
-        self.box = np.zeros(shape, dtype=float)
+        self.conf_dens = np.zeros(shape, dtype=float)
         if debug: print('DEBUG--> Box shape is', shape, 'voxels')
         # defining box dimensions based on molecule size and voxel input
 
@@ -304,11 +297,11 @@ class Density_object:
                     y_pos = round((atom[1] / voxel_dim) + shape[1]/2 - new_stamp_len/2)
                     z_pos = round((atom[2] / voxel_dim) + shape[2]/2 - new_stamp_len/2)
                     weight = np.exp(-self.energies[i] / breadth * 503.2475342795285 / self.T)                 # conformer structures are weighted on their relative energy (Boltzmann)
-                    self.box[x_pos : x_pos + new_stamp_len,
+                    self.conf_dens[x_pos : x_pos + new_stamp_len,
                              y_pos : y_pos + new_stamp_len,
                              z_pos : z_pos + new_stamp_len] += self.stamp[self.atomnos[j]] * weight
 
-        self.box = 100 * self.box / max(self.box.reshape((1,np.prod(shape)))[0])  # normalize box values to the range 0 - 100
+        self.conf_dens = 100 * self.conf_dens / max(self.conf_dens.reshape((1,np.prod(shape)))[0])  # normalize box values to the range 0 - 100
 
         self.voxdim = voxel_dim
 
@@ -329,9 +322,9 @@ class Density_object:
                                                                             1.88973*self.ensemble_origin[2]))
                                                                             #atom number, position of molecule relative to cube origin
                 
-                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.box.shape[0], 1.88973*self.voxdim, 0.000000, 0.000000))
-                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.box.shape[1], 0.000000, 1.88973*self.voxdim, 0.000000))
-                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.box.shape[2], 0.000000, 0.000000, 1.88973*self.voxdim))
+                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.conf_dens.shape[0], 1.88973*self.voxdim, 0.000000, 0.000000))
+                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.conf_dens.shape[1], 0.000000, 1.88973*self.voxdim, 0.000000))
+                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.conf_dens.shape[2], 0.000000, 0.000000, 1.88973*self.voxdim))
                 # number of voxels along x, x length of voxel. 1.88973 converts Angstroms to Bohrs.
                 # http://paulbourke.net/dataformats/cube
 
@@ -341,14 +334,14 @@ class Density_object:
                         f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.atomnos[index], 0.000000, 1.88973*atom[0], 1.88973*atom[1], 1.88973*atom[2]))
 
                 count = 0
-                total = np.prod(self.box.shape)
+                total = np.prod(self.conf_dens.shape)
                 print_list = []
 
 
-                for x in range(self.box.shape[0]):        # Main loop: z is inner, y is middle and x is outer.
-                    for y in range(self.box.shape[1]):
-                        for z in range(self.box.shape[2]):
-                            print_list.append('{:.5e} '.format(self.box[x, y, z]).upper())
+                for x in range(self.conf_dens.shape[0]):        # Main loop: z is inner, y is middle and x is outer.
+                    for y in range(self.conf_dens.shape[1]):
+                        for z in range(self.conf_dens.shape[2]):
+                            print_list.append('{:.5e} '.format(self.conf_dens[x, y, z]).upper())
                             count += 1
                             # loadbar(count, total, prefix='Writing .cube file... ')
                             if count % 6 == 5:
@@ -396,14 +389,20 @@ class Density_object:
 #   x   write CoDe function, creating the scalar field
 #   x   set up the conformational analysis inside the program
 #   x   CoDe: weigh conformations based on their energy in box stamping
-#   x   write a function that exports self.box to gaussian .cube format (VMD-readable)
+#   x   write a function that exports self.conf_dens to gaussian .cube format (VMD-readable)
 #   x   implement different radius for different elements
 #   w   align entire ensemble based on reactive_vector and bulk around atom(s)
 #
 #   w   align conformers based on reactive atoms
 #
+#   o   reorder .sdf file generated and find out what the new reactive_indexes are
 #   o   initialize function that docks another object to current CoDe object
 #   o   define the scoring function that ranks blob arrangements: reactive distance (+) and clashes (-)
+#   o   sys.exit() if reactive atom is hydrogen - suggest to input their own ensemble
+#   o   implement the use of externally generated ensembles
+#   o   move function defined in __init__ outside
+#   
+#   
 
 
 
@@ -426,8 +425,8 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('Resources')
 
-    test = Density_object('dienamine.xyz', 6, debug=True)
-    # test = Density_object('funky_single.xyz', [6, 7], debug=True)
+    # test = Density_object('dienamine.xyz', 6, debug=True)
+    test = Density_object('funky_single.xyz', [6, 7], debug=True)
     # test = Density_object('CFClBrI.xyz', 1, debug=True)
 
     
