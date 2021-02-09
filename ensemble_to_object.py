@@ -70,8 +70,29 @@ class Density_object:
         conformers to first and centering them in origin.
 
         '''
-        def _sort_xyz(*args):
-            pass
+        def _sort_xyz(filename, reactive_atoms):
+            with open(filename, 'r') as f:
+                lines = f.readlines()
+
+            hs, nhs= [], []
+            ra = []
+            for count, i in enumerate(lines):
+                if i[0] == 'H':
+                    hs.append(i)
+                else:
+                    nhs.append(i)
+
+            for j in reactive_atoms:
+                for count, i in enumerate(nhs[2:]):
+                    if i in lines[j+2]:
+                        ra.append(count)
+                        break
+
+            with open(filename, 'w') as f:
+                f.writelines(nhs)
+                f.writelines(hs)
+                
+            return ra
 
         def _alignment_indexes(mol, reactive_atoms):
             '''
