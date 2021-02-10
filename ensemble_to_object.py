@@ -11,18 +11,18 @@ from rdkit import Chem
 from rdkit.Chem import rdMolAlign, rdMolDescriptors, AllChem
 from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
+from tables import atom_type_dict, pt
 import warnings
 warnings.simplefilter("ignore", UserWarning)
 
 
-
-def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
-	percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
-	filledLength = int(length * iteration // total)
-	bar = fill * filledLength + '-' * (length - filledLength)
-	print(f'\r{prefix} |{bar}| {percent}% {suffix}', end='\r')
-	if iteration == total:
-		print()
+# def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
+# 	percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
+# 	filledLength = int(length * iteration // total)
+# 	bar = fill * filledLength + '-' * (length - filledLength)
+# 	print(f'\r{prefix} |{bar}| {percent}% {suffix}', end='\r')
+# 	if iteration == total:
+# 		print()
 
 def _write_cube(array, voxdim):
     with open('Stamp_test.cube', 'w') as f:
@@ -74,24 +74,26 @@ class Density_object:
             with open(filename, 'r') as f:
                 lines = f.readlines()
 
-            hs, nhs= [], []
+            hs, not_hs= [], []
             ra = []
-            for count, i in enumerate(lines):
-                if i[0] == 'H':
-                    hs.append(i)
+            for line in lines:
+                if line[0] == 'H':
+                    hs.append(line)
+                elif line == '\n':
+                    pass
                 else:
-                    nhs.append(i)
+                    not_hs.append(line)
 
-            for j in reactive_atoms:
-                for count, i in enumerate(nhs[2:]):
-                    if i in lines[j+2]:
-                        ra.append(count)
+            for index in reactive_atoms:
+                for i, line in enumerate(not_hs[2:]):
+                    if line in lines[index+1]:
+                        ra.append(i)
                         break
 
             with open(filename, 'w') as f:
-                f.writelines(nhs)
+                f.writelines(not_hs)
                 f.writelines(hs)
-                
+
             return ra
 
         def _alignment_indexes(mol, reactive_atoms):
@@ -135,17 +137,19 @@ class Density_object:
 
             converted_name = filename.split('.')[0] + '_sorted.xyz'
             check_call(f'obabel {filename} -o xyz -O {converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
-            new_indexes = _sort_xyz(converted_name, reactive_atoms)   # sorts atoms indexes so that hydrogen atoms are after heavy atoms. For aligment purposes
+            self.reactive_indexes = _sort_xyz(converted_name, reactive_atoms)   # sorts atoms indexes so that hydrogen atoms are after heavy atoms. For aligment purposes
 
             sdf_converted_name = filename.split('.')[0] + '.sdf'
             check_call(f'obabel {converted_name} -o sdf -O {sdf_converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
-            os.remove(converted_name)
+            # os.remove(converted_name)
 
             old_mol, ensemble, energies = csearch(sdf_converted_name)  # performs csearch, also returns old mol for aligment purposes
             self.energies = np.array(energies) - min(energies)
             os.remove(sdf_converted_name)
 
-            alignment_indexes = _alignment_indexes(ensemble, new_indexes)
+            self.rdkit_mol_object = ensemble
+
+            alignment_indexes = _alignment_indexes(self.rdkit_mol_object, self.reactive_indexes)
 
             if alignment_indexes is None:               # Eventually we should raise an error I think, but we could also warn and leave this
                 Chem.rdMolAlign.AlignMolConformers(ensemble)
@@ -239,9 +243,6 @@ class Density_object:
         :return:             None
 
         '''
-        from periodictable import core, covalent_radius
-        pt = core.PeriodicTable(table="H=1")
-        covalent_radius.init(pt)
 
         stamp_len = round((stamp_size/voxel_dim))                    # size of the box, in voxels
         self.stamp = {}
@@ -326,16 +327,16 @@ class Density_object:
 
         self.voxdim = voxel_dim
 
-    def write_cubefile(self):
+    def write_map(self, scalar_field, mapname='map'):
         '''
-        Writes a Gaussian .cube file in the working directory with the conformational density information
+        Writes a Gaussian .cube file in the working directory with the scalar field information
         
         '''
-        cubename = self.name.split('.')[0] + '_CoDe.cube'
+        cubename = self.name.split('.')[0] + '_' + mapname + '.cube'
         
         try:
             with open(cubename, 'w') as f:
-                f.write(' CoDe Cube File - Conformational Density Cube File, generated by TSCoDe (git repo link)\n')
+                f.write(f' CoDe Cube File - {mapname} Cube File, generated by TSCoDe (git repo link)\n')
                 f.write(' OUTER LOOP: X, MIDDLE LOOP: Y, INNER LOOP: Z\n')
                 f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(len(self.atomcoords)*len(self.atomnos),
                                                                             1.88973*self.ensemble_origin[0],
@@ -343,9 +344,9 @@ class Density_object:
                                                                             1.88973*self.ensemble_origin[2]))
                                                                             #atom number, position of molecule relative to cube origin
                 
-                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.conf_dens.shape[0], 1.88973*self.voxdim, 0.000000, 0.000000))
-                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.conf_dens.shape[1], 0.000000, 1.88973*self.voxdim, 0.000000))
-                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.conf_dens.shape[2], 0.000000, 0.000000, 1.88973*self.voxdim))
+                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(scalar_field.shape[0], 1.88973*self.voxdim, 0.000000, 0.000000))
+                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(scalar_field.shape[1], 0.000000, 1.88973*self.voxdim, 0.000000))
+                f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\n'.format(scalar_field.shape[2], 0.000000, 0.000000, 1.88973*self.voxdim))
                 # number of voxels along x, x length of voxel. 1.88973 converts Angstroms to Bohrs.
                 # http://paulbourke.net/dataformats/cube
 
@@ -355,14 +356,14 @@ class Density_object:
                         f.write('{: >4}\t{: >12}\t{: >12}\t{: >12}\t{: >12}\n'.format(self.atomnos[index], 0.000000, 1.88973*atom[0], 1.88973*atom[1], 1.88973*atom[2]))
 
                 count = 0
-                total = np.prod(self.conf_dens.shape)
+                total = np.prod(scalar_field.shape)
                 print_list = []
 
 
-                for x in range(self.conf_dens.shape[0]):        # Main loop: z is inner, y is middle and x is outer.
-                    for y in range(self.conf_dens.shape[1]):
-                        for z in range(self.conf_dens.shape[2]):
-                            print_list.append('{:.5e} '.format(self.conf_dens[x, y, z]).upper())
+                for x in range(scalar_field.shape[0]):        # Main loop: z is inner, y is middle and x is outer.
+                    for y in range(scalar_field.shape[1]):
+                        for z in range(scalar_field.shape[2]):
+                            print_list.append('{:.5e} '.format(scalar_field[x, y, z]).upper())
                             count += 1
                             # loadbar(count, total, prefix='Writing .cube file... ')
                             if count % 6 == 5:
@@ -373,7 +374,7 @@ class Density_object:
             raise Exception(f'No CoDe data in {self.name} Density Object Class: write_cube method should be called only after compute_CoDe method.')
         print(f'Wrote file {cubename} - {total} scalar values')
 
-        vmdname = self.name.split('.')[0] + '_CoDe.vmd'
+        vmdname = self.name.split('.')[0] + '_' + mapname + '.vmd'
         with open(vmdname, 'w') as f:
             string = ('display resetview\n'
                       'mol new {%s} type {cube} first 0 last -1 step 1 waitfor 1\n'
@@ -398,6 +399,22 @@ class Density_object:
                       ) % (cubename)
             f.write(string)
 
+    def compute_orbitals(self, debug=False):
+        '''
+        '''
+        self.orb_dens = np.zeros(self.conf_dens.shape, dtype=float)
+        for index in self.reactive_indexes:
+            symbol = pt[self.atomnos[index]].symbol
+            atom = self.rdkit_mol_object.GetAtoms()[index]
+            neighbors_indexes = [a.GetIdx() for a in atom.GetNeighbors()]
+            neighbors = len(neighbors_indexes)
+            atom_type = atom_type_dict[symbol + str(neighbors)]
+            if debug: print(f'DEBUG--> Reactive atom {index} is a {symbol} atom of {atom_type} type')
+            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
+            atom_type.stamp_orbital(self.conf_dens)
+            self.orb_dens += atom_type.orb_dens
+
+
 
 
 
@@ -412,18 +429,21 @@ class Density_object:
 #   x   CoDe: weigh conformations based on their energy in box stamping
 #   x   write a function that exports self.conf_dens to gaussian .cube format (VMD-readable)
 #   x   implement different radius for different elements
-#   w   align entire ensemble based on reactive_vector and bulk around atom(s)
+#   x   reorder .sdf file generated and find out what the new reactive_indexes are
+#   x   align entire ensemble based on reactive_vector and bulk around atom(s)
+#   x   align conformers based on reactive atoms
 #
-#   w   align conformers based on reactive atoms
 #
-#   o   reorder .sdf file generated and find out what the new reactive_indexes are
 #   o   initialize function that docks another object to current CoDe object
 #   o   define the scoring function that ranks blob arrangements: reactive distance (+) and clashes (-)
 #   o   sys.exit() if reactive atom is hydrogen - suggest to input their own ensemble
+#   o   check if deuterium swap of hydrogen is a viable way of using it as reactive atom
 #   o   implement the use of externally generated ensembles
 #   o   move function defined in __init__ outside
-#   
-#   
+#   o   create parameters file (vox_dim and stuff) -> IN CAPS
+#   o   Alkyne sp: toroid, oriented along C-C axis
+#   o   sp3: single sphere
+#   o   enlarge box of conformational_density
 
 
 
@@ -446,14 +466,18 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('Resources')
 
-    # test = Density_object('dienamine.xyz', 6, debug=True)
-    test = Density_object('funky_single.xyz', [6, 7], debug=True)
-    # test = Density_object('CFClBrI.xyz', 1, debug=True)
+    test = Density_object('dienamine.xyz', 7, debug=True)
+    # test = Density_object('funky_single.xyz', [15, 17], debug=True)
+    # test = Density_object('CFClBrI.xyz', 2, debug=True)
 
     
     test.compute_CoDe(debug=True)
 
-    test.write_cubefile()
+    test.compute_orbitals(debug=True)
+
+    test.write_map(test.conf_dens, mapname='CoDe')
+
+    test.write_map(test.orb_dens, mapname='orbitals')
 
 
     # import matplotlib.pyplot as plt
