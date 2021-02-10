@@ -1,6 +1,22 @@
 import numpy as np
 from constants import *
 from periodictable import core, covalent_radius
+from scipy import ndimage
+from scipy.spatial.transform import Rotation as R
+
+def _rotate_scalar_field(array, rotations):
+    '''
+    :params array:      an input scalar field with shape (a,b,c)
+    :params rotations:  tuple of shape (1,3) with rotation 
+                        angles along x, y, z axes, in degrees
+    :params pivot:      pivot of the rotation
+    :return:            rotated array
+    '''
+    for axis, angle in enumerate(rotations):
+        axes = [0,1,2]
+        axes.remove(axis)
+        array = ndimage.rotate(array, angle, axes=tuple(axes), reshape=False)
+    return array
 
 class Single:
     '''
@@ -29,7 +45,7 @@ class Single:
         self.center = 2*self.coord - self.other
         return None
 
-    def stamp_orbital(self, box: np.array, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
+    def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
         '''
         create the fake orbital above the reacting atom
 
@@ -39,8 +55,9 @@ class Single:
         :param hardness:     steepness of radial probability decay (gaussian, k in e^(-kr^2))
         :return: None
         '''
-        self.orb_dens = np.zeros(box.shape, dtype=float)
-        stamp_len = round(stamp_size/voxel_dim*self.rel_radii)
+        self.orb_dens = np.zeros(box_shape, dtype=float)
+        stamp_size *= self.rel_radii
+        stamp_len = round(stamp_size/voxel_dim)
         self.stamp = np.zeros((stamp_len, stamp_len, stamp_len), dtype=float)
         for x in range(stamp_len):                                   # probably optimizable
             for y in range(stamp_len):
@@ -48,13 +65,22 @@ class Single:
                     r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
         
-        x = round((self.center[0] - stamp_size/2)/voxel_dim  )
-        y = round((self.center[1] - stamp_size/2)/voxel_dim  )
-        z = round((self.center[2] - stamp_size/2)/voxel_dim  )
-        print(f'Trying to print at {x,y,z}')
-        self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
+        x = round((self.center[0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
 
-        return None
+        number_of_slabs_to_add = 0
+        while True:
+            try:
+                self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
+                break
+            except ValueError:
+                slab = np.zeros((1, self.orb_dens.shape[1], self.orb_dens.shape[2]), dtype=float)
+                self.orb_dens = np.concatenate((self.orb_dens, slab))
+                number_of_slabs_to_add += 1
+                # print(f'Slab added: {number_of_slabs_to_add}')
+
+        return number_of_slabs_to_add
 
 
 class Sp2:
@@ -83,7 +109,7 @@ class Sp2:
         
         return None
 
-    def stamp_orbital(self, box: np.array, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
+    def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
         '''
         create the fake orbital above the reacting atom
 
@@ -93,8 +119,9 @@ class Sp2:
         :param hardness:     steepness of radial probability decay (gaussian, k in e^(-kr^2))
         :return: None
         '''
-        self.orb_dens = np.zeros(box.shape, dtype=float)
-        stamp_len = round(stamp_size/voxel_dim*self.rel_radii)
+        self.orb_dens = np.zeros(box_shape, dtype=float)
+        stamp_size *= self.rel_radii
+        stamp_len = round(stamp_size/voxel_dim)
         self.stamp = np.zeros((stamp_len, stamp_len, stamp_len), dtype=float)
         for x in range(stamp_len):                                   # probably optimizable
             for y in range(stamp_len):
@@ -102,14 +129,14 @@ class Sp2:
                     r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
         
-        x = round((self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box.shape[0]/2)
-        y = round((self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box.shape[1]/2)
-        z = round((self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box.shape[2]/2)
+        x = round((self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box_shape[0]/2)
+        y = round((self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box_shape[1]/2)
+        z = round((self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box_shape[2]/2)
         self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
 
-        x = round((-self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box.shape[0]/2)
-        y = round((-self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box.shape[1]/2)
-        z = round((-self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box.shape[2]/2)
+        x = round((-self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box_shape[0]/2)
+        y = round((-self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box_shape[1]/2)
+        z = round((-self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box_shape[2]/2)
         self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
 
         return None
@@ -133,15 +160,11 @@ class Sp:
         '''
         self.coord = reactive_atom_coords
         self.others = bonded_atom_coords
-        self.direction = self.others - self.coord
-        # self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
-        # self.center = np.mean(np.array([np.cross(self.vectors[0], self.vectors[1]),
-        #                                 np.cross(self.vectors[1], self.vectors[2]),
-        #                                 np.cross(self.vectors[2], self.vectors[0])]), axis=0)
-        
+        self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
+       
         return None
 
-    def stamp_orbital(self, box: np.array, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
+    def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=4, hardness=HARDNESS):
         '''
         create the fake orbital above the reacting atom
 
@@ -151,23 +174,24 @@ class Sp:
         :param hardness:     steepness of radial probability decay (gaussian, k in e^(-kr^2))
         :return: None
         '''
-
-        self.orb_dens = np.zeros(box.shape, dtype=float)
+        self.orb_dens = np.zeros(box_shape, dtype=float)
         stamp_len = round(stamp_size/voxel_dim*self.rel_radii)
         self.stamp = np.zeros((stamp_len, stamp_len, stamp_len), dtype=float)
-        r_max = 5.5
-        r_min = 0.25
+        r_max = stamp_len/3
+        r_min = stamp_len/6
         for x in range(stamp_len):                                   # probably optimizable
             for y in range(stamp_len):
                 for z in range(stamp_len):
                     r_2 = (((x - stamp_len/2)**2 + (y - stamp_len/2)**2)**(1/2) - r_max)**2 + (z - stamp_len/2)**2 - r_min
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
 
-        # TODO: Rotate the toroid to aling it to the C-C axis
+        rot_vec = R.align_vectors(np.array([self.vectors[0]]), np.array([[0,0,1]]))[0].as_euler('xyz')*(360/(2*np.pi))
+        self.stamp = _rotate_scalar_field(self.stamp, rot_vec)
+        # TODO: Rotate the toroid to align it to the C-C axis
         
-        x = round((self.coord[0] - stamp_size/2)/voxel_dim+ box.shape[0]/2)
-        y = round((self.coord[1] - stamp_size/2)/voxel_dim+ box.shape[1]/2)
-        z = round((self.coord[2] - stamp_size/2)/voxel_dim+ box.shape[2]/2)
+        x = round((self.coord[0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.coord[1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.coord[2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
         self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
 
         return None

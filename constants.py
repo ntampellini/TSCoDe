@@ -1,5 +1,5 @@
 # Scalar fields constants
-VOXEL_DIM = 0.2
+VOXEL_DIM = 0.1
 
 # Sphere stamps constants
 STAMP_SIZE = 2
