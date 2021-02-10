@@ -42,7 +42,7 @@ def _write_cube(array, voxdim):
 
 class Density_object:
     '''
-    Conformational density 3D object from a conformational ensemble.
+    Conformational density and orbital density 3D object from a conformational ensemble.
     '''
 
     def __init__(self, filename, reactive_atoms, debug=False, T=298.15):
@@ -357,33 +357,45 @@ class Density_object:
                 print_list.append('\n')
                 f.write(''.join(print_list))
         except Exception:
-            raise Exception(f'No CoDe data in {self.name} Density Object Class: write_cube method should be called only after compute_CoDe method.')
+            raise Exception(f'No map data in {self.name} Density Object Class: write_cube method should be called only after compute_CoDe or compute_orb methods.')
         print(f'Wrote file {cubename} - {total} scalar values')
 
-        vmdname = self.name.split('.')[0] + '_' + mapname + '.vmd'
+
+    def vmd(self, showbox=True):
+        '''
+        '''
+        with open('vmdpath', 'r') as f:
+            vmdpath = f.readline()
+
+        string = 'cd %s\n' % os.getcwd().replace('\\', '\\\\')
+        for i, array in enumerate([self.conf_dens,  self.orb_dens]):
+            mapname = ['CoDe_map', 'Orb_map'][i]
+            cubename = self.name.split('.')[0] + '_' + mapname + '.cube'
+            boxline = 'mol modstyle 2 top Isosurface 50.000000 0 1 0 1 1\nmol modmaterial 2 top Transparent\n' if showbox else ''
+            s = ('display resetview\n'
+                 'mol new {%s} type {cube} first 0 last -1 step 1 waitfor 1\n'
+                 'mol representation CPK 0.500000 0.300000 20.000000 15.000000\n'
+                 'mol color Name\n'
+                 'mol selection all\n'
+                 'mol material Opaque\n'
+                 'mol addrep top\n'
+                 'mol modcolor 1 top Volume 0\n'
+                 'mol modstyle 1 top Isosurface 50.000000 0 0 0 1 1\n'
+                 #   'mol color Volume 0\n'
+                 #   'mol representation Isosurface 10.000000 0 0 0 1 1\n'
+                 #   'mol selection all\n'
+                 #   'mol material Opaque\n'
+                 'mol addrep top\n'
+                 '%s'                    
+                    ) % (cubename, boxline)
+            string += s
+
+
+        vmdname = self.name.split('.')[0] + '_.vmd'
+
         with open(vmdname, 'w') as f:
-            string = ('display resetview\n'
-                      'mol new {%s} type {cube} first 0 last -1 step 1 waitfor 1\n'
-                      'mol representation CPK 0.500000 0.300000 20.000000 15.000000\n'
-                      'mol color Name\n'
-                      'mol selection all\n'
-                      'mol material Opaque\n'
-                      'mol addrep top\n'
-                      'mol modcolor 1 top Volume 0\n'
-                      'mol modstyle 1 top Isosurface 10.000000 0 0 0 1 1\n'
-                      
-                    #   'mol color Volume 0\n'
-                    #   'mol representation Isosurface 10.000000 0 0 0 1 1\n'
-                    #   'mol selection all\n'
-                    #   'mol material Opaque\n'
-                      'mol addrep top\n'
-                      'mol modstyle 2 top Isosurface 10.000000 0 1 0 1 1\n'
-                      'mol modmaterial 2 top Transparent\n'
-                      
-                      
-                      
-                      ) % (cubename)
             f.write(string)
+        os.system(f'\"{vmdpath}\" -e {os.getcwd()}/{vmdname}')
 
     def compute_orbitals(self):
         '''
@@ -403,17 +415,16 @@ class Density_object:
 
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    os.chdir('Resources')
 
-    # test = Density_object('dienamine.xyz', 7, debug=True)
-    test = Density_object('sp.xyz', 2, debug=True)
-    # test = Density_object('funky_single.xyz', [15, 17], debug=True)
-    # test = Density_object('CFClBrI.xyz', 2, debug=True)
+    # test = Density_object('Resources/dienamine.xyz', 7, debug=True)
+    test = Density_object('Resources/sp.xyz', 2, debug=True)
+    # test = Density_object('Resources/funky_single.xyz', [15, 17], debug=True)
+    # test = Density_object('Resources/CFClBrI.xyz', 2, debug=True)
 
     test.compute_CoDe()
 
     test.compute_orbitals()
 
-    test.write_map(test.conf_dens, mapname='CoDe')
-
-    test.write_map(test.orb_dens, mapname='orbitals')
+    test.write_map(test.conf_dens, mapname='CoDe_map')
+    test.write_map(test.orb_dens, mapname='Orb_map')
+    test.vmd(showbox=False)
