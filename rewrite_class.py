@@ -12,7 +12,7 @@ from rdkit.Chem import rdMolAlign, rdMolDescriptors, AllChem
 from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
 from tables import atom_type_dict, pt
-
+from costants import *
 
 def _write_cube(array, voxdim):
     with open('Stamp_test.cube', 'w') as f:
@@ -219,7 +219,7 @@ class Density_object:
         rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
         return np.array([rotation_matrix @ v for v in array])
 
-    def compute_CoDe(self, voxel_dim:float=0.3, stamp_size=2, hardness=5, breadth=2):
+    def compute_CoDe(self, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS, breadth=BREADTH):
         '''
         Computing conformational density for the ensemble.
 
@@ -407,7 +407,8 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('Resources')
 
-    test = Density_object('dienamine.xyz', 7, debug=True)
+    # test = Density_object('dienamine.xyz', 7, debug=True)
+    test = Density_object('sp.xyz', 2, debug=True)
     # test = Density_object('funky_single.xyz', [15, 17], debug=True)
     # test = Density_object('CFClBrI.xyz', 2, debug=True)
 

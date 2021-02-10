@@ -1,0 +1,12 @@
+display resetview
+mol new {sp_orbitals.cube} type {cube} first 0 last -1 step 1 waitfor 1
+mol representation CPK 0.500000 0.300000 20.000000 15.000000
+mol color Name
+mol selection all
+mol material Opaque
+mol addrep top
+mol modcolor 1 top Volume 0
+mol modstyle 1 top Isosurface 10.000000 0 0 0 1 1
+mol addrep top
+mol modstyle 2 top Isosurface 10.000000 0 1 0 1 1
+mol modmaterial 2 top Transparent
