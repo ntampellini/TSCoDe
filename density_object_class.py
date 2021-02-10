@@ -3,16 +3,14 @@ import os
 import sys
 import numpy as np
 import networkx as nx
-# from openbabel import openbabel as ob
-# from time import time
 from subprocess import DEVNULL, STDOUT, check_call
 from rdkit_conformational_search import csearch
 from rdkit import Chem
 from rdkit.Chem import rdMolAlign, rdMolDescriptors, AllChem
 from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
-from tables import atom_type_dict, pt
-from costants import *
+from reactive_atoms_classes import *
+from constants import *
 
 def _write_cube(array, voxdim):
     with open('Stamp_test.cube', 'w') as f:
@@ -401,7 +399,7 @@ class Density_object:
             atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
             atom_type.stamp_orbital(self.conf_dens)
             self.orb_dens += atom_type.orb_dens
-
+        self.orb_dens = 100 * self.orb_dens / max(self.orb_dens.reshape((1,np.prod(self.orb_dens.shape)))[0])  # normalize box values to the range 0 - 100
 
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
