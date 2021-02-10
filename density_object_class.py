@@ -229,6 +229,10 @@ class Density_object:
                 rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
                 return np.array([rotation_matrix @ v for v in array])
 
+            if str(self.reactive_atoms_classes[0]) == 'sp2':
+                return np.array([self.reactive_atoms_classes[0].alignment_matrix @ v for v in array])
+
+
         print('ATTENTION: ALIGNMENT NOT PROPER! CAN ONLY ALIGN \'Single Bond\' REACTIVE ATOMS FOR NOW')
         rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
         return np.array([rotation_matrix @ v for v in array])
@@ -246,6 +250,11 @@ class Density_object:
             neighbors_indexes = [a.GetIdx() for a in atom.GetNeighbors()]
             neighbors = len(neighbors_indexes)
             atom_type = atom_type_dict[symbol + str(neighbors)]
+
+            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
+            # pumping required properties into reactive_atom class
+
+
             self.reactive_atoms_classes.append(atom_type)
             if self.debug: print(f'DEBUG--> Reactive atom {index} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {[pt[self.atomnos[i]].symbol for i in neighbors_indexes]}')
             # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
@@ -298,7 +307,7 @@ class Density_object:
         size = (max(x_coords) - min_x,
                 max(y_coords) - min_y,
                 max(z_coords) - min_z)
-        if self.debug: print('DEBUG--> Size of box in A is', size, 'A')
+        if self.debug: print('DEBUG--> Size of molecule in A is', size, 'A')
 
         outline = 2*stamp_len
         # outline = 3*stamp_len   # enlarged to fit orbitals
@@ -311,9 +320,9 @@ class Density_object:
             if self.debug: print(f'DEBUG--> Big atom found! ({list(big_atoms.keys())[list(big_atoms.values()).index(biggest_atom_size)]}) - Enlarged outline.')
         # THIS SHOULD WORK BUT I NEED TO CHECK NOT TO MAKE CONFUSION WITH LATER "OUTLINE" DEFINITION
 
-        shape = (int(np.ceil(size[0]/voxel_dim)) + outline,
-                 int(np.ceil(size[1]/voxel_dim)) + outline,
-                 int(np.ceil(size[2]/voxel_dim)) + outline)
+        shape = (int(np.ceil(max(size[0], stamp_size)/voxel_dim)) + outline,
+                 int(np.ceil(max(size[1], stamp_size)/voxel_dim)) + outline,
+                 int(np.ceil(max(size[2], stamp_size)/voxel_dim)) + outline)
 
         # size of box, in number of voxels (i.e. matrix items), is defined by how many of them are needed to include all atoms
         # given the fact that they measure {voxel_dim} Angstroms. To these numbers, an "outline" of 2{stamp_len} voxels is added to
@@ -448,14 +457,12 @@ class Density_object:
         '''
         self.orb_dens = np.zeros(self.conf_dens.shape, dtype=float)
         # Initializing orbital density map
-        for index in self.reactive_indexes:
-            symbol = pt[self.atomnos[index]].symbol
+
+        for i, index in enumerate(self.reactive_indexes):
+            atom_type = self.reactive_atoms_classes[i]
+
             atom = self.rdkit_mol_object.GetAtoms()[index]
             neighbors_indexes = [a.GetIdx() for a in atom.GetNeighbors()]
-            neighbors = len(neighbors_indexes)
-            atom_type = atom_type_dict[symbol + str(neighbors)]
-            if self.debug: print(f'DEBUG--> Reactive atom {index} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {[pt[self.atomnos[i]].symbol for i in neighbors_indexes]}')
-            # understanding the type of reactive atom in order to build the correct pseudo-orbitals
             
             atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
             # pumping required properties into reactive_atom class
@@ -467,12 +474,19 @@ class Density_object:
 
                 if number_of_slabs_to_add:
                     slab = np.zeros((1, self.orb_dens.shape[1], self.orb_dens.shape[2]), dtype=float)
-                    for _ in range(number_of_slabs_to_add):
+
+                    for _ in range(number_of_slabs_to_add[1]):
+                        self.orb_dens = np.concatenate((slab, self.orb_dens))
+                        self.conf_dens = np.concatenate((slab, self.conf_dens))
+
+                    for _ in range(number_of_slabs_to_add[0]):
                         self.orb_dens = np.concatenate((self.orb_dens, slab))
                         self.conf_dens = np.concatenate((self.conf_dens, slab))
+
                 self.orb_dens += atom_type.orb_dens
+
             except Exception as e:
-                print(f'Failed to build orbital for atom {index}')
+                print(f'Failed to build orbital for atom of type {atom_type}')
                 print(e)
 
         self.orb_dens = 100 * self.orb_dens / max(self.orb_dens.reshape((1,np.prod(self.orb_dens.shape)))[0])  # normalize box values to the range 0 - 100
@@ -480,8 +494,8 @@ class Density_object:
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
-    # test = Density_object('Resources/dienamine.xyz', 7, debug=True)
-    test = Density_object('Resources/sp.xyz', 2, debug=True)
+    test = Density_object('Resources/dienamine.xyz', 7, debug=True)
+    # test = Density_object('Resources/sp.xyz', 2, debug=True)
     # test = Density_object('Resources/funky_single.xyz', [15, 17], debug=True)
     # test = Density_object('Resources/CFClBrI.xyz', 2, debug=True)
     # test = Density_object('Resources/CFClBrI.xyz', 3, debug=True)
@@ -509,7 +523,7 @@ if __name__ == '__main__':
 #   x   move function defined in __init__ outside
 #   x   create parameters file (vox_dim and stuff) -> IN CAPS
 #
-#   w   Alkyne sp: toroid, oriented along C-C axis -> correct density
+#   w   Alkyne sp: toroid, oriented along C-C axis
 #   w   _orient_along_x function: orbital alignment (rotation of ensemble) on the basis of reactive_atoms_classes
 #
 #   o   initialize function that docks another object to current CoDe object
@@ -518,4 +532,4 @@ if __name__ == '__main__':
 #   o   check if deuterium swap of hydrogen is a viable way of using it as reactive atom
 #   o   implement the use of externally generated ensembles
 #   o   sp3: single sphere
-#   o   enlarge box of conformational_density
+#   o   enlarge box of conformational_density to rotate it without losing information

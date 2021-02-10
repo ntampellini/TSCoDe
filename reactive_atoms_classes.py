@@ -80,7 +80,7 @@ class Single:
                 number_of_slabs_to_add += 1
                 # print(f'Slab added: {number_of_slabs_to_add}')
 
-        return number_of_slabs_to_add
+        return 0, number_of_slabs_to_add
 
 
 class Sp2:
@@ -107,6 +107,8 @@ class Sp2:
                                         np.cross(self.vectors[1], self.vectors[2]),
                                         np.cross(self.vectors[2], self.vectors[0])]), axis=0)
         
+        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center]))[0].as_matrix()
+
         return None
 
     def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
@@ -129,14 +131,16 @@ class Sp2:
                     r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
         
-        x = round((self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box_shape[0]/2)
-        y = round((self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box_shape[1]/2)
-        z = round((self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box_shape[2]/2)
-        self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
-
         x = round((-self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box_shape[0]/2)
         y = round((-self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box_shape[1]/2)
         z = round((-self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box_shape[2]/2)
+
+        self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
+
+        x = round((self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box_shape[0]/2)
+        y = round((self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box_shape[1]/2)
+        z = round((self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box_shape[2]/2)
+
         self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
 
         return None
