@@ -432,16 +432,16 @@ class Density_object:
 #   x   reorder .sdf file generated and find out what the new reactive_indexes are
 #   x   align entire ensemble based on reactive_vector and bulk around atom(s)
 #   x   align conformers based on reactive atoms
+#   x   move function defined in __init__ outside
+#   x   create parameters file (vox_dim and stuff) -> IN CAPS
 #
+#   w   Alkyne sp: toroid, oriented along C-C axis
 #
 #   o   initialize function that docks another object to current CoDe object
 #   o   define the scoring function that ranks blob arrangements: reactive distance (+) and clashes (-)
 #   o   sys.exit() if reactive atom is hydrogen - suggest to input their own ensemble
 #   o   check if deuterium swap of hydrogen is a viable way of using it as reactive atom
 #   o   implement the use of externally generated ensembles
-#   o   move function defined in __init__ outside
-#   o   create parameters file (vox_dim and stuff) -> IN CAPS
-#   o   Alkyne sp: toroid, oriented along C-C axis
 #   o   sp3: single sphere
 #   o   enlarge box of conformational_density
 
