@@ -158,10 +158,11 @@ class Sp:
         stamp_len = round(stamp_size/voxel_dim*self.rel_radii)
         self.stamp = np.zeros((stamp_len, stamp_len, stamp_len), dtype=float)
         r_max = 5.5
+        r_min = 0.25
         for x in range(stamp_len):                                   # probably optimizable
             for y in range(stamp_len):
                 for z in range(stamp_len):
-                    r_2 = (((x - stamp_len/2)**2 + (y - stamp_len/2)**2)**(1/2) - r_max)**2 + (z - stamp_len/2)**2
+                    r_2 = (((x - stamp_len/2)**2 + (y - stamp_len/2)**2)**(1/2) - r_max)**2 + (z - stamp_len/2)**2 - r_min
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
 
         # TODO: Rotate the toroid to aling it to the C-C axis
