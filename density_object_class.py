@@ -65,6 +65,8 @@ class Density_object:
         ccread_object = self._generate_and_align_ensemble(filename, reactive_atoms)
         coordinates = np.array(ccread_object.atomcoords)
         self.atomnos = ccread_object.atomnos
+        self.position = np.array([0,0,0], dtype=float)  # used in Docker class
+        self.rotation = np.array([0,0,0], dtype=float)  # used in Docker class
 
         if all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))]):     # Checking that ensemble has constant length
             if self.debug: print(f'DEBUG--> Initializing object {filename}\nDEBUG--> Found {len(coordinates)} structures with {len(coordinates[0])} atoms')
