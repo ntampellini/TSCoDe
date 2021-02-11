@@ -27,7 +27,7 @@ class Single:
     def __repr__(self):
         return 'Single Bond'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols: list) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -94,7 +94,7 @@ class Sp2:
     def __repr__(self):
         return 'sp2'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols: list) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -157,7 +157,7 @@ class Sp:
     def __repr__(self):
         return 'sp'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols: list) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -278,6 +278,96 @@ class Sp3:
 
         return 0, number_of_slabs_to_add
 
+class Ether:
+    '''
+    '''
+    def __init__(self, rel_radii):
+        self.rel_radii = rel_radii
+    
+    def __repr__(self):
+        return 'Ether'
+
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
+        '''
+        Adding the properties of the two atom considered
+
+        :params reactive_atom_coords: coordinates of the reactive atom
+        :params bonded_atom_coords: coordinates of the atom bonded at the reactive object
+        :return: None
+        '''
+        self.neighbors_symbols = neighbors_symbols if neighbors_symbols != None else self.neighbors_symbols
+
+        self.coord = reactive_atom_coords
+        self.other = bonded_atom_coords
+
+        self.vectors = self.other - self.coord # vectors connecting center to each of the two substituents
+        self.vectors = 1 * np.array([v / np.linalg.norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
+        
+        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([-np.mean(self.vectors, axis=0)]))[0].as_matrix()
+
+        alignment_on_z = R.align_vectors(np.array([[0,0,1]]), np.array([self.vectors[0]]))[0].as_matrix()
+
+        rotoreflexion_matrix = np.array([[ np.cos(2*np.pi/4), np.sin(2*np.pi/4),  0],
+                                         [-np.sin(2*np.pi/4), np.cos(2*np.pi/4),  0],
+                                         [                 0,                 0, -1]])
+
+        self.center = np.array([v @ alignment_on_z @ rotoreflexion_matrix @ np.linalg.inv(alignment_on_z) for v in self.vectors])
+        self.center += self.coord
+        # two vectors defining the position of the two orbital lobes centers
+
+
+        return None
+
+    def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
+        '''
+        create the fake orbital above the reacting atom
+
+        :params box: conformational density scalar values array (conf_dens)
+        :param voxel_dim:    size of the square Voxel side, in Angstroms
+        :param stamp_size:   radius of sphere used as stamp for carbon atoms, in Angstroms
+        :param hardness:     steepness of radial probability decay (gaussian, k in e^(-kr^2))
+        :return: None
+        '''
+        self.orb_dens = np.zeros(box_shape, dtype=float)
+        stamp_size *= self.rel_radii
+        stamp_len = round(stamp_size/voxel_dim)
+        self.stamp = np.zeros((stamp_len, stamp_len, stamp_len), dtype=float)
+        for x in range(stamp_len):                                   # probably optimizable
+            for y in range(stamp_len):
+                for z in range(stamp_len):
+                    r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
+                    self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
+        
+        x = round((self.center[0][0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[0][1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[0][2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
+
+        number_of_slabs_to_add = 0
+        while True:
+            try:
+                self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
+                break
+            except ValueError:
+                slab = np.zeros((1, self.orb_dens.shape[1], self.orb_dens.shape[2]), dtype=float)
+                self.orb_dens = np.concatenate((self.orb_dens, slab))
+                number_of_slabs_to_add += 1
+
+        x = round((self.center[1][0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[1][1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[1][2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
+
+        while True:
+            try:
+                self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
+                break
+            except ValueError:
+                slab = np.zeros((1, self.orb_dens.shape[1], self.orb_dens.shape[2]), dtype=float)
+                self.orb_dens = np.concatenate((self.orb_dens, slab))
+                number_of_slabs_to_add += 1
+
+        # print(f'Slabs added to ether: {number_of_slabs_to_add}')
+
+        return 0, number_of_slabs_to_add
 
 
 
@@ -296,9 +386,9 @@ atom_type_dict = {
              'N3' : 'amine', # one ball on free side
              'N4' : Sp3(pt[7].covalent_radius/c_radii),
              'O1' : 'ketone-like', # two balls 120° apart. Also for alkoxides, good enough
-             'O2' : 'ether', # or alcohol, two balls 109,5° apart
+             'O2' : Ether(pt[8].covalent_radius/c_radii), # or alcohol, two balls 109,5° apart
              'S1' : 'ketone-like',
-             'S2' : 'ether',
+             'S2' : Ether(pt[16].covalent_radius/c_radii),
              'F1' : Single(pt[9].covalent_radius/c_radii),
              'Cl1': Single(pt[17].covalent_radius/c_radii),
              'Br1': Single(pt[35].covalent_radius/c_radii),

@@ -230,7 +230,7 @@ class Density_object:
                 rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
                 return np.array([rotation_matrix @ v for v in array])
 
-            if str(self.reactive_atoms_classes[0]) in ('sp2','sp3'):
+            if str(self.reactive_atoms_classes[0]) in ('sp2','sp3','Ether'):
                 return np.array([self.reactive_atoms_classes[0].alignment_matrix @ v for v in array])
 
 
@@ -508,8 +508,8 @@ if __name__ == '__main__':
 
 ###################################################################################
 
-    # a = Density_object('Resources/SN2/MeONa.mol', 5, debug=True)
-    a = Density_object('Resources/SN2/CH3Br.mol', 1, debug=True)
+    a = Density_object('Resources/SN2/MeOH.mol', 5, debug=True)
+    # a = Density_object('Resources/SN2/CH3Br.mol', 1, debug=True)
 
 
     a.compute_CoDe()
