@@ -27,7 +27,7 @@ class Single:
     def __repr__(self):
         return 'Single Bond'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols: list) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -35,6 +35,8 @@ class Single:
         :params bonded_atom_coords: coordinates of the atom bonded at the reactive object
         :return: None
         '''
+        self.neighbors_symbols = neighbors_symbols if neighbors_symbols != None else self.neighbors_symbols
+
         if len(bonded_atom_coords) == 1:
             bonded_atom_coords = bonded_atom_coords[0]
         assert reactive_atom_coords.shape == (3,)
@@ -92,7 +94,7 @@ class Sp2:
     def __repr__(self):
         return 'sp2'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols: list) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -100,6 +102,7 @@ class Sp2:
         :params bonded_atom_coords: coordinates of the atom bonded at the reactive object
         :return: None
         '''
+        self.neighbors_symbols = neighbors_symbols if neighbors_symbols != None else self.neighbors_symbols
         self.coord = reactive_atom_coords
         self.others = bonded_atom_coords
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
@@ -154,7 +157,7 @@ class Sp:
     def __repr__(self):
         return 'sp'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols: list) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -162,6 +165,7 @@ class Sp:
         :params bonded_atom_coords: coordinates of the atom bonded at the reactive object
         :return: None
         '''
+        self.neighbors_symbols = neighbors_symbols if neighbors_symbols != None else self.neighbors_symbols
         self.coord = reactive_atom_coords
         self.others = bonded_atom_coords
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
@@ -200,6 +204,83 @@ class Sp:
 
         return None
 
+class Sp3:
+    '''
+    '''
+    def __init__(self, rel_radii):
+        self.rel_radii = rel_radii
+    
+    def __repr__(self):
+        return 'sp3'
+
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
+        '''
+        Adding the properties of the two atom considered
+
+        :params reactive_atom_coords: coordinates of the reactive atom
+        :params bonded_atom_coords: coordinates of the atom bonded at the reactive object
+        :return: None
+        '''
+        assert reactive_atom_coords.shape == (3,)
+        assert bonded_atom_coords.shape[1] == 3
+
+        self.neighbors_symbols = neighbors_symbols if neighbors_symbols != None else self.neighbors_symbols
+        self.coord = reactive_atom_coords
+        self.other = bonded_atom_coords
+
+        if len([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
+            self.leaving_group_found = True
+            leaving_group_coords = self.other[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
+            self.center = 2*self.coord - leaving_group_coords
+        else:
+            self.leaving_group_found = False
+            self.center = self.coord
+            print('ATTENTION: COULD NOT TELL LEAVING GROUP ATOM ON SP3 REACTIVE CENTER, APPROXIMATING ORBITALS AS A SPHERE ON THE SP3 ATOM!')
+
+        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center]))[0].as_matrix()
+
+        return None
+
+    def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
+        '''
+        create the fake orbital above the reacting atom
+
+        :params box: conformational density scalar values array (conf_dens)
+        :param voxel_dim:    size of the square Voxel side, in Angstroms
+        :param stamp_size:   radius of sphere used as stamp for carbon atoms, in Angstroms
+        :param hardness:     steepness of radial probability decay (gaussian, k in e^(-kr^2))
+        :return: None
+        '''
+        self.orb_dens = np.zeros(box_shape, dtype=float)
+        stamp_size = stamp_size*self.rel_radii if self.leaving_group_found else stamp_size*self.rel_radii*2
+        stamp_len = round(stamp_size/voxel_dim)
+        self.stamp = np.zeros((stamp_len, stamp_len, stamp_len), dtype=float)
+        for x in range(stamp_len):                                   # probably optimizable
+            for y in range(stamp_len):
+                for z in range(stamp_len):
+                    r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
+                    self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
+        
+        x = round((self.center[0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
+
+        number_of_slabs_to_add = 0
+        while True:
+            try:
+                self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
+                break
+            except ValueError:
+                slab = np.zeros((1, self.orb_dens.shape[1], self.orb_dens.shape[2]), dtype=float)
+                self.orb_dens = np.concatenate((self.orb_dens, slab))
+                number_of_slabs_to_add += 1
+                # print(f'Slab added: {number_of_slabs_to_add}')
+
+        return 0, number_of_slabs_to_add
+
+
+
+
 pt = core.PeriodicTable(table="H=1")
 covalent_radius.init(pt)
 c_radii = pt[6].covalent_radius
@@ -209,11 +290,11 @@ atom_type_dict = {
              'C1' : Single(1),
              'C2' : Sp(1), # toroidal geometry
              'C3' : Sp2(1), # double ball
-             'C4' : 'sp3', # one big ball
+             'C4' : Sp3(1), # one ball: on the back of weakest bond. If can't tell which is which, one big ball
              'N1' : Single(pt[7].covalent_radius/c_radii),
              'N2' : 'imine', # one ball on free side
              'N3' : 'amine', # one ball on free side
-             'N4' : 'sp3',
+             'N4' : Sp3(pt[7].covalent_radius/c_radii),
              'O1' : 'ketone-like', # two balls 120° apart. Also for alkoxides, good enough
              'O2' : 'ether', # or alcohol, two balls 109,5° apart
              'S1' : 'ketone-like',

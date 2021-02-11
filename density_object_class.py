@@ -169,13 +169,14 @@ class Density_object:
             raise Exception('Unrecognized reactive atoms IDs. Argument must either be one int or a list of ints.')
 
         converted_name = filename.split('.')[0] + '_sorted.xyz'
+
         check_call(f'obabel {filename} -o xyz -O {converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
         self.reactive_indexes = self._sort_xyz(converted_name, reactive_atoms)   # sorts atoms indexes so that hydrogen atoms are after heavy atoms. For aligment purposes
 
 
         sdf_converted_name = filename.split('.')[0] + '.sdf'
         check_call(f'obabel {converted_name} -o sdf -O {sdf_converted_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
-        # os.remove(converted_name)
+        os.remove(converted_name)
 
         old_mol, ensemble, energies = csearch(sdf_converted_name)  # performs csearch, also returns old mol for aligment purposes
         self.energies = np.array(energies) - min(energies)
@@ -209,7 +210,7 @@ class Density_object:
         os.remove(outname)
 
         ccread_object = ccread(xyz_outname)
-        # os.remove(xyz_outname)
+        os.remove(xyz_outname)
 
         return ccread_object
 
@@ -225,15 +226,15 @@ class Density_object:
         assert vector.shape == (3,)
 
         if len(self.reactive_atoms_classes) == 1:
-            if self.reactive_atoms_classes[0] == 'Single Bond':
+            if str(self.reactive_atoms_classes[0]) == 'Single Bond':
                 rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
                 return np.array([rotation_matrix @ v for v in array])
 
-            if str(self.reactive_atoms_classes[0]) == 'sp2':
+            if str(self.reactive_atoms_classes[0]) in ('sp2','sp3'):
                 return np.array([self.reactive_atoms_classes[0].alignment_matrix @ v for v in array])
 
 
-        print('ATTENTION: ALIGNMENT NOT PROPER! CAN ONLY ALIGN \'Single Bond\' REACTIVE ATOMS FOR NOW')
+        print('ATTENTION: ALIGNMENT NOT PROPER! CAN ONLY ALIGN CERTAIN REACTIVE ATOMS FOR NOW')
         rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
         return np.array([rotation_matrix @ v for v in array])
 
@@ -251,12 +252,12 @@ class Density_object:
             neighbors = len(neighbors_indexes)
             atom_type = atom_type_dict[symbol + str(neighbors)]
 
-            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
+            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], [pt[self.atomnos[i]].symbol for i in neighbors_indexes])
             # pumping required properties into reactive_atom class
 
 
             self.reactive_atoms_classes.append(atom_type)
-            if self.debug: print(f'DEBUG--> Reactive atom {index} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {[pt[self.atomnos[i]].symbol for i in neighbors_indexes]}')
+            if self.debug: print(f'DEBUG--> Reactive atom {index} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {atom_type.neighbors_symbols}')
             # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
 
 
@@ -320,9 +321,9 @@ class Density_object:
             if self.debug: print(f'DEBUG--> Big atom found! ({list(big_atoms.keys())[list(big_atoms.values()).index(biggest_atom_size)]}) - Enlarged outline.')
         # THIS SHOULD WORK BUT I NEED TO CHECK NOT TO MAKE CONFUSION WITH LATER "OUTLINE" DEFINITION
 
-        shape = (int(np.ceil(max(size[0], stamp_size)/voxel_dim)) + outline,
-                 int(np.ceil(max(size[1], stamp_size)/voxel_dim)) + outline,
-                 int(np.ceil(max(size[2], stamp_size)/voxel_dim)) + outline)
+        shape = (int(np.ceil(max(size[0], 1.5*stamp_size)/voxel_dim)) + outline,
+                 int(np.ceil(max(size[1], 1.5*stamp_size)/voxel_dim)) + outline,
+                 int(np.ceil(max(size[2], 1.5*stamp_size)/voxel_dim)) + outline)
 
         # size of box, in number of voxels (i.e. matrix items), is defined by how many of them are needed to include all atoms
         # given the fact that they measure {voxel_dim} Angstroms. To these numbers, an "outline" of 2{stamp_len} voxels is added to
@@ -419,6 +420,7 @@ class Density_object:
         for i, array in enumerate([self.conf_dens,  self.orb_dens]):
             mapname = ['CoDe_map', 'Orb_map'][i]
             cubename = self.name.split('.')[0] + '_' + mapname + '.cube'
+            colorname = ['mol modcolor 1 top Volume 0\n', 'mol modcolor 1 top ColorID 7\n'][i]
             boxline = 'mol modstyle 2 top Isosurface 50.000000 0 1 0 1 1\nmol modmaterial 2 top Transparent\n' if showbox else ''
             s = ('display resetview\n'
                  'mol new {%s} type {cube} first 0 last -1 step 1 waitfor 1\n'
@@ -427,15 +429,10 @@ class Density_object:
                  'mol selection all\n'
                  'mol material Opaque\n'
                  'mol addrep top\n'
-                 'mol modcolor 1 top Volume 0\n'
+                 '%s'
                  'mol modstyle 1 top Isosurface 50.000000 0 0 0 1 1\n'
-                 #   'mol color Volume 0\n'
-                 #   'mol representation Isosurface 10.000000 0 0 0 1 1\n'
-                 #   'mol selection all\n'
-                 #   'mol material Opaque\n'
-                 #   'mol addrep top\n'
                  '%s'                    
-                    ) % (cubename, boxline)
+                    ) % (cubename, colorname, boxline)
             string += s
 
 
@@ -494,21 +491,41 @@ class Density_object:
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
-    test = Density_object('Resources/dienamine.xyz', 7, debug=True)
-    # test = Density_object('Resources/sp.xyz', 2, debug=True)
-    # test = Density_object('Resources/funky_single.xyz', [15, 17], debug=True)
-    # test = Density_object('Resources/CFClBrI.xyz', 2, debug=True)
-    # test = Density_object('Resources/CFClBrI.xyz', 3, debug=True)
-    # test = Density_object('Resources/indole.mol', 9, debug=True)
+    # test = Density_object('Resources/dienamine/dienamine.xyz', 7, debug=True)
+    # test = Density_object('Resources/sp/sp.xyz', 2, debug=True)
+    # test = Density_object('Resources/funky/funky.xyz', [15, 17], debug=True)
+    # test = Density_object('Resources/CFClBrI/CFClBrI.xyz', 2, debug=True)
+    # test = Density_object('Resources/CFClBrI/CFClBrI.xyz', 3, debug=True)
+    # test = Density_object('Resources/indole/indole.mol', 9, debug=True)
 
-    test.compute_CoDe()
+    # test.compute_CoDe()
 
-    test.compute_orbitals()
+    # test.compute_orbitals()
 
-    test.write_map(test.conf_dens, mapname='CoDe_map')
-    test.write_map(test.orb_dens, mapname='Orb_map')
-    test.vmd(showbox=False)
+    # test.write_map(test.conf_dens, mapname='CoDe_map')
+    # test.write_map(test.orb_dens, mapname='Orb_map')
+    # test.vmd(showbox=False)
 
+###################################################################################
+
+    # a = Density_object('Resources/SN2/MeONa.mol', 5, debug=True)
+    a = Density_object('Resources/SN2/CH3Br.mol', 1, debug=True)
+
+
+    a.compute_CoDe()
+    a.compute_orbitals()
+
+    a.write_map(a.conf_dens, mapname='CoDe_map')
+    a.write_map(a.orb_dens, mapname='Orb_map')
+    a.vmd(showbox=True)
+
+
+
+
+
+
+
+###################################################################################
 #       TO DO: o = to do, x = done, w = working on it
 # 
 #   x   initialize density object class, loading conformer ensemble
