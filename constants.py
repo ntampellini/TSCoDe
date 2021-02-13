@@ -12,10 +12,20 @@ BREADTH = 2
 
 # Monte Carlo search constants
 
-MAX_ANGLE = 45
+MAX_ANGLE = 20
 # Maximum angle, in degrees, at which initial
-# population can be rotated along x, y, or z axis
+# population and sequential steps can be
+# rotated along x, y, or z axis
 
-MAX_DIST = 1
-# Maximum traslation, in Angstroms, at which initial
-# population can be moved along x, y, or z axis
+MAX_DIST = 0.5
+# Maximum traslation, in angstroms, at which initial
+# population and sequential steps can be
+# rotated along x, y, or z axis
+
+D_EQ = 1.7
+# ideal distance between reactive atoms
+
+K_SOFTNESS = 4
+# if bigger, orbital overlap is more gradual and
+# starts at bigger distances
+# https://www.desmos.com/calculator/9ignfppxpq

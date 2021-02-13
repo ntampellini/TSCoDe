@@ -44,7 +44,8 @@ class Single:
 
         self.coord = reactive_atom_coords
         self.other = bonded_atom_coords
-        self.center = 2*self.coord - self.other
+        self.orb_vec = self.coord - self.other
+        self.center = np.array([2*self.coord - self.other])
         return None
 
     def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
@@ -67,9 +68,9 @@ class Single:
                     r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
         
-        x = round((self.center[0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
-        y = round((self.center[1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
-        z = round((self.center[2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
+        x = round((self.center[0][0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[0][1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[0][2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
 
         number_of_slabs_to_add = 0
         while True:
@@ -106,11 +107,15 @@ class Sp2:
         self.coord = reactive_atom_coords
         self.others = bonded_atom_coords
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
-        self.center = np.mean(np.array([np.cross(self.vectors[0], self.vectors[1]),
+        self.orb_vec = np.mean(np.array([np.cross(self.vectors[0], self.vectors[1]),
                                         np.cross(self.vectors[1], self.vectors[2]),
                                         np.cross(self.vectors[2], self.vectors[0])]), axis=0)
         
-        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center]))[0].as_matrix()
+        self.center = np.array([self.orb_vec, -self.orb_vec])
+
+        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
+
+        self.center += self.coord
 
         return None
 
@@ -134,21 +139,21 @@ class Sp2:
                     r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
         
-        x = round((-self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box_shape[0]/2)
-        y = round((-self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box_shape[1]/2)
-        z = round((-self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box_shape[2]/2)
+        x = round((self.center[1][0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[1][1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[1][2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
 
         self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
 
-        x = round((self.center[0] - stamp_size/2 + self.coord[0])/voxel_dim + box_shape[0]/2)
-        y = round((self.center[1] - stamp_size/2 + self.coord[1])/voxel_dim + box_shape[1]/2)
-        z = round((self.center[2] - stamp_size/2 + self.coord[2])/voxel_dim + box_shape[2]/2)
+        x = round((self.center[0][0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[0][1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[0][2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
 
         self.orb_dens[x:x+stamp_len, y:y+stamp_len, z:z+stamp_len] += self.stamp
 
         return None
 
-class Sp:
+class Sp: # BROKEN for sure, needs to fixed, eventually
     '''
     '''
     def __init__(self, rel_radii):
@@ -231,13 +236,16 @@ class Sp3:
         if len([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
             self.leaving_group_found = True
             leaving_group_coords = self.other[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
-            self.center = 2*self.coord - leaving_group_coords
+            self.orb_vec = self.coord - leaving_group_coords
+            self.center = np.array([2*self.coord - leaving_group_coords])
         else:
             self.leaving_group_found = False
-            self.center = self.coord
+            self.center = np.array([self.coord])
+            self.orb_vec = False
             print('ATTENTION: COULD NOT TELL LEAVING GROUP ATOM ON SP3 REACTIVE CENTER, APPROXIMATING ORBITALS AS A SPHERE ON THE SP3 ATOM!')
+            # raise Exception('How do I tell orbital orientation? Lemme think...')
 
-        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center]))[0].as_matrix()
+        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
 
         return None
 
@@ -261,9 +269,9 @@ class Sp3:
                     r_2 = (x - stamp_len/2)**2 + (y - stamp_len/2)**2 + (z - stamp_len/2)**2
                     self.stamp[x, y, z] = np.exp(-hardness*voxel_dim/stamp_size*r_2)
         
-        x = round((self.center[0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
-        y = round((self.center[1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
-        z = round((self.center[2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
+        x = round((self.center[0][0] - stamp_size/2)/voxel_dim + box_shape[0]/2)
+        y = round((self.center[0][1] - stamp_size/2)/voxel_dim + box_shape[1]/2)
+        z = round((self.center[0][2] - stamp_size/2)/voxel_dim + box_shape[2]/2)
 
         number_of_slabs_to_add = 0
         while True:

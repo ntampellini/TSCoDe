@@ -91,6 +91,15 @@ class Density_object:
         self.atomcoords = np.array([self._orient_along_x(structure, reactive_vector) for structure in self.atomcoords])
         # After reading aligned conformers, they are stored as self.atomcoords after being translated to origin and aligned the reactive atom(s) to x axis.
 
+        for i, index in enumerate(self.reactive_indexes):
+            atom_type = self.reactive_atoms_classes[i]
+            atom = self.rdkit_mol_object.GetAtoms()[index]
+            neighbors_indexes = [a.GetIdx() for a in atom.GetNeighbors()]
+            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
+            # pumping updated properties into reactive_atom class
+
+
+
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
         if self.debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
 
@@ -457,15 +466,7 @@ class Density_object:
         self.orb_dens = np.zeros(self.conf_dens.shape, dtype=float)
         # Initializing orbital density map
 
-        for i, index in enumerate(self.reactive_indexes):
-            atom_type = self.reactive_atoms_classes[i]
-
-            atom = self.rdkit_mol_object.GetAtoms()[index]
-            neighbors_indexes = [a.GetIdx() for a in atom.GetNeighbors()]
-            
-            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
-            # pumping required properties into reactive_atom class
-
+        for atom_type in self.reactive_atoms_classes:
             try:
                 number_of_slabs_to_add = atom_type.stamp_orbital(box_shape=self.conf_dens.shape)
                 # computing orbital map for the reactive atom, returning the number of slabs added along x axis if
@@ -493,33 +494,32 @@ class Density_object:
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
-    # test = Density_object('Resources/dienamine/dienamine.xyz', 7, debug=True)
+    test = Density_object('Resources/dienamine/dienamine.xyz', 7, debug=True)
     # test = Density_object('Resources/sp/sp.xyz', 2, debug=True)
     # test = Density_object('Resources/funky/funky.xyz', [15, 17], debug=True)
     # test = Density_object('Resources/CFClBrI/CFClBrI.xyz', 2, debug=True)
     # test = Density_object('Resources/CFClBrI/CFClBrI.xyz', 3, debug=True)
     # test = Density_object('Resources/indole/indole.mol', 9, debug=True)
 
-    # test.compute_CoDe()
+    test.compute_CoDe()
+    test.compute_orbitals()
 
-    # test.compute_orbitals()
-
-    # test.write_map(test.conf_dens, mapname='CoDe_map')
-    # test.write_map(test.orb_dens, mapname='Orb_map')
-    # test.vmd(showbox=False)
+    test.write_map(test.conf_dens, mapname='CoDe_map')
+    test.write_map(test.orb_dens, mapname='Orb_map')
+    test.vmd(showbox=False)
 
 ###################################################################################
 
-    a = Density_object('Resources/SN2/MeOH.mol', 5, debug=True)
-    # a = Density_object('Resources/SN2/CH3Br.mol', 1, debug=True)
+    # a = Density_object('Resources/SN2/MeOH.mol', 5, debug=True)
+    # # a = Density_object('Resources/SN2/CH3Br.mol', 1, debug=True)
 
 
-    a.compute_CoDe()
-    a.compute_orbitals()
+    # a.compute_CoDe()
+    # a.compute_orbitals()
 
-    a.write_map(a.conf_dens, mapname='CoDe_map')
-    a.write_map(a.orb_dens, mapname='Orb_map')
-    a.vmd(showbox=True)
+    # a.write_map(a.conf_dens, mapname='CoDe_map')
+    # a.write_map(a.orb_dens, mapname='Orb_map')
+    # a.vmd(showbox=True)
 
 
 
