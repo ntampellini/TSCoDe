@@ -25,7 +25,7 @@ MAX_DIST = 0.5
 D_EQ = 1.7
 # ideal distance between reactive atoms
 
-K_SOFTNESS = 4
+K_SOFTNESS = 3
 # if bigger, orbital overlap is more gradual and
 # starts at bigger distances
 # https://www.desmos.com/calculator/9ignfppxpq

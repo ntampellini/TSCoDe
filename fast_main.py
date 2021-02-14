@@ -78,7 +78,7 @@ class Docker:
     def __init__(self, *objects):
         self.objects = list(*objects)
     
-    def setup(self, population=1, maxcycles=500):
+    def setup(self, population=1, maxcycles=100):
         self.population = population
         self.maxcycles = maxcycles
 
@@ -116,12 +116,13 @@ class Docker:
             iteration = 0
             best_score = -1e100
             far = True
+            biggest_clash_vector = np.array([0,0,0])
             while True:
-                iteration += 1
                 score = 0
 
                 for molecule in thread[1:]:
 
+                    min_dist = 1e5
                     mat = R.from_rotvec(molecule.rotation / 180 * np.pi).as_matrix()
 
                     for i, atom in enumerate(molecule.hypermolecule):
@@ -131,42 +132,88 @@ class Docker:
                             # b = ref_mat @ ref_atom + thread[0].position
                             b = ref_atom + thread[0].position
 
-
                             dist = np.linalg.norm(a - b)
+
 
                             if dist < D_EQ:
                                 probability = molecule.weights[i] * thread[0].weights[j]
                                 score -= 2.5*(D_EQ - dist) # D_EQ is also the minimum distance to feel repulsive interaction
+                                if dist < min_dist:
+                                    min_dist = dist
+                                    biggest_clash_vector = a - b
 
                     dist = []
+                    orb_vecs = []
                     for reactive_atom in molecule.reactive_atoms_classes:
                         for orbital in reactive_atom.center:
                             for ref_reactive_atom in thread[0].reactive_atoms_classes:
                                 for ref_orbital in ref_reactive_atom.center:
 
-                                    a = mat @ orbital + molecule.position
-                                    # b = ref_mat @ ref_orbital + thread[0].position
-                                    b = ref_orbital
+                                    a = ref_orbital
+                                    # a = ref_mat @ ref_orbital + thread[0].position
+                                    b = mat @ orbital + molecule.position
 
                                     dist.append(np.linalg.norm(a - b))
+                                    orb_vecs.append([a, b])
 
                     if min(dist) < (K_SOFTNESS/1.25):
 
                         far = False
 
-                        orb1 = norm(np.mean(np.array([r.center for r in thread[0].reactive_atoms_classes])[0], axis=0))
-                        orb2 = norm(np.mean(np.array([r.center for r in molecule.reactive_atoms_classes])[0], axis=0))
-                        orb2 = mat @ orb2
+                        # orb1_vecs = thread[0].reactive_atoms_classes[0].center
+                        # orb2_vecs = np.array([mat @ v for v in molecule.reactive_atoms_classes[0].center]) + molecule.position
 
-                        alignment = np.abs(np.dot(orb1,orb2))
+                        # combinations_indexes = np.transpose([np.tile(range(len(orb1_vecs)), len(orb2_vecs)), np.repeat(range(len(orb2_vecs)), len(orb1_vecs))])
+
+                        # combinations = [[orb1_vecs[c[0]], orb2_vecs[c[1]]] for c in combinations_indexes]
+
+                        # distances = [np.linalg.norm(c[0]-c[1]) for c in combinations]
+
+                        # orb1 = np.array([combinations[distances.index(min(distances))][0]]) # closest couple of orbital vectors
+                        # orb2 = np.array([combinations[distances.index(min(distances))][1]])
+                        
+                        orb1 = orb_vecs[dist.index(min(dist))][0] # closest couple of orbital vectors
+                        orb2 = orb_vecs[dist.index(min(dist))][1]
+
+                        absolute_orb1 = orb1 - thread[0].reactive_atoms_classes[0].coord
+                        absolute_orb2 = orb1 - molecule.reactive_atoms_classes[0].coord
+
+                        alignment = np.abs(np.dot(norm(absolute_orb1), norm(absolute_orb2)))
                         s = 1 - 1.25/K_SOFTNESS * min(dist)
                         score += s*alignment
-                        # print(f'ORB: s {round(s, 2)}, a {round(alignment,2)}')
-                                        
+                        print(f'ORB: {round(s*alignment,2)} points')
+                    else:
+                        orb1 = np.array([5,5,5])
+                        orb2 = np.array([5,5,5])         
 
 
                 it = '%-4s' % (iteration)
                 print(f'Iteration {it} of thread {thread_number + 1}/{self.population}: score {round(score, 3)}, best {round(best_score, 3)}')
+
+                if debug:
+                    coords = []
+                    for molecule in thread:
+                        mat = R.from_rotvec(molecule.rotation / 180 * np.pi).as_matrix()
+                        for i, atom in enumerate(molecule.hypermolecule):
+                            adjusted = mat @ atom + molecule.position
+                            coords.append('%-4s %-12s %-12s %-12s' % (pt[molecule.hypermolecule_atomnos[i]].symbol, adjusted[0], adjusted[1], adjusted[2]))
+
+                        for reactive_atom in molecule.reactive_atoms_classes:
+                            for center in reactive_atom.center:
+                                adjusted = mat @ center + molecule.position
+                                coords.append('%-4s %-12s %-12s %-12s' % ('D', adjusted[0], adjusted[1], adjusted[2]))
+                            if far:
+                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
+                            else:
+
+                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb1[0], orb1[1], orb1[2]))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb2[0], orb2[1], orb2[2]))
+
+                    with open('debug_out.xyz', 'a') as f:
+                        f.write(f'{len(coords)}\nTEST\n')
+                        f.write('\n'.join(coords))
+                        f.write('\n')
 
                 if iteration == 1 or score > best_score:
                     unproductive_iterations = 0
@@ -187,49 +234,38 @@ class Docker:
 
                 for molecule in thread[1:]:
 
-                    multiplier = 1 - best_score if best_score > 0.1 else 1
+                    if best_score < 0.3:
+                        multiplier = 1 - best_score if best_score > 0.1 else 1
+                        delta_pos = ((np.random.rand(3)*2. - 1.) * MAX_DIST) * multiplier
+                        delta_rot = ((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * multiplier
 
-                    delta_pos = ((np.random.rand(3)*2. - 1.) * MAX_DIST) * multiplier
-                    delta_rot = ((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * multiplier
+                    else:
+                        delta_pos = np.array([0.,0.,0.])
+                        delta_rot = np.array([0.,0.,0.])
 
                     if far: # if far, bring them closer
                         orb1 = np.mean(np.array([r.center for r in thread[0].reactive_atoms_classes])[0], axis=0)
                         orb2 = mat @ np.mean(np.array([r.center for r in molecule.reactive_atoms_classes])[0], axis=0) + molecule.position
                         delta_pos += 0.5*(orb1 - orb2)
 
-                    # else: # if close, align orbitals doing the less rotation possible #DOES NOT WORK :))))
-                    #     orb1 = thread[0].reactive_atoms_classes[0].center[0]
-                    #     orb2 = mat @ molecule.reactive_atoms_classes[0].center[0] + molecule.position
-                    #     rot_vec_1 = R.align_vectors(np.array([orb1]), np.array([orb2]))[0].as_rotvec() * 180 / np.pi
-                    #     rot_vec_2 = R.align_vectors(np.array([-orb1]), np.array([orb2]))[0].as_rotvec() * 180 / np.pi
-                    #     # print(rot_vec_1, '\n', rot_vec_2, '\n\n')
-                    #     if np.sum(rot_vec_1) > np.sum(rot_vec_2):
-                    #         delta_rot += rot_vec_2
-                    #     else:
-                    #         delta_rot += rot_vec_1
+                    else: # if close, move away from biggest clash and align to closest orbital
+                       
+                        # ROTATION VECTOR DOES ALL SORTS OF WEIRD THINGS, MAYBE BY USING THE MATRIX IT WILL WORK?
+                        # rot_vec = R.align_vectors(np.array([-orb1]), np.array([orb2]))[0].as_rotvec() * 180 / np.pi
+                        # print('rot_vec is', rot_vec)
+                        # delta_rot += rot_vec
+
+                        delta_pos += 0.5*(orb1[0] - orb2[0])
+
+                        if best_score < 0.5:
+                            delta_pos += 0.1 * biggest_clash_vector
 
 
                     np.add(molecule.position, delta_pos, out=molecule.position, casting='unsafe')
                     np.add(molecule.rotation, delta_rot, out=molecule.rotation, casting='unsafe')
 
+                iteration += 1
 
-                if debug:
-                    coords = []
-                    for molecule in thread:
-                        mat = R.from_rotvec(molecule.rotation / 180 * np.pi).as_matrix()
-                        for i, atom in enumerate(molecule.hypermolecule):
-                            adjusted = mat @ atom + molecule.position
-                            coords.append('%-4s %-12s %-12s %-12s' % (pt[molecule.hypermolecule_atomnos[i]].symbol, adjusted[0], adjusted[1], adjusted[2]))
-
-                        for reactive_atom in molecule.reactive_atoms_classes:
-                            for center in reactive_atom.center:
-                                adjusted = mat @ center + molecule.position
-                                coords.append('%-4s %-12s %-12s %-12s' % ('D', adjusted[0], adjusted[1], adjusted[2]))
-
-                    with open('debug_out.xyz', 'a') as f:
-                        f.write(f'{len(coords)}\nTEST\n')
-                        f.write('\n'.join(coords))
-                        f.write('\n')
 
 
 
