@@ -32,7 +32,7 @@ def _compute_hypermolecule(self):
     '''
     '''
     self.hypermolecule_atomnos = []
-    clusters = {i:{} for i,_ in enumerate(self.atomnos)}  # {atom_index:{cluster_number:[position,times_found]}
+    clusters = {i:{} for i,_ in enumerate(self.atomnos)}  # {atom_index:{cluster_number:[position,times_found]}}
     for i, atom_number in enumerate(self.atomnos):
         atoms_arrangement = [conformer[i] for conformer in self.atomcoords]
         cluster_number = 0
@@ -176,12 +176,12 @@ class Docker:
                         orb2 = orb_vecs[dist.index(min(dist))][1]
 
                         absolute_orb1 = orb1 - thread[0].reactive_atoms_classes[0].coord
-                        absolute_orb2 = orb1 - molecule.reactive_atoms_classes[0].coord
+                        absolute_orb2 = orb2 - molecule.reactive_atoms_classes[0].coord - molecule.position
 
-                        alignment = np.abs(np.dot(norm(absolute_orb1), norm(absolute_orb2)))
+                        alignment = np.abs(np.dot(norm(-absolute_orb1), norm(absolute_orb2)))
                         s = 1 - 1.25/K_SOFTNESS * min(dist)
                         score += s*alignment
-                        print(f'ORB: {round(s*alignment,2)} points')
+                        # print(f'ORB: s {s}, a {alignment} - {round(s*alignment,2)} points')
                     else:
                         orb1 = np.array([5,5,5])
                         orb2 = np.array([5,5,5])         
@@ -205,10 +205,22 @@ class Docker:
                             if far:
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
+
+                                coords.append('%-4s %-12s %-12s %-12s' % ('Be', 5, 5, 5))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('Be', 5, 5, 5))
+
                             else:
 
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb1[0], orb1[1], orb1[2]))
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb2[0], orb2[1], orb2[2]))
+
+                                coords.append('%-4s %-12s %-12s %-12s' % ('B', thread[0].reactive_atoms_classes[0].coord[0],
+                                                                                thread[0].reactive_atoms_classes[0].coord[1],
+                                                                                thread[0].reactive_atoms_classes[0].coord[2]))
+
+                                coords.append('%-4s %-12s %-12s %-12s' % ('B', molecule.reactive_atoms_classes[0].coord[0] + molecule.position[0],
+                                                                                molecule.reactive_atoms_classes[0].coord[1] + molecule.position[1],
+                                                                                molecule.reactive_atoms_classes[0].coord[2] + molecule.position[2]))
 
                     with open('debug_out.xyz', 'a') as f:
                         f.write(f'{len(coords)}\nTEST\n')
@@ -234,7 +246,7 @@ class Docker:
 
                 for molecule in thread[1:]:
 
-                    if best_score < 0.3:
+                    if best_score < 0.5:
                         multiplier = 1 - best_score if best_score > 0.1 else 1
                         delta_pos = ((np.random.rand(3)*2. - 1.) * MAX_DIST) * multiplier
                         delta_rot = ((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * multiplier
@@ -242,6 +254,9 @@ class Docker:
                     else:
                         delta_pos = np.array([0.,0.,0.])
                         delta_rot = np.array([0.,0.,0.])
+                        # delta_pos = ((np.random.rand(3)*2. - 1.) * MAX_DIST) * 0.05
+                        # delta_rot = ((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * 0.05
+
 
                     if far: # if far, bring them closer
                         orb1 = np.mean(np.array([r.center for r in thread[0].reactive_atoms_classes])[0], axis=0)
@@ -251,11 +266,11 @@ class Docker:
                     else: # if close, move away from biggest clash and align to closest orbital
                        
                         # ROTATION VECTOR DOES ALL SORTS OF WEIRD THINGS, MAYBE BY USING THE MATRIX IT WILL WORK?
-                        # rot_vec = R.align_vectors(np.array([-orb1]), np.array([orb2]))[0].as_rotvec() * 180 / np.pi
+                        # rot_vec = R.align_vectors(np.array([-absolute_orb1]), np.array([absolute_orb2]))[0].as_rotvec() * 180 / np.pi
                         # print('rot_vec is', rot_vec)
                         # delta_rot += rot_vec
 
-                        delta_pos += 0.5*(orb1[0] - orb2[0])
+                        delta_pos += 0.5*(orb1 - orb2)
 
                         if best_score < 0.5:
                             delta_pos += 0.1 * biggest_clash_vector
