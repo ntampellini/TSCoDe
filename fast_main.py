@@ -89,7 +89,7 @@ class Docker:
             raise Exception('Still to be implemented. Sorry.')
 
         self.objects[1].position = np.array([(self.objects[0].dimensions[0] + self.objects[1].dimensions[0]), 0, 0]) # in angstroms
-        self.objects[1].rotation = np.array([0, 0, 180]) # flip along z to face the first molecule
+        self.objects[1].rotation = R.from_rotvec(np.array([0, 0, 180]) * np.pi / 180).as_matrix() # flip along z to face the first molecule
 
         threads = [self.objects]     # first thread is vanilla, other are randomly modified
         for _ in range(self.population - 1):
@@ -105,7 +105,6 @@ class Docker:
 
         results = {}
         best_score = 0
-        # ref_mat = R.from_rotvec(threads[0][0].rotation / 180 * np.pi).as_matrix() # first molecule is always 
 
         try:
             os.remove('debug_out.xyz')
@@ -123,12 +122,11 @@ class Docker:
                 for molecule in thread[1:]:
 
                     min_dist = 1e5
-                    mat = R.from_rotvec(molecule.rotation / 180 * np.pi).as_matrix()
 
                     for i, atom in enumerate(molecule.hypermolecule):
                         for j, ref_atom in enumerate(thread[0].hypermolecule):
 
-                            a = mat @ atom + molecule.position
+                            a = molecule.rotation @ atom + molecule.position
                             # b = ref_mat @ ref_atom + thread[0].position
                             b = ref_atom + thread[0].position
 
@@ -151,7 +149,7 @@ class Docker:
 
                                     a = ref_orbital
                                     # a = ref_mat @ ref_orbital + thread[0].position
-                                    b = mat @ orbital + molecule.position
+                                    b = molecule.rotation @ orbital + molecule.position
 
                                     dist.append(np.linalg.norm(a - b))
                                     orb_vecs.append([a, b])
@@ -159,32 +157,24 @@ class Docker:
                     if min(dist) < (K_SOFTNESS/1.25):
 
                         far = False
-
-                        # orb1_vecs = thread[0].reactive_atoms_classes[0].center
-                        # orb2_vecs = np.array([mat @ v for v in molecule.reactive_atoms_classes[0].center]) + molecule.position
-
-                        # combinations_indexes = np.transpose([np.tile(range(len(orb1_vecs)), len(orb2_vecs)), np.repeat(range(len(orb2_vecs)), len(orb1_vecs))])
-
-                        # combinations = [[orb1_vecs[c[0]], orb2_vecs[c[1]]] for c in combinations_indexes]
-
-                        # distances = [np.linalg.norm(c[0]-c[1]) for c in combinations]
-
-                        # orb1 = np.array([combinations[distances.index(min(distances))][0]]) # closest couple of orbital vectors
-                        # orb2 = np.array([combinations[distances.index(min(distances))][1]])
-                        
+                       
                         orb1 = orb_vecs[dist.index(min(dist))][0] # closest couple of orbital vectors
                         orb2 = orb_vecs[dist.index(min(dist))][1]
 
-                        absolute_orb1 = orb1 - thread[0].reactive_atoms_classes[0].coord
-                        absolute_orb2 = orb2 - molecule.reactive_atoms_classes[0].coord - molecule.position
+                        orb_vers1 = norm(orb1 - thread[0].reactive_atoms_classes[0].coord)
+                        orb_vers2 = norm(orb2 - molecule.reactive_atoms_classes[0].coord - molecule.position)
 
-                        alignment = np.abs(np.dot(norm(-absolute_orb1), norm(absolute_orb2)))
+                        alignment = np.abs(orb_vers1 @ orb_vers2)
                         s = 1 - 1.25/K_SOFTNESS * min(dist)
                         score += s*alignment
                         # print(f'ORB: s {s}, a {alignment} - {round(s*alignment,2)} points')
                     else:
                         orb1 = np.array([5,5,5])
-                        orb2 = np.array([5,5,5])         
+                        orb2 = np.array([5,5,5])    
+
+                        orb_vers1 = np.array([0,0,0])
+                        orb_vers2 = np.array([0,0,0])
+     
 
 
                 it = '%-4s' % (iteration)
@@ -193,39 +183,47 @@ class Docker:
                 if debug:
                     coords = []
                     for molecule in thread:
-                        mat = R.from_rotvec(molecule.rotation / 180 * np.pi).as_matrix()
                         for i, atom in enumerate(molecule.hypermolecule):
-                            adjusted = mat @ atom + molecule.position
+                            adjusted = molecule.rotation @ atom + molecule.position
                             coords.append('%-4s %-12s %-12s %-12s' % (pt[molecule.hypermolecule_atomnos[i]].symbol, adjusted[0], adjusted[1], adjusted[2]))
 
                         for reactive_atom in molecule.reactive_atoms_classes:
                             for center in reactive_atom.center:
-                                adjusted = mat @ center + molecule.position
+                                adjusted = molecule.rotation @ center + molecule.position
                                 coords.append('%-4s %-12s %-12s %-12s' % ('D', adjusted[0], adjusted[1], adjusted[2]))
                             if far:
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
 
-                                coords.append('%-4s %-12s %-12s %-12s' % ('Be', 5, 5, 5))
-                                coords.append('%-4s %-12s %-12s %-12s' % ('Be', 5, 5, 5))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('D', 5, 5, 5))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('D', 5, 5, 5))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('D', 5, 5, 5))
 
                             else:
 
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb1[0], orb1[1], orb1[2]))
                                 coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb2[0], orb2[1], orb2[2]))
 
-                                coords.append('%-4s %-12s %-12s %-12s' % ('B', thread[0].reactive_atoms_classes[0].coord[0],
-                                                                                thread[0].reactive_atoms_classes[0].coord[1],
-                                                                                thread[0].reactive_atoms_classes[0].coord[2]))
+                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', thread[0].reactive_atoms_classes[0].coord[0],
+                                #                                                 thread[0].reactive_atoms_classes[0].coord[1],
+                                #                                                 thread[0].reactive_atoms_classes[0].coord[2]))
 
-                                coords.append('%-4s %-12s %-12s %-12s' % ('B', molecule.reactive_atoms_classes[0].coord[0] + molecule.position[0],
-                                                                                molecule.reactive_atoms_classes[0].coord[1] + molecule.position[1],
-                                                                                molecule.reactive_atoms_classes[0].coord[2] + molecule.position[2]))
+                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', molecule.reactive_atoms_classes[0].coord[0] + molecule.position[0],
+                                #                                                 molecule.reactive_atoms_classes[0].coord[1] + molecule.position[1],
+                                #                                                 molecule.reactive_atoms_classes[0].coord[2] + molecule.position[2]))
+
+                                coords.append('%-4s %-12s %-12s %-12s' % ('D', orb_vers1[0], orb_vers1[1], orb_vers1[2]))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('D', orb_vers2[0], orb_vers2[1], orb_vers2[2]))
+                                coords.append('%-4s %-12s %-12s %-12s' % ('D', 0, 0, 0))
 
                     with open('debug_out.xyz', 'a') as f:
                         f.write(f'{len(coords)}\nTEST\n')
                         f.write('\n'.join(coords))
                         f.write('\n')
+
+                    orb_vers_list_1.append(orb_vers1)
+                    orb_vers_list_2.append(orb_vers2)
+                    
 
                 if iteration == 1 or score > best_score:
                     unproductive_iterations = 0
@@ -253,31 +251,34 @@ class Docker:
 
                     else:
                         delta_pos = np.array([0.,0.,0.])
-                        delta_rot = np.array([0.,0.,0.])
-                        # delta_pos = ((np.random.rand(3)*2. - 1.) * MAX_DIST) * 0.05
-                        # delta_rot = ((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * 0.05
+                        # delta_rot = np.array([0.,0.,0.])
+                        delta_rot = ((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * 0.05
 
 
                     if far: # if far, bring them closer
                         orb1 = np.mean(np.array([r.center for r in thread[0].reactive_atoms_classes])[0], axis=0)
-                        orb2 = mat @ np.mean(np.array([r.center for r in molecule.reactive_atoms_classes])[0], axis=0) + molecule.position
+                        orb2 = molecule.rotation @ np.mean(np.array([r.center for r in molecule.reactive_atoms_classes])[0], axis=0) + molecule.position
                         delta_pos += 0.5*(orb1 - orb2)
 
-                    else: # if close, move away from biggest clash and align to closest orbital
+                    else: # if close, move towards and align angle to closest orbital, move away from biggest clash
                        
                         # ROTATION VECTOR DOES ALL SORTS OF WEIRD THINGS, MAYBE BY USING THE MATRIX IT WILL WORK?
-                        # rot_vec = R.align_vectors(np.array([-absolute_orb1]), np.array([absolute_orb2]))[0].as_rotvec() * 180 / np.pi
+                        rot_vec = R.align_vectors(np.array([-orb_vers1]), np.array([orb_vers2]))[0].as_rotvec() * 180 / np.pi
                         # print('rot_vec is', rot_vec)
-                        # delta_rot += rot_vec
+                        delta_rot += 0.3*rot_vec
 
                         delta_pos += 0.5*(orb1 - orb2)
 
-                        if best_score < 0.5:
-                            delta_pos += 0.1 * biggest_clash_vector
+                        # if best_score < 0.5:
+                        #     delta_pos += 0.1 * biggest_clash_vector
 
 
                     np.add(molecule.position, delta_pos, out=molecule.position, casting='unsafe')
-                    np.add(molecule.rotation, delta_rot, out=molecule.rotation, casting='unsafe')
+                    # np.add(molecule.rotation, delta_rot, out=molecule.rotation, casting='unsafe')
+
+                    delta_rot_mat = R.from_rotvec(delta_rot / 180 * np.pi).as_matrix()
+
+                    molecule.rotation = molecule.rotation @ delta_rot_mat
 
                 iteration += 1
 
@@ -306,9 +307,51 @@ for m in objects:
     _compute_hypermolecule(m)
 
 docker = Docker(objects) # initialize docker with molecule density objects
-docker.setup() # set variables
+docker.setup(maxcycles=20) # set variables
+
+orb_vers_list_1, orb_vers_list_2 = [], []
+
 
 docker.run(debug=True)
 
-path = os.path.join(os.getcwd(), 'debug_out.xyz')
-check_call(f'vmd {path}'.split(), stdout=DEVNULL, stderr=STDOUT)
+path = os.path.join(os.getcwd(), 'debug_out.vmd')
+check_call(f'vmd -e {path}'.split(), stdout=DEVNULL, stderr=STDOUT)
+
+
+# import matplotlib.pyplot as plt
+# from mpl_toolkits.mplot3d import Axes3D
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
+
+
+
+# x1, y1, z1 = [], [], []
+# for vec in orb_vers_list_1:
+#     x1.append(0)
+#     x1.append(vec[0])
+
+#     y1.append(0)
+#     y1.append(vec[1])
+
+#     z1.append(0)
+#     z1.append(vec[2])
+
+# ax.plot(x1, y1, z1, label='orb_vers1', color='r')
+
+# x2, y2, z2 = [], [], []
+# for vec in orb_vers_list_2:
+#     x2.append(0)
+#     x2.append(vec[0])
+
+#     y2.append(0)
+#     y2.append(vec[1])
+
+#     z2.append(0)
+#     z2.append(vec[2])
+
+
+# ax.plot(x2, y2, z2, label='orb_vers2', color='b')
+# ax.set_xlim3d(-1,1)
+# ax.set_ylim3d(-1,1)
+# ax.set_zlim3d(-1,1)
+# plt.show()
