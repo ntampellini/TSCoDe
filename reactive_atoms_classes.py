@@ -1,5 +1,5 @@
 import numpy as np
-from constants import *
+from parameters import *
 from periodictable import core, covalent_radius
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
@@ -27,7 +27,7 @@ class Single:
     def __repr__(self):
         return 'Single Bond'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -45,7 +45,15 @@ class Single:
         self.coord = reactive_atom_coords
         self.other = bonded_atom_coords
         self.orb_vec = self.coord - self.other
-        self.center = np.array([2*self.coord - self.other])
+
+        try:
+            key = symbol + ' ' + str(self)
+            orb_dim = orb_dim_dict[key]
+        except:
+            orb_dim = 0.5*np.linalg.norm(self.coord - self.other)
+            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using half the bonding distance.')
+
+        self.center = np.array([orb_dim * (self.coord - self.other) / np.linalg.norm(self.coord - self.other) + self.coord])
         return None
 
     def stamp_orbital(self, box_shape, voxel_dim:float=VOXEL_DIM, stamp_size=STAMP_SIZE, hardness=HARDNESS):
@@ -95,7 +103,7 @@ class Sp2:
     def __repr__(self):
         return 'sp2'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -108,10 +116,17 @@ class Sp2:
         self.others = bonded_atom_coords
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
         self.orb_vec = np.mean(np.array([np.cross(self.vectors[0], self.vectors[1]),
-                                        np.cross(self.vectors[1], self.vectors[2]),
-                                        np.cross(self.vectors[2], self.vectors[0])]), axis=0)
+                                         np.cross(self.vectors[1], self.vectors[2]),
+                                         np.cross(self.vectors[2], self.vectors[0])]), axis=0)
+
+        try:
+            key = symbol + ' ' + str(self)
+            orb_dim = orb_dim_dict[key]
+        except:
+            orb_dim = np.linalg.norm(self.coord - self.others[0])
+            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using a full bonding distance.')
         
-        self.center = np.array([self.orb_vec, -self.orb_vec])
+        self.center = np.array([self.orb_vec, -self.orb_vec]) * orb_dim
 
         self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
 
@@ -162,7 +177,7 @@ class Sp: # BROKEN for sure, needs to fixed, eventually
     def __repr__(self):
         return 'sp'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -218,7 +233,7 @@ class Sp3:
     def __repr__(self):
         return 'sp3'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -233,17 +248,24 @@ class Sp3:
         self.coord = reactive_atom_coords
         self.other = bonded_atom_coords
 
-        if len([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
+        if len([atom for atom in self.neighbors_symbols if atom in ['O', 'N', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
             self.leaving_group_found = True
             leaving_group_coords = self.other[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
             self.orb_vec = self.coord - leaving_group_coords
-            self.center = np.array([2*self.coord - leaving_group_coords])
+
+            try:
+                key = symbol + ' ' + str(self)
+                orb_dim = orb_dim_dict[key]
+            except:
+                orb_dim = 1
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+
+            self.center = np.array([orb_dim * self.orb_vec / np.linalg.norm(self.orb_vec) + self.coord])
         else:
             self.leaving_group_found = False
             self.center = np.array([self.coord])
-            self.orb_vec = False
+            self.orb_vec = self.coord
             print('ATTENTION: COULD NOT TELL LEAVING GROUP ATOM ON SP3 REACTIVE CENTER, APPROXIMATING ORBITALS AS A SPHERE ON THE SP3 ATOM!')
-            # raise Exception('How do I tell orbital orientation? Lemme think...')
 
         self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
 
@@ -295,7 +317,7 @@ class Ether:
     def __repr__(self):
         return 'Ether'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -309,7 +331,17 @@ class Ether:
         self.other = bonded_atom_coords
 
         self.vectors = self.other - self.coord # vectors connecting center to each of the two substituents
-        self.vectors = 1 * np.array([v / np.linalg.norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
+
+        try:
+            key = symbol + ' ' + str(self)
+            orb_dim = orb_dim_dict[key]
+        except:
+            orb_dim = 1
+            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+
+
+
+        self.vectors = orb_dim * np.array([v / np.linalg.norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
         
         self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([-np.mean(self.vectors, axis=0)]))[0].as_matrix()
 

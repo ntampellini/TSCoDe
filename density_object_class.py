@@ -10,7 +10,7 @@ from rdkit.Chem import rdMolAlign, rdMolDescriptors, AllChem
 from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
 from reactive_atoms_classes import *
-from constants import *
+from parameters import *
 import warnings
 warnings.simplefilter("ignore", UserWarning)
 
@@ -92,10 +92,11 @@ class Density_object:
         # After reading aligned conformers, they are stored as self.atomcoords after being translated to origin and aligned the reactive atom(s) to x axis.
 
         for i, index in enumerate(self.reactive_indexes):
+            symbol = pt[self.atomnos[index]].symbol
             atom_type = self.reactive_atoms_classes[i]
             atom = self.rdkit_mol_object.GetAtoms()[index]
             neighbors_indexes = [a.GetIdx() for a in atom.GetNeighbors()]
-            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes])
+            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], symbol)
             # pumping updated properties into reactive_atom class
 
 
@@ -245,7 +246,7 @@ class Density_object:
                 return np.array([self.reactive_atoms_classes[0].alignment_matrix @ v for v in array])
 
 
-        print('ATTENTION: ALIGNMENT NOT PROPER! CAN ONLY ALIGN CERTAIN REACTIVE ATOMS FOR NOW')
+        print(f'ATTENTION: ALIGNMENT OF {self.rootname} NOT PROPER! CAN ONLY ALIGN CERTAIN REACTIVE ATOMS FOR NOW')
         rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
         return np.array([rotation_matrix @ v for v in array])
 
@@ -263,9 +264,9 @@ class Density_object:
             neighbors = len(neighbors_indexes)
             atom_type = atom_type_dict[symbol + str(neighbors)]
 
-            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], [pt[self.atomnos[i]].symbol for i in neighbors_indexes])
-            # pumping required properties into reactive_atom class
-
+            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], symbol, [pt[self.atomnos[i]].symbol for i in neighbors_indexes])
+            # pumping required properties into reactive_atom class:
+            # reactive atom coordinates, symbol, neighbors coordinates, neighbor symbols
 
             self.reactive_atoms_classes.append(atom_type)
             if self.debug: print(f'DEBUG--> Reactive atom {index} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {atom_type.neighbors_symbols}')
