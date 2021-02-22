@@ -190,10 +190,12 @@ class Docker:
                         far = True
 
 
-                # it = '%-4s' % (iteration)
-                # print(f'Iteration {it} of thread {thread_number + 1}/{self.population}: score {round(score, 3)}, best {round(best_score, 3)}, unprod. it. {unproductive_iterations}')
+                if debug:
+                    it = '%-4s' % (iteration)
+                    print(f'Iteration {it} of thread {thread_number + 1}/{self.population}: score {round(score, 3)}, best {round(best_score, 3)}, unprod. it. {unproductive_iterations}')
 
-                loadbar(iteration + self.maxcycles*thread_number, self.maxcycles*self.population, f'Running generation {thread_number + 1}/{self.population}: ')
+                else:
+                    loadbar(iteration + self.maxcycles*thread_number, self.maxcycles*self.population, f'Running generation {thread_number + 1}/{self.population}: ')
 
                 if debug:
                     coords = []
@@ -224,7 +226,7 @@ class Docker:
                                 # coords.append('%-4s %-12s %-12s %-12s' % ('Be', orb_vers2[0], orb_vers2[1], orb_vers2[2]))
                                 # coords.append('%-4s %-12s %-12s %-12s' % ('Be', 0, 0, 0))
 
-                    coords.append('%-4s %-12s %-12s %-12s' % ('O', 0, 0, 0))
+                    # coords.append('%-4s %-12s %-12s %-12s' % ('O', 0, 0, 0)) # verify origin position
 
                     with open('debug_out.xyz', 'a') as f:
                         f.write(f'{len(coords)}\nTEST\n')
@@ -332,13 +334,6 @@ class Docker:
             print('   %-3s   %-4s' % (run, score))
         print('-----------------\n')
 
-        # def cartesian_product(*arrays):
-        #     la = len(arrays)
-        #     dtype = np.result_type(*arrays)
-        #     arr = np.empty([len(a) for a in arrays] + [la], dtype=dtype)
-        #     for i, a in enumerate(np.ix_(*arrays)):
-        #         arr[...,i] = a
-        #     return arr.reshape(-1, la)
         def cartesian_product(*arrays):
             return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
 
@@ -359,55 +354,47 @@ class Docker:
                 string += '%s\t%s %s %s\n' % (pt[atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6))
             output.write(string)
 
+        if not debug:
 
-        # candidates = {i:np.array(dype=float) for i in range(len([score for score in score_record.values() if score > 0)*int(np.prod(np.array([len(m.atomcoords) for m in molecules]))))}
-        # # number of candidates is the product of the number of conformers for each molecule times the number of successful runs that generated a pose
-        # for run, thread in results.items():
-        #     if score_record[run] > 0:
-        #         for m, molecule in enumerate(thread):
-        #             for c, conformer in molecule.atomcoords():
-        #                 coords = np.array([molecule.rotation @ atom + molecule.position for atom in conformer])
- 
-
-        geometries = [molecules for i, molecules in results.items() if score_record[i] > 0]
-        atomnos = np.concatenate([molecule.atomnos for molecule in objects])
-        # find a way so that we don't lose track of the atomic numbers associated with coordinates
+            geometries = [molecules for i, molecules in results.items() if score_record[i] > 0]
+            atomnos = np.concatenate([molecule.atomnos for molecule in objects])
+            # a way so that we don't lose track of the atomic numbers associated with coordinates
 
 
-        #  PLAN B: FOR LOOPS
+            #  PLAN B: FOR LOOPS
 
-        try:
-            os.remove('TS_out.xyz')
-        except:
-            pass
-        
-        # GENERATING ALL POSSIBLE COMBINATIONS OF CONFORMATIONS AND STORING THEM IN SELF.STRUCTURES
+            try:
+                os.remove('TS_out.xyz')
+            except:
+                pass
+            
+            # GENERATING ALL POSSIBLE COMBINATIONS OF CONFORMATIONS AND STORING THEM IN SELF.STRUCTURES
 
-        conf_number = [len(molecule.atomcoords) for molecule in objects]
-        conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
-        # first index of each vector is the conformer number of the first molecule and so on...
+            conf_number = [len(molecule.atomcoords) for molecule in objects]
+            conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
+            # first index of each vector is the conformer number of the first molecule and so on...
 
-        self.structures = np.zeros((int(len(conf_indexes)*int(len(geometries))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
+            self.structures = np.zeros((int(len(conf_indexes)*int(len(geometries))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
 
-        for geometry_number, geometry in enumerate(geometries):
+            for geometry_number, geometry in enumerate(geometries):
 
-            for molecule in geometry:
-                calc_positioned_conformers(molecule)
+                for molecule in geometry:
+                    calc_positioned_conformers(molecule)
 
-            for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
-                count_atoms = 0
+                for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
+                    count_atoms = 0
 
-                for molecule_number, conformation in enumerate(conf_index): # 0, 0 then 1, 0 then 2, 0 (first [] of outer for loop)
-                    coords = geometry[molecule_number].positioned_conformers[conformation]
-                    n = len(geometry[molecule_number].atomnos)
-                    self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
-                    count_atoms += n
+                    for molecule_number, conformation in enumerate(conf_index): # 0, 0 then 1, 0 then 2, 0 (first [] of outer for loop)
+                        coords = geometry[molecule_number].positioned_conformers[conformation]
+                        n = len(geometry[molecule_number].atomnos)
+                        self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
+                        count_atoms += n
 
-        print(f'Generated {len(self.structures)} transition state conformations')
+            print(f'Generated {len(self.structures)} transition state conformations')
 
-        with open('TS_out.xyz', 'w') as f:        
-            for i, structure in enumerate(self.structures):
-                write_xyz(structure, atomnos, f, title=f'TS candidate {i}')
+            with open('TS_out.xyz', 'w') as f:        
+                for i, structure in enumerate(self.structures):
+                    write_xyz(structure, atomnos, f, title=f'TS candidate {i}')
 
 
 
@@ -427,7 +414,7 @@ class Docker:
 # a = ['Resources/SN2/MeOH_ensemble.xyz', 5]
 # a = ['Resources/dienamine/dienamine_ensemble.xyz', 7]
 # a = ['Resources/SN2/amine_ensemble.xyz', 22]
-a = ['Resources/indole/indole_ensemble.xyz', 9]
+a = ['Resources/indole/indole_ensemble.xyz', 7]
 
 
 # b = ['Resources/SN2/CH3Br_ensemble.xyz', 1]
