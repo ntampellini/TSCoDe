@@ -122,6 +122,9 @@ class Hypermolecule:
 
         self._compute_hypermolecule()
 
+        self.centers = np.concatenate([r_atom.center for r_atom in self.reactive_atoms_classes])
+        self.orb_vers = np.concatenate([norm(r_atom.center - r_atom.coord) for r_atom in self.reactive_atoms_classes])
+
     def _get_ensemble_energies(self, filename):
         '''
         Reads file and returns an rdkit.Mol object with the first molecule
@@ -384,7 +387,6 @@ if __name__ == '__main__':
 
     # test.show_drawing()
     test.write_hypermolecule()
-
     # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')
     # en = test._get_ensemble_energies('Resources/SN2/flex_ensemble.xyz')
     # min_en = min(en)
