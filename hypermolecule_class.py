@@ -61,7 +61,7 @@ class Hypermolecule:
     def __repr__(self):
         return self.rootname + f' {[str(atom) for atom in self.reactive_atoms_classes]}, ID = {id(self)}'
 
-    def __init__(self, filename, reactive_atoms, debug=False, T=298.15):
+    def __init__(self, filename, reactive_atoms=None, debug=False, T=298.15):
         '''
         Initializing class properties: reading conformational ensemble file, aligning
         conformers to first and centering them in origin.
@@ -74,6 +74,9 @@ class Hypermolecule:
         self.name = filename
         self.T = T
         self.debug = debug
+
+        if not reactive_atoms:
+            reactive_atoms = self._set_reactive_atoms(filename)
 
         ccread_object = self._align_ensemble(filename, reactive_atoms)
 
@@ -124,6 +127,30 @@ class Hypermolecule:
 
         self.centers = np.concatenate([r_atom.center for r_atom in self.reactive_atoms_classes])
         self.orb_vers = np.concatenate([norm(r_atom.center - r_atom.coord) for r_atom in self.reactive_atoms_classes])
+
+    def _set_reactive_atoms(self, filename):
+        '''
+        Manually set the molecule reactive atoms from the ASE GUI, imposing
+        constraints on the desired atoms.
+
+        '''
+        from ase import Atoms
+        from ase.visualize import view
+
+        data = ccread(filename)
+        coords = data.atomcoords[0]
+        labels = ''.join([pt[i].symbol for i in data.atomnos])
+
+        atoms = Atoms(labels, positions=coords)
+
+        while atoms.constraints == []:
+            print(('\nPlease, manually select the reactive atom(s) for molecule %s.'
+                   '\nSelect an atom by clicking on it, multiple selection can be done by Ctrl+Click.'
+                   '\nWith desired atom(s) selected, go to Tools -> Constraints -> Constrain, then close the GUI.'
+                   '\nBond view toggle with Ctrl+B\n') % (filename))
+            atoms.edit()
+
+        return list(atoms.constraints[0].get_indices())
 
     def _get_ensemble_energies(self, filename):
         '''
@@ -383,8 +410,8 @@ if __name__ == '__main__':
     # test = Hypermolecule('Resources/indole/indole_ensemble.xyz', 6, debug=True)
     # test = Hypermolecule('Resources/SN2/amine_ensemble.xyz', 11, debug=True)
     # test = Hypermolecule('Resources/dienamine/dienamine_ensemble.xyz', 7, debug=True)
-    test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', [3, 5], debug=True)
-
+    # test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', [3, 5], debug=True)
+    test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', debug=True)
     # test.show_drawing()
     test.write_hypermolecule()
     # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')
