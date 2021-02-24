@@ -1,6 +1,5 @@
 import numpy as np
 from parameters import *
-from periodictable import core, covalent_radius
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
 
@@ -10,8 +9,8 @@ def norm(vec):
 class Single:
     '''
     '''
-    def __init__(self, rel_radii):
-        self.rel_radii = rel_radii
+    def __init__(self):
+        pass
     
     def __repr__(self):
         return 'Single Bond'
@@ -48,8 +47,8 @@ class Single:
 class Sp2:
     '''
     '''
-    def __init__(self, rel_radii):
-        self.rel_radii = rel_radii
+    def __init__(self):
+        pass
 
     def __repr__(self):
         return 'sp2'
@@ -90,8 +89,8 @@ class Sp2:
 class Sp: # BROKEN for sure, needs to fixed, eventually
     '''
     '''
-    def __init__(self, rel_radii):
-        self.rel_radii = rel_radii
+    def __init__(self):
+        pass
 
     def __repr__(self):
         return 'sp'
@@ -115,8 +114,8 @@ class Sp: # BROKEN for sure, needs to fixed, eventually
 class Sp3:
     '''
     '''
-    def __init__(self, rel_radii):
-        self.rel_radii = rel_radii
+    def __init__(self):
+        pass
     
     def __repr__(self):
         return 'sp3'
@@ -163,8 +162,8 @@ class Sp3:
 class Ether:
     '''
     '''
-    def __init__(self, rel_radii):
-        self.rel_radii = rel_radii
+    def __init__(self):
+        pass
     
     def __repr__(self):
         return 'Ether'
@@ -210,28 +209,23 @@ class Ether:
 
         return None
 
-
-pt = core.PeriodicTable(table="H=1")
-covalent_radius.init(pt)
-c_radii = pt[6].covalent_radius
-
 atom_type_dict = {
-             'H1' : Single(pt[1].covalent_radius/c_radii),
-             'C1' : Single(1),
-             'C2' : Sp(1), # toroidal geometry
-             'C3' : Sp2(1), # double ball
-             'C4' : Sp3(1), # one ball: on the back of weakest bond. If can't tell which is which, one big ball
-             'N1' : Single(pt[7].covalent_radius/c_radii),
+             'H1' : Single(),
+             'C1' : Single(),
+             'C2' : Sp(), # toroidal geometry
+             'C3' : Sp2(), # double ball
+             'C4' : Sp3(), # one ball: on the back of weakest bond. If can't tell which is which, one big ball
+             'N1' : Single(),
              'N2' : 'imine', # one ball on free side
-             'N3' : Sp2(pt[7].covalent_radius/c_radii), # or one ball on free side?
-             'N4' : Sp3(pt[7].covalent_radius/c_radii),
+             'N3' : Sp2(), # or one ball on free side?
+             'N4' : Sp3(),
              'O1' : 'ketone-like', # two balls 120° apart. Also for alkoxides, good enough
-             'O2' : Ether(pt[8].covalent_radius/c_radii), # or alcohol, two balls 109,5° apart
+             'O2' : Ether(), # or alcohol, two balls 109,5° apart
              'S1' : 'ketone-like',
-             'S2' : Ether(pt[16].covalent_radius/c_radii),
-             'F1' : Single(pt[9].covalent_radius/c_radii),
-             'Cl1': Single(pt[17].covalent_radius/c_radii),
-             'Br1': Single(pt[35].covalent_radius/c_radii),
-             'I1' : Single(pt[53].covalent_radius/c_radii),
+             'S2' : Ether(),
+             'F1' : Single(),
+             'Cl1': Single(),
+             'Br1': Single(),
+             'I1' : Single(),
              }
 

@@ -4,16 +4,22 @@ TSCoDe - Transition state Seeker from Conformational Density
 (Work in Progress)
 
 '''
-from hypermolecule_class import Hypermolecule
+from hypermolecule_class import Hypermolecule, pt
 import numpy as np
 from copy import deepcopy
 from parameters import *
-from scipy import ndimage
-from reactive_atoms_classes import pt
 from pprint import pprint
 from scipy.spatial.transform import Rotation as R
 import os
 import time
+from cclib.io import ccread
+from openbabel import openbabel as ob
+from ase import Atoms
+from ase.visualize import view
+from ase.optimize import BFGS
+from ase.constraints import FixAtoms
+from ase.calculators.mopac import MOPAC
+
 
 from subprocess import DEVNULL, STDOUT, check_call
 
@@ -29,42 +35,122 @@ def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill=
 def norm(vec):
     return vec / np.linalg.norm(vec)
 
-# def quaternion_multiply(quaternion1, quaternion0):
-#     w0, x0, y0, z0 = quaternion0
-#     w1, x1, y1, z1 = quaternion1
-#     return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
-#                      x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
-#                      -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
-#                      x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
+class suppress_stdout_stderr(object):
+    '''
+    A context manager for doing a "deep suppression" of stdout and stderr in 
+    Python, i.e. will suppress all print, even if the print originates in a 
+    compiled C/Fortran sub-function.
+       This will not suppress raised exceptions, since exceptions are printed
+    to stderr just before a script exits, and after the context manager has
+    exited (at least, I think that is why it lets exceptions through).      
 
-# def align_vectors(reference, target):
-#     '''
-#     :params reference, target: single vectors, ndarray type, normalized
+    '''
+    def __init__(self):
+        # Open a pair of null files
+        self.null_fds =  [os.open(os.devnull,os.O_RDWR) for x in range(2)]
+        # Save the actual stdout (1) and stderr (2) file descriptors.
+        self.save_fds = [os.dup(1), os.dup(2)]
 
-#     :return: rotation to be applied to target to align with reference
-#              as a rotation vector, in radians.
-#     '''
-#     assert reference.shape[0] == 3
-#     assert target.shape[0] == 3
+    def __enter__(self):
+        # Assign the null pointers to stdout and stderr.
+        os.dup2(self.null_fds[0],1)
+        os.dup2(self.null_fds[1],2)
 
-#     p = 0, target[0], target[1], target[2]
+    def __exit__(self, *_):
+        # Re-assign the real stdout/stderr back to (1) and (2)
+        os.dup2(self.save_fds[0],1)
+        os.dup2(self.save_fds[1],2)
+        # Close all file descriptors
+        for fd in self.null_fds + self.save_fds:
+            os.close(fd)
 
-#     axis = norm(np.cross(target, reference))
-#     angle = np.arccos(target @ reference) / 2
+def MM_SE_POPT(coords, atomnos, constrained_indexes, methods=['UFF','PM7'], debug=False):
+    '''
+    Performs a two-step constrained optimizaiton, first MM with OpenBabel,
+    then a semiempirical calculation with MOPAC. Methods can be:
 
-#     sin = np.sin(angle)
-#     # q = np.cos(angle), sin*axis[0], sin*axis[1], sin*axis[2]
+    [['UFF','MMFF'], ['AM1', 'MNDO', 'MNDOD', 'PM3', 'PM6', 'PM6-D3', 'PM6-DH+', 
+                      'PM6-DH2', 'PM6-DH2X', 'PM6-D3H4', 'PM6-D3H4X', 'PM7','RM1']]
 
-#     # sin_inv = np.sin(-angle)
-#     # q_inv = np.cos(-angle), sin_inv*axis[0], sin_inv*axis[1], sin_inv*axis[2]
+    return : optimized coordinates
 
-#     # quaternion_multiply(quaternion_multiply(q, p), q_inv)[1:]
+    '''
 
-#     q = sin*axis[0], sin*axis[1], sin*axis[2], np.cos(angle)
+    def OB_MM_POPT(filename, constrained_indexes, method):
+        '''
+        return : name of MM-optimized outfile
 
-#     print(f'ALIGN: rotating {2* angle * 180 / np.pi} degrees')
+        '''
 
-#     return -R.from_quat(q).as_rotvec()
+        assert len(constrained_indexes) == 2
+
+        rootname, extension = filename.split('.')
+
+        # Standard openbabel molecule load
+        conv = ob.OBConversion()
+        conv.SetInAndOutFormats(extension,'xyz')
+        mol = ob.OBMol()
+        conv.ReadFile(mol, filename)
+
+        # Define constraints
+
+        first_atom = mol.GetAtom(constrained_indexes[0]+1)
+        second_atom = mol.GetAtom(constrained_indexes[1]+1)
+        length = first_atom.GetDistance(second_atom)
+
+        constraints = ob.OBFFConstraints()
+        constraints.AddDistanceConstraint(constrained_indexes[0]+1, constrained_indexes[1]+1, length)       # Angstroms
+        # constraints.AddAngleConstraint(1, 2, 3, 120.0)      # Degrees
+        # constraints.AddTorsionConstraint(1, 2, 3, 4, 180.0) # Degrees
+
+        # Setup the force field with the constraints
+        forcefield = ob.OBForceField.FindForceField(method)
+        forcefield.Setup(mol, constraints)
+        forcefield.SetConstraints(constraints)
+
+        # Do a 500 steps conjugate gradient minimiazation
+        # and save the coordinates to mol.
+        forcefield.ConjugateGradients(500)
+        forcefield.GetCoordinates(mol)
+
+        # Write the mol to a file
+        outname = rootname + '_MM.xyz'
+        conv.WriteFile(mol,outname)
+
+        return outname
+
+    assert len(constrained_indexes) == 2
+
+    MM_name = 'temp.xyz'
+
+    with open(MM_name, 'w') as f:
+        write_xyz(coords, atomnos, f, 'Intermediate file to be fed to OBabel')
+
+    data = ccread(OB_MM_POPT(MM_name, constrained_indexes, methods[0]))
+    os.remove(MM_name)
+
+    # methods = ['AM1', 'MNDO', 'MNDOD', 'PM3', 'PM6', 'PM6-D3', 'PM6-DH+',
+    #         'PM6-DH2', 'PM6-DH2X', 'PM6-D3H4', 'PM6-D3H4X', 'PM7','RM1']
+
+
+    atoms = Atoms(''.join([pt[i].symbol for i in data.atomnos]), positions=data.atomcoords[0])
+
+    atoms.set_constraint(FixAtoms(indices=[constrained_indexes[0],constrained_indexes[1]]))
+
+    jobname = 'TEST_TS'
+    atoms.calc = MOPAC(label=jobname, command=f'mopac2016 {jobname}.mop', method=methods[1])
+    opt = BFGS(atoms, trajectory=f'{jobname}.traj', logfile=f'{jobname}.log')
+
+    t_start = time.time()
+
+    with suppress_stdout_stderr():
+        opt.run(fmax=0.05)
+
+    t_end = time.time()
+
+    if debug: print(f'Optimization at {method} level took', round(t_end-t_start, 3), 's')
+
+    return atoms.positions, atoms.get_total_energy
 
 def cartesian_product(*arrays):
     return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
@@ -215,6 +301,20 @@ class Docker:
 
         print(f'Generated {len(self.structures)} transition state candidates')
 
+        ################################################# START OF STRUCTURAL OPTIMIZATION
+
+        constrained_indexes = [int(self.objects[0].reactive_indexes[0]), int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))]
+        
+        if debug: print('Constrained indexes are', constrained_indexes)
+
+        for i, structure in enumerate(deepcopy(self.structures)):
+            loadbar(i, len(self.structures), prefix=f'Optimizing structure {i}/{len(self.structures)} ')
+            self.structures[i], self.energies = MM_SE_POPT(structure, atomnos, constrained_indexes)
+        loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
+
+
+
+
         with open('TS_out.xyz', 'w') as f:        
             for i, structure in enumerate(self.structures):
                 write_xyz(structure, atomnos, f, title=f'TS candidate {i}')
@@ -227,14 +327,14 @@ try:
 except:
     pass
 
-# a = ['Resources/SN2/MeOH_ensemble.xyz', 5]
+a = ['Resources/SN2/MeOH_ensemble.xyz', 1]
 # a = ['Resources/dienamine/dienamine_ensemble.xyz', 7]
 # a = ['Resources/SN2/amine_ensemble.xyz', 22]
-a = ['Resources/indole/indole_ensemble.xyz', 7]
+# a = ['Resources/indole/indole_ensemble.xyz', 7]
 
 
-# b = ['Resources/SN2/CH3Br_ensemble.xyz', 1]
-b = ['Resources/SN2/ketone_ensemble.xyz', 3]
+b = ['Resources/SN2/CH3Br_ensemble.xyz', 0]
+# b = ['Resources/SN2/ketone_ensemble.xyz', 3]
 
 
 inp = [a,b]
@@ -243,6 +343,8 @@ objects = [Hypermolecule(m[0], m[1]) for m in inp]
 
 docker = Docker(objects) # initialize docker with molecule density objects
 docker.setup(repeat=2, maxcycles=50) # set variables
+
+os.chdir('Resources/SN2')
 
 docker.run(debug=True)
 

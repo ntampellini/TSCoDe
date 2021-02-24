@@ -9,11 +9,14 @@ from copy import deepcopy
 from cclib.io import ccread
 from rdkit.Chem import AllChem
 from reactive_atoms_classes import *
+from periodictable import core, covalent_radius
 from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
 from subprocess import DEVNULL, STDOUT, check_call
 warnings.simplefilter("ignore", UserWarning)
 
+pt = core.PeriodicTable(table="H=1")
+covalent_radius.init(pt)
 
 def kabsch(filename, indexes=None):
     '''
@@ -75,7 +78,7 @@ class Hypermolecule:
         self.T = T
         self.debug = debug
 
-        if not reactive_atoms:
+        if reactive_atoms is None:
             reactive_atoms = self._set_reactive_atoms(filename)
 
         ccread_object = self._align_ensemble(filename, reactive_atoms)
@@ -116,7 +119,7 @@ class Hypermolecule:
 
             neighbors_indexes = list([(a, b) for a, b in self.graph.adjacency()][index][1].keys())
             neighbors_indexes.remove(index)
-            
+                       
             atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], symbol)
             # pumping updated properties into reactive_atom class
 
@@ -223,7 +226,7 @@ class Hypermolecule:
                             max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
 
     
-    def _alignment_indexes(self, coords, reactive_atoms):
+    def _alignment_indexes(self, coords, atomnos, reactive_atoms):
         '''
         Return the indexes to align the molecule to, given a list of
         atoms that should be reacting. List is composed by reactive atoms
@@ -233,17 +236,23 @@ class Hypermolecule:
         :return: list of indexes
         '''
 
+        def d_min(e1, e2):
+            return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
+        # if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
+
         matrix = np.zeros((len(coords),len(coords)))
         for i in range(len(coords)):
             for j in range(i,len(coords)):
-                if np.linalg.norm(coords[i]-coords[j]) < 1.6:
+                if np.linalg.norm(coords[i]-coords[j]) < d_min(atomnos[i], atomnos[j]):
                     matrix[i][j] = 1
 
         self.graph = nx.from_numpy_matrix(matrix)
 
-        # import matplotlib.pyplot as plt
-        # nx.draw(self.graph, with_labels=True)
-        # plt.show()
+        if show_nx:
+            import matplotlib.pyplot as plt
+            labels_dict = {i:pt[n].symbol for i, n in enumerate(atomnos)}
+            nx.draw(self.graph, labels=labels_dict)
+            plt.show()
 
         indexes = set()
 
@@ -270,7 +279,7 @@ class Hypermolecule:
         except Exception:
             raise Exception('Unrecognized reactive atoms IDs. Argument must either be one int or a list of ints.')
 
-        self.reactive_indexes = np.array(reactive_atoms) - 1 # they count from 1, we count from 0
+        self.reactive_indexes = np.array(reactive_atoms) # they count from 1, we count from 0
 
         self.energies = self._get_ensemble_energies(filename)
 
@@ -288,7 +297,7 @@ class Hypermolecule:
             self.energies = np.array(self.energies) - min(self.energies)
             if self.debug: print(f'DEBUG--> Computed relative energies for the ensemble : {self.energies} kcal/mol')
 
-        alignment_indexes = self._alignment_indexes(data.atomcoords[0], self.reactive_indexes)
+        alignment_indexes = self._alignment_indexes(data.atomcoords[0], data.atomnos, self.reactive_indexes)
 
         del data
 
@@ -350,40 +359,6 @@ class Hypermolecule:
             if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {atom_type.neighbors_symbols}')
             # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
 
-    # def show_drawing(self):
-    #     '''
-    #     Shows a plot made with rdkit to confirm that reactive atoms selected are correct.
-
-    #     '''
-    #     from rdkit.Chem import Draw
-    #     from rdkit.Chem.Draw import rdMolDraw2D
-    #     import matplotlib.pyplot as plt
-    #     import matplotlib.image as mpimg
-
-    #     mol = Chem.MolFromSmiles(self.smiles)
-    #     for atom in mol.GetAtoms():
-    #         atom.SetAtomMapNum(0)
-    #     d = rdMolDraw2D.MolDraw2DCairo(500, 500)
-
-    #     indexes = [self.reactive_indexes] if type(self.reactive_indexes) is int else self.reactive_indexes
-    #     indexes = [int(i) for i in indexes]
-
-    #     rdMolDraw2D.PrepareAndDrawMolecule(d, mol, highlightAtoms=indexes)
-
-    #     d.drawOptions().addStereoAnnotation = True
-    #     # d.drawOptions().addAtomIndices = True
-    #     d.DrawMolecule(mol)
-    #     d.FinishDrawing()
-    #     d.WriteDrawingText('temp.png')
-    #     img = mpimg.imread('temp.png')
-
-    #     plot = plt.imshow(img)
-    #     plt.tight_layout()
-    #     plt.axis('off')
-    #     plt.show()
-
-
-
     def write_hypermolecule(self):
         '''
         '''
@@ -407,12 +382,18 @@ class Hypermolecule:
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
+    show_nx = True
+
     # test = Hypermolecule('Resources/indole/indole_ensemble.xyz', 6, debug=True)
     # test = Hypermolecule('Resources/SN2/amine_ensemble.xyz', 11, debug=True)
     # test = Hypermolecule('Resources/dienamine/dienamine_ensemble.xyz', 7, debug=True)
     # test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', [3, 5], debug=True)
-    test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', debug=True)
-    # test.show_drawing()
+    # test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', debug=True)
+
+    # test = Hypermolecule('Resources/SN2/MeOH_ensemble.xyz', 1, debug=True)
+    test = Hypermolecule('Resources/SN2/CH3Br_ensemble.xyz', 0, debug=True)
+
+
     test.write_hypermolecule()
     # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')
     # en = test._get_ensemble_energies('Resources/SN2/flex_ensemble.xyz')
