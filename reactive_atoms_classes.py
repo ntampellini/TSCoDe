@@ -163,7 +163,9 @@ class Sp3:
 
         '''
         from ase import Atoms
-        from ase.visualize import view
+        from ase.gui.gui import GUI
+        from ase.gui.images import Images
+
         from cclib.io import ccread
         from periodictable import core
         pt_s = core.PeriodicTable(table='s')
@@ -180,7 +182,9 @@ class Sp3:
                 '\nRotate with right click and select atoms by clicking.'
                 '\nThen go to Tools -> Constraints -> Constrain, and close the GUI.'
                 '\nBond view toggle with Ctrl+B\n') % (filename))
-            atoms.edit()
+
+            GUI(images=Images([atoms]), show_bonds=True).run()
+            
             if atoms.constraints != []:
                 if len(list(atoms.constraints[0].get_indices())) == 1:
                     if list(atoms.constraints[0].get_indices())[0] in neighbors_indexes:

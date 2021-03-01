@@ -138,7 +138,8 @@ class Hypermolecule:
 
         '''
         from ase import Atoms
-        from ase.visualize import view
+        from ase.gui.gui import GUI
+        from ase.gui.images import Images
 
         data = ccread(filename)
         coords = data.atomcoords[0]
@@ -151,7 +152,8 @@ class Hypermolecule:
                     '\nRotate with right click and select atoms by clicking. Multiple selections can be done by Ctrl+Click.'
                     '\nWith desired atom(s) selected, go to Tools -> Constraints -> Constrain, then close the GUI.'
                     '\nBond view toggle with Ctrl+B\n') % (filename))
-            atoms.edit()
+                    
+            GUI(images=Images([atoms]), show_bonds=True).run()
 
         return list(atoms.constraints[0].get_indices())
 
@@ -375,43 +377,41 @@ class Hypermolecule:
 
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-
     test = {
 
-        # 1 : ('Resources/indole/indole_ensemble.xyz', 6),
-        # 2 : ('Resources/SN2/amine_ensemble.xyz', 11),
-        # 3 : ('Resources/dienamine/dienamine_ensemble.xyz', 7),
-        # 4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
+        1 : ('Resources/indole/indole_ensemble.xyz', 6),
+        2 : ('Resources/SN2/amine_ensemble.xyz', 10),
+        3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
+        4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
         5 : ('Resources/SN2/flex_ensemble.xyz', None),
 
-        # 6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
-        # 7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
+        6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
+        7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
 
             }
 
-    Hypermolecule(test[5][0], test[5][1]).write_hypermolecule()
+    # Hypermolecule(test[3][0], test[3][1]).write_hypermolecule()
 
 
-    quit()
+    # quit()
 
     import matplotlib.pyplot as plt
 
     col = {'H':'lightgrey',
-            'C':'grey',
-            'O':'tab:red',
-            'N':'tab:blue',
-            'S':'gold',
-            'Br':'brown'}
+           'C':'grey',
+           'O':'tab:red',
+           'N':'tab:blue',
+           'S':'gold',
+           'Br':'brown'}
 
     for obj in [Hypermolecule(path, indexes) for path, indexes in test.values()]:
         labels_dict = {i:pt[n].symbol for i, n in enumerate(obj.atomnos)}
 
         color_list = [col[i] for i in labels_dict.values()]
-        nx.draw(obj.graph, labels=labels_dict, node_color=color_list)
+        pos = nx.spring_layout(obj.graph)
+        nx.draw_networkx_nodes(obj.graph, pos=pos, node_size=1000, nodelist=obj.reactive_indexes, node_color='coral', alpha=0.5)
+        nx.draw(obj.graph, pos=pos, labels=labels_dict, node_color=color_list)
         plt.show()
-
-        from pprint import pprint
-        pprint(vars(obj.reactive_atoms_classes[0]))
 
 
     # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')
@@ -419,3 +419,8 @@ if __name__ == '__main__':
     # min_en = min(en)
     # # print([e - min_en for e in en])
     # print(en)
+
+
+    # TO DO:
+
+    # Probably a better idea for getting connectivity matrix is by using ase.geometry get_bonds() method. Low priority.
