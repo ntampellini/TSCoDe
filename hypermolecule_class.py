@@ -152,7 +152,7 @@ class Hypermolecule:
                     '\nRotate with right click and select atoms by clicking. Multiple selections can be done by Ctrl+Click.'
                     '\nWith desired atom(s) selected, go to Tools -> Constraints -> Constrain, then close the GUI.'
                     '\nBond view toggle with Ctrl+B\n') % (filename))
-                    
+
             GUI(images=Images([atoms]), show_bonds=True).run()
 
         return list(atoms.constraints[0].get_indices())
@@ -218,15 +218,25 @@ class Hypermolecule:
                 self.weights[i].append(data[1])
                 self.hypermolecule.append(data[0])
 
+        def flatten(array):
+            out = []
+            def rec(l):
+                for e in l:
+                    if type(e) in [list, np.ndarray]:
+                        rec(e)
+                    else:
+                        out.append(float(e))
+            rec(array)
+            return out
 
         self.hypermolecule = np.asarray(self.hypermolecule)
         self.weights = np.array(self.weights).flatten()
-        self.weights = np.asarray([weights / np.sum(weights) for i, weights in enumerate(self.weights)])
+        self.weights = np.array([weights / np.sum(weights) for weights in self.weights])
+        self.weights = flatten(self.weights)
 
         self.dimensions = (max([coord[0] for coord in self.hypermolecule]) - min([coord[0] for coord in self.hypermolecule]),
                             max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
                             max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
-
     
     def _alignment_indexes(self, coords, atomnos, reactive_atoms):
         '''
@@ -379,23 +389,47 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     test = {
 
-        1 : ('Resources/indole/indole_ensemble.xyz', 6),
-        2 : ('Resources/SN2/amine_ensemble.xyz', 10),
-        3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
+        # 1 : ('Resources/indole/indole_ensemble.xyz', 6),
+        # 2 : ('Resources/SN2/amine_ensemble.xyz', 10),
+        # 3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
         4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
-        5 : ('Resources/SN2/flex_ensemble.xyz', None),
+        # 5 : ('Resources/SN2/flex_ensemble.xyz', None),
 
-        6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
-        7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
+        # 6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
+        # 7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
 
             }
 
-    # Hypermolecule(test[3][0], test[3][1]).write_hypermolecule()
+    # Hypermolecule(test[4][0], test[4][1]).write_hypermolecule()
 
 
     # quit()
 
     import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+
+    def set_axes_equal(ax: plt.Axes):
+        """Set 3D plot axes to equal scale.
+
+        Make axes of 3D plot have equal scale so that spheres appear as
+        spheres and cubes as cubes.  Required since `ax.axis('equal')`
+        and `ax.set_aspect('equal')` don't work on 3D.
+        """
+        limits = np.array([
+            ax.get_xlim3d(),
+            ax.get_ylim3d(),
+            ax.get_zlim3d(),
+        ])
+        origin = np.mean(limits, axis=1)
+        radius = 0.5 * np.max(np.abs(limits[:, 1] - limits[:, 0]))
+        _set_axes_radius(ax, origin, radius)
+
+    def _set_axes_radius(ax, origin, radius):
+        x, y, z = origin
+        ax.set_xlim3d([x - radius, x + radius])
+        ax.set_ylim3d([y - radius, y + radius])
+        ax.set_zlim3d([z - radius, z + radius])
+
 
     col = {'H':'lightgrey',
            'C':'grey',
@@ -411,7 +445,22 @@ if __name__ == '__main__':
         pos = nx.spring_layout(obj.graph)
         nx.draw_networkx_nodes(obj.graph, pos=pos, node_size=1000, nodelist=obj.reactive_indexes, node_color='coral', alpha=0.5)
         nx.draw(obj.graph, pos=pos, labels=labels_dict, node_color=color_list)
+        # plt.show()
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        x = [v[0] for v in obj.hypermolecule]
+        y = [v[1] for v in obj.hypermolecule]
+        z = [v[2] for v in obj.hypermolecule]
+
+        ax.set_box_aspect([1,1,1])
+        plot = ax.scatter(x, y, z, s=100, label=obj.rootname, c=obj.weights, vmin=0, vmax=1, cmap='YlOrRd', alpha=0.5)
+        plt.colorbar(plot)
+        set_axes_equal(ax)
+        plt.tight_layout()
         plt.show()
+
+
 
 
     # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')

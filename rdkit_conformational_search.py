@@ -6,6 +6,8 @@ from rdkit.Chem import AllChem, TorsionFingerprints
 from rdkit.ML.Cluster import Butina
 from rdkit.Chem.Lipinski import NumRotatableBonds
 from subprocess import DEVNULL, STDOUT, check_call
+from copy import deepcopy
+import re
 
 def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
 	percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
@@ -63,7 +65,7 @@ def csearch(filename):
     suppl = Chem.ForwardSDMolSupplier(input_file)
     mol = [m for m in suppl][0]
     m = Chem.AddHs(mol)
-    old_mol = Chem.AddHs(mol)
+    old_mol = deepcopy(mol)
        
     # numConfs = int(min(max(10**(NumRotatableBonds(mol) + 1), 1e3), 1e6))
     numConfs = 1000
@@ -131,6 +133,44 @@ def csearch(filename):
         structures = structures[:cut]
         energies = energies[:cut]
 
+    # print(Chem.MolToSmiles(old_mol))
+    if len(re.findall('C=C', Chem.MolToSmiles(old_mol))) > 0:
+    # if a double bond is present, remove structures that do not match the input stereochemistry
+
+        temp_ens = Chem.rdchem.RWMol(m)
+        temp_ens = temp_ens.GetMol()
+        temp_ens.RemoveAllConformers()
+
+        for s in structures:
+            temp_ens.AddConformer(s, assignId=True)
+
+
+        def get_tag(mol, i=-1):
+            tag = ''
+            Chem.AssignStereochemistryFrom3D(mol, confId=i)
+            for bond in mol.GetBonds():
+                t = str(bond.GetStereo())[6:]
+                if t != 'NONE':
+                    tag += t
+            return tag
+    
+        ref_tag = get_tag(old_mol)
+        new_structures = []
+        new_energies = []
+
+        for i, s in enumerate(structures):
+            tag = get_tag(temp_ens, i)
+            if tag == ref_tag:
+                new_structures.append(s)
+                new_energies.append(energies[i])
+            # else:
+            #     print(f'Removed structure {i}, tag: {tag}, ref_tag {ref_tag}')
+
+        structures = new_structures
+        energies = new_energies
+
+        del temp_ens
+
     print('Molecule', filename, ': found', len(energies), 'different conformers')
 
     ensemble = Chem.rdchem.RWMol(m)
@@ -171,9 +211,9 @@ if __name__ == '__main__':
     # ensemble, energies = csearch('SN2/CH3Br.mol')
     # ensemble, energies = csearch('SN2/ketone.mol')
     # ensemble, energies = csearch('SN2/MeOH.mol')
-    ensemble, energies = csearch('SN2/flex.mol')
+    # ensemble, energies = csearch('SN2/flex.mol')
+    ensemble, energies = csearch('EZ.mol')
 
     t_end = time.time()
     print(f'Took {round(t_end - t_start, 3)} s')
-    print('Energies are', [round(e, 5) for e in energies], ' kcal/mol\n')
-         
+    print('Energies are', [round(e, 5) for e in energies], ' kcal/mol\n')        

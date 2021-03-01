@@ -9,7 +9,8 @@ HARDNESS = 0.5
 
 
 # Distribution-correcting constants
-BREADTH = 2
+# BREADTH = 2
+BREADTH = 1e6
 
 ##############################################
 

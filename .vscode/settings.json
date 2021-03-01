@@ -1,4 +1,5 @@
 {
     "python.pythonPath": "/usr/local/Caskroom/miniconda/base/envs/TSCoDe/bin/python",
-    "python.formatting.provider": "black"
+    "python.formatting.provider": "black",
+    "jupyter.jupyterServerType": "local"
 }
