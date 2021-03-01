@@ -15,7 +15,7 @@ class Single:
     def __repr__(self):
         return 'Single Bond'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, filename=None, neighbors_indexes=None, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -31,17 +31,17 @@ class Single:
         assert bonded_atom_coords.shape == (3,)
 
         self.coord = reactive_atom_coords
-        self.other = bonded_atom_coords
-        self.orb_vec = self.coord - self.other
+        self.others = bonded_atom_coords
+        self.orb_vec = self.coord - self.others
 
         try:
             key = symbol + ' ' + str(self)
             orb_dim = orb_dim_dict[key]
         except:
-            orb_dim = 0.5*np.linalg.norm(self.coord - self.other)
+            orb_dim = 0.5*np.linalg.norm(self.coord - self.others)
             print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using half the bonding distance.')
 
-        self.center = np.array([orb_dim * norm(self.coord - self.other) + self.coord])
+        self.center = np.array([orb_dim * norm(self.coord - self.others) + self.coord])
         return None
 
 class Sp2:
@@ -53,7 +53,7 @@ class Sp2:
     def __repr__(self):
         return 'sp2'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, filename=None, neighbors_indexes=None, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -95,7 +95,7 @@ class Sp: # BROKEN for sure, needs to fixed, eventually
     def __repr__(self):
         return 'sp'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, filename=None, neighbors_indexes=None, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -120,12 +120,12 @@ class Sp3:
     def __repr__(self):
         return 'sp3'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, filename=None, neighbors_indexes=None, neighbors_symbols=None) -> None:
         '''
-        Adding the properties of the two atom considered
+        Adding the properties of the atom considered
 
         :params reactive_atom_coords: coordinates of the reactive atom
-        :params bonded_atom_coords: coordinates of the atom bonded at the reactive object
+        :params bonded_atom_coords: coordinates of the atom bonded at the reactive atom
         :return: None
         '''
         assert reactive_atom_coords.shape == (3,)
@@ -133,31 +133,71 @@ class Sp3:
 
         self.neighbors_symbols = neighbors_symbols if neighbors_symbols != None else self.neighbors_symbols
         self.coord = reactive_atom_coords
-        self.other = bonded_atom_coords
+        self.others = bonded_atom_coords
 
         if len([atom for atom in self.neighbors_symbols if atom in ['O', 'N', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
-            self.leaving_group_found = True
-            leaving_group_coords = self.other[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
-            self.orb_vec = self.coord - leaving_group_coords
+            self.leaving_group_coords = self.others[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
+        else: # if we cannot, ask user if we have not already
+            if not filename == None:
+                self.leaving_group_coords = self._set_leaving_group(filename, neighbors_indexes)
 
-            try:
-                key = symbol + ' ' + str(self)
-                orb_dim = orb_dim_dict[key]
-            except:
-                orb_dim = 1
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+        self.orb_vec = self.coord - self.leaving_group_coords
 
-            self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
-        else:
-            self.leaving_group_found = False
-            self.center = np.array([self.coord])
-            self.orb_vec = self.coord
-            print('ATTENTION: COULD NOT TELL LEAVING GROUP ATOM ON SP3 REACTIVE CENTER, APPROXIMATING ORBITALS AS A SPHERE ON THE SP3 ATOM!')
+        try:
+            key = symbol + ' ' + str(self)
+            orb_dim = orb_dim_dict[key]
+        except:
+            orb_dim = 1
+            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+
+        self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
 
         self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
 
         return None
 
+    def _set_leaving_group(self, filename, neighbors_indexes):
+        '''
+        Manually set the molecule leaving group from the ASE GUI, imposing
+        a constraint on the desired atom.
+
+        '''
+        from ase import Atoms
+        from ase.visualize import view
+        from cclib.io import ccread
+        from periodictable import core
+        pt_s = core.PeriodicTable(table='s')
+
+
+        data = ccread(filename)
+        coords = data.atomcoords[0]
+        labels = ''.join([pt_s[i].symbol for i in data.atomnos])
+
+        atoms = Atoms(labels, positions=coords)
+
+        while True:
+            print(('\nPlease, manually select the leaving group atom for molecule %s.'
+                '\nRotate with right click and select atoms by clicking.'
+                '\nThen go to Tools -> Constraints -> Constrain, and close the GUI.'
+                '\nBond view toggle with Ctrl+B\n') % (filename))
+            atoms.edit()
+            if atoms.constraints != []:
+                if len(list(atoms.constraints[0].get_indices())) == 1:
+                    if list(atoms.constraints[0].get_indices())[0] in neighbors_indexes:
+                        break
+                    else:
+                        print('\nSeems that the atom you selected is not bonded to the reactive center or is the reactive atom itself.\nThis is probably an error, please try again.')
+                        atoms.constraints = []
+                else:
+                    print('\nPlease only select one leaving group atom.')
+                    atoms.constraints = []
+
+        leaving_group_index = list(atoms.constraints[0].get_indices())[0]
+        leaving_group_coords = self.others[neighbors_indexes.index(leaving_group_index)]
+
+        # print(f'Check: leaving group index is {leaving_group_index}, d =', np.linalg.norm(leaving_group_coords - self.coord))
+
+        return leaving_group_coords
 
 class Ether:
     '''
@@ -168,7 +208,7 @@ class Ether:
     def __repr__(self):
         return 'Ether'
 
-    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, neighbors_symbols=None) -> None:
+    def prop(self, reactive_atom_coords:np.array, bonded_atom_coords:np.array, symbol, filename=None, neighbors_indexes=None, neighbors_symbols=None) -> None:
         '''
         Adding the properties of the two atom considered
 
@@ -179,9 +219,9 @@ class Ether:
         self.neighbors_symbols = neighbors_symbols if neighbors_symbols != None else self.neighbors_symbols
 
         self.coord = reactive_atom_coords
-        self.other = bonded_atom_coords
+        self.others = bonded_atom_coords
 
-        self.vectors = self.other - self.coord # vectors connecting center to each of the two substituents
+        self.vectors = self.others - self.coord # vectors connecting center to each of the two substituents
 
         try:
             key = symbol + ' ' + str(self)
@@ -216,12 +256,12 @@ atom_type_dict = {
              'C3' : Sp2(), # double ball
              'C4' : Sp3(), # one ball: on the back of weakest bond. If can't tell which is which, one big ball
              'N1' : Single(),
-             'N2' : 'imine', # one ball on free side
+            #  'N2' : 'imine', # one ball on free side
              'N3' : Sp2(), # or one ball on free side?
              'N4' : Sp3(),
-             'O1' : 'ketone-like', # two balls 120° apart. Also for alkoxides, good enough
+            #  'O1' : 'ketone-like', # two balls 120° apart. Also for alkoxides, good enough
              'O2' : Ether(), # or alcohol, two balls 109,5° apart
-             'S1' : 'ketone-like',
+            #  'S1' : 'ketone-like',
              'S2' : Ether(),
              'F1' : Single(),
              'Cl1': Single(),

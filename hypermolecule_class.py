@@ -148,9 +148,9 @@ class Hypermolecule:
 
         while atoms.constraints == []:
             print(('\nPlease, manually select the reactive atom(s) for molecule %s.'
-                   '\nSelect an atom by clicking on it, multiple selection can be done by Ctrl+Click.'
-                   '\nWith desired atom(s) selected, go to Tools -> Constraints -> Constrain, then close the GUI.'
-                   '\nBond view toggle with Ctrl+B\n') % (filename))
+                    '\nRotate with right click and select atoms by clicking. Multiple selections can be done by Ctrl+Click.'
+                    '\nWith desired atom(s) selected, go to Tools -> Constraints -> Constrain, then close the GUI.'
+                    '\nBond view toggle with Ctrl+B\n') % (filename))
             atoms.edit()
 
         return list(atoms.constraints[0].get_indices())
@@ -177,7 +177,7 @@ class Hypermolecule:
             ff.Minimize(maxIts=200)
             energies.append(ff.CalcEnergy())
 
-        self.smiles = Chem.MolToSmiles(mols[0])
+        # self.smiles = Chem.MolToSmiles(mols[0])
 
         del mols
         os.remove(sdf_name)
@@ -247,12 +247,6 @@ class Hypermolecule:
                     matrix[i][j] = 1
 
         self.graph = nx.from_numpy_matrix(matrix)
-
-        if show_nx:
-            import matplotlib.pyplot as plt
-            labels_dict = {i:pt[n].symbol for i, n in enumerate(atomnos)}
-            nx.draw(self.graph, labels=labels_dict)
-            plt.show()
 
         indexes = set()
 
@@ -351,7 +345,7 @@ class Hypermolecule:
             neighbors = len(neighbors_indexes)
             atom_type = deepcopy(atom_type_dict[symbol + str(neighbors)])
 
-            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], symbol, [pt[self.atomnos[i]].symbol for i in neighbors_indexes])
+            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], symbol, self.name, neighbors_indexes, [pt[self.atomnos[i]].symbol for i in neighbors_indexes])
             # pumping required properties into reactive_atom class:
             # reactive atom coordinates, symbol, neighbors coordinates, neighbor symbols
 
@@ -382,19 +376,44 @@ class Hypermolecule:
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
-    show_nx = True
+    test = {
 
-    # test = Hypermolecule('Resources/indole/indole_ensemble.xyz', 6, debug=True)
-    # test = Hypermolecule('Resources/SN2/amine_ensemble.xyz', 11, debug=True)
-    # test = Hypermolecule('Resources/dienamine/dienamine_ensemble.xyz', 7, debug=True)
-    # test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', [3, 5], debug=True)
-    # test = Hypermolecule('Resources/SN2/flex_ensemble.xyz', debug=True)
+        # 1 : ('Resources/indole/indole_ensemble.xyz', 6),
+        # 2 : ('Resources/SN2/amine_ensemble.xyz', 11),
+        # 3 : ('Resources/dienamine/dienamine_ensemble.xyz', 7),
+        # 4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
+        5 : ('Resources/SN2/flex_ensemble.xyz', None),
 
-    # test = Hypermolecule('Resources/SN2/MeOH_ensemble.xyz', 1, debug=True)
-    test = Hypermolecule('Resources/SN2/CH3Br_ensemble.xyz', 0, debug=True)
+        # 6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
+        # 7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
+
+            }
+
+    Hypermolecule(test[5][0], test[5][1]).write_hypermolecule()
 
 
-    test.write_hypermolecule()
+    quit()
+
+    import matplotlib.pyplot as plt
+
+    col = {'H':'lightgrey',
+            'C':'grey',
+            'O':'tab:red',
+            'N':'tab:blue',
+            'S':'gold',
+            'Br':'brown'}
+
+    for obj in [Hypermolecule(path, indexes) for path, indexes in test.values()]:
+        labels_dict = {i:pt[n].symbol for i, n in enumerate(obj.atomnos)}
+
+        color_list = [col[i] for i in labels_dict.values()]
+        nx.draw(obj.graph, labels=labels_dict, node_color=color_list)
+        plt.show()
+
+        from pprint import pprint
+        pprint(vars(obj.reactive_atoms_classes[0]))
+
+
     # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')
     # en = test._get_ensemble_energies('Resources/SN2/flex_ensemble.xyz')
     # min_en = min(en)
