@@ -4,16 +4,23 @@ TSCoDe - Transition state Seeker from Conformational Density
 (Work in Progress)
 
 '''
-from hypermolecule_class import Hypermolecule
+from hypermolecule_class import Hypermolecule, pt
 import numpy as np
 from copy import deepcopy
 from parameters import *
-from scipy import ndimage
-from reactive_atoms_classes import pt
 from pprint import pprint
 from scipy.spatial.transform import Rotation as R
 import os
 import time
+from cclib.io import ccread
+from openbabel import openbabel as ob
+from ase import Atoms
+from ase.visualize import view
+from ase.optimize import BFGS
+from ase.constraints import FixAtoms
+from ase.calculators.mopac import MOPAC
+from optimization_methods import *
+
 
 from subprocess import DEVNULL, STDOUT, check_call
 
@@ -29,48 +36,33 @@ def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill=
 def norm(vec):
     return vec / np.linalg.norm(vec)
 
-# def quaternion_multiply(quaternion1, quaternion0):
-#     w0, x0, y0, z0 = quaternion0
-#     w1, x1, y1, z1 = quaternion1
-#     return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
-#                      x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
-#                      -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
-#                      x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
+def cartesian_product(*arrays):
+    return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
 
-# def align_vectors(reference, target):
-#     '''
-#     :params reference, target: single vectors, ndarray type, normalized
+def calc_positioned_conformers(self):
+    self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
 
-#     :return: rotation to be applied to target to align with reference
-#              as a rotation vector, in radians.
-#     '''
-#     assert reference.shape[0] == 3
-#     assert target.shape[0] == 3
+def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
+    '''
+    output is of _io.TextIOWrapper type
 
-#     p = 0, target[0], target[1], target[2]
-
-#     axis = norm(np.cross(target, reference))
-#     angle = np.arccos(target @ reference) / 2
-
-#     sin = np.sin(angle)
-#     # q = np.cos(angle), sin*axis[0], sin*axis[1], sin*axis[2]
-
-#     # sin_inv = np.sin(-angle)
-#     # q_inv = np.cos(-angle), sin_inv*axis[0], sin_inv*axis[1], sin_inv*axis[2]
-
-#     # quaternion_multiply(quaternion_multiply(q, p), q_inv)[1:]
-
-#     q = sin*axis[0], sin*axis[1], sin*axis[2], np.cos(angle)
-
-#     print(f'ALIGN: rotating {2* angle * 180 / np.pi} degrees')
-
-#     return -R.from_quat(q).as_rotvec()
+    '''
+    assert atomnos.shape[0] == coords.shape[0]
+    assert coords.shape[1] == 3
+    string = ''
+    string += str(len(coords))
+    string += f'\n{title}\n'
+    for i, atom in enumerate(coords):
+        string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
+    output.write(string)
 
 def rotation_matrix_from_vectors(vec1, vec2):
-    """ Find the rotation matrix that aligns vec1 to vec2
+    """
+    Find the rotation matrix that aligns vec1 to vec2
     :param vec1: A 3d "source" vector
     :param vec2: A 3d "destination" vector
     :return mat: A transform matrix (3x3) which when applied to vec1, aligns it with vec2.
+
     """
     a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
     v = np.cross(a, b)
@@ -83,10 +75,178 @@ def rotation_matrix_from_vectors(vec1, vec2):
 class Docker:
     def __init__(self, *objects):
         self.objects = list(*objects)
+        self.objects = sorted(self.objects, key=lambda x: len(x.atomnos), reverse=True)
     
-    def setup(self, population=1, maxcycles=100):
-        self.population = population
-        self.maxcycles = maxcycles
+    def setup(self, repeat=1):
+        self.repeat = repeat
+
+    def string_embed(self):
+        '''
+        return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
+        into self.structures. Algorithm used is the "string" algorithm (see docs).
+        '''
+        assert len(self.objects) == 2
+        # NOTE THAT THIS APPROACH WILL ONLY WORK FOR TWO MOLECULES, AND A REVISION MUST BE DONE TO GENERALIZE IT
+
+        centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
+        # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
+        
+        threads = []
+        for _ in range(len(centers_indexes)*self.repeat):
+            threads.append([deepcopy(obj) for obj in self.objects])
+
+        for t, thread in enumerate(threads): # each run is a different "regioisomer", repeated self.repeat times
+
+            indexes = centers_indexes[t % len(centers_indexes)] # looping over the indexes that define "regiochemistry"
+            repeated = True if t // len(centers_indexes) > 0 else False
+
+            for i, molecule in enumerate(thread[1:]): #first molecule is always frozen in place, other(s) are placed with an orbital criterion
+
+                ref_orb_vec = thread[i].centers[indexes[i]]  # absolute, arbitrarily long
+                # reference molecule is the one just before molecule, so the i-th for how the loop is set up
+                mol_orb_vec = molecule.centers[indexes[i+1]]
+
+                ref_orb_vers = thread[i].orb_vers[indexes[i]]  # unit length, relative to orbital orientation
+                # reference molecule is the one just before
+                mol_orb_vers = molecule.orb_vers[indexes[i+1]]
+
+                molecule.rotation = rotation_matrix_from_vectors(mol_orb_vers, -ref_orb_vers)
+
+                molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
+
+                if repeated:
+
+                    pointer = molecule.rotation @ mol_orb_vers
+
+                    rotation = (np.random.rand()*2. - 1.) * np.pi    # random angle (radians) between -pi and pi
+                    quat = np.array([np.sin(rotation/2)*pointer[0],
+                                    np.sin(rotation/2)*pointer[1],
+                                    np.sin(rotation/2)*pointer[2],
+                                    np.cos(rotation/2)])            # normalized quaternion, scalar last (i j k w)
+
+                    delta_rot = R.from_quat(quat).as_matrix()
+                    molecule.rotation = delta_rot @ molecule.rotation
+
+                    molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
+
+        return threads
+
+    def cyclical_embed(self):
+        '''
+        return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
+        into self.structures. Algorithm used is the "cyclical" algorithm (see docs).
+        '''
+
+        import itertools as it
+        import more_itertools as mit
+        import numpy as np
+
+        def get_mols_indexes(n:int):
+            '''
+            params n: number of sides of the polygon to be constructed
+            return: list of n-shaped tuples with indexes of pivots for each unique polygon.
+                    These polygons are unique under rotations and reflections.
+            '''
+            perms = list(it.permutations(range(n)))
+            ordered_perms = set([sorted(mit.circular_shifts(p))[0] for p in perms])
+            unique_perms = []
+            for p in ordered_perms:
+                if sorted(mit.circular_shifts(reversed(p)))[0] not in unique_perms:
+                    unique_perms.append(p)
+            return sorted(unique_perms)
+        
+        def set_pivots(mol):
+            '''
+            params mol: Hypermolecule class
+            Function sets the mol.pivots attribute, that is a list
+            containing each vector connecting two orbitals on different atoms
+            '''
+
+            indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes])
+            # indexes of vectors in mol.center. Reactive atoms are necessarily 2 and so for one center on atom 0 and 
+            # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
+
+            mol.pivots = []
+
+            for i,j in indexes:
+                v1 = mol.reactive_atoms_classes[0].center[i]
+                v2 = mol.reactive_atoms_classes[1].center[j]
+                pivot = v1 - v2
+                mol.pivots.append(pivot)
+
+
+
+
+
+        for molecule in self.objects:
+            set_pivots(molecule)
+
+        pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
+        # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
+
+        mols_indexes = get_mols_indexes(len(self.objects))
+        # for (up to) 3 molecules, the only unique triangle is built with indexes (0,1,2), but there are more dispositions for 4+ mols
+        
+        threads = []
+        for mi in mols_indexes:
+            for pi in pivots_indexes:
+                pivots = [self.objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+                norms = np.linalg.norm(pivots, axis=1)
+                if True:
+                    # TO DO: checks that the disposition has the desired atoms facing each other
+
+                    vertexes_list = polygonize(pivots)
+                    # getting vertexes to embed molecules with
+
+                    for vertexes in vertexes_list:
+
+                        threads.append([deepcopy(obj) for obj in self.objects])
+                        thread = threads[-1]
+                        # generating the thread we are going to modify
+
+                        for molecule in thread[1:]:
+                            molecule.position = 0###
+                        # first molecule stands in place, other ones are embedded
+
+            else:
+                print('# Rejected embed for geometrical criterion')
+
+        # threads = []
+        # for _ in range(len(pivots_indexes)*len(mols_indexes)*self.repeat):
+        #     threads.append([deepcopy(obj) for obj in self.objects])
+        # # initializing the total number of threads based on the predicted number of dispositions
+
+        # for t, thread in enumerate(threads): # each run is a different "regioisomer", repeated self.repeat times
+            # MODIFYING THREADS
+
+        #         for i, molecule in enumerate(thread[1:]): #first molecule is always frozen in place, other(s) are placed with an orbital criterion
+
+        #             ref_orb_vec = thread[i].centers[indexes[i]]  # absolute, arbitrarily long
+        #             # reference molecule is the one just before
+        #             mol_orb_vec = molecule.centers[indexes[i+1]]
+
+        #             ref_orb_vers = thread[i].orb_vers[indexes[i]]  # unit length, relative to orbital orientation
+        #             # reference molecule is the one just before
+        #             mol_orb_vers = molecule.orb_vers[indexes[i+1]]
+
+        #             molecule.rotation = rotation_matrix_from_vectors(mol_orb_vers, -ref_orb_vers)
+
+        #             molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
+
+        #             if repeated:
+
+        #                 pointer = molecule.rotation @ mol_orb_vers
+
+        #                 rotation = (np.random.rand()*2. - 1.) * np.pi    # random angle (radians) between -pi and pi
+        #                 quat = np.array([np.sin(rotation/2)*pointer[0],
+        #                                 np.sin(rotation/2)*pointer[1],
+        #                                 np.sin(rotation/2)*pointer[2],
+        #                                 np.cos(rotation/2)])            # normalized quaternion, scalar last (i j k w)
+
+        #                 delta_rot = R.from_quat(quat).as_matrix()
+        #                 molecule.rotation = delta_rot @ molecule.rotation
+
+        #                 molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
 
     def run(self, debug=False):
         '''
@@ -95,330 +255,132 @@ class Docker:
 
         t_start = time.time()
 
-        if len(self.objects) != 2:
-            raise Exception('Still to be implemented. Sorry.')
 
+        if all([len(molecule.reactive_atoms_classes) == 2 for molecule in self.objects]):
+            embedded_structures = self.cyclical_embed()
+            raise Exception('to be done')
+        else:
+            embedded_structures = self.string_embed()
 
-        threads = []
-        for _ in range(self.population):
-            threads.append([deepcopy(self.objects[0]), deepcopy(self.objects[1])])
+                            # print(f'Random rotation of {rotation / np.pi * 180} degrees performed on candidate {t}')
+
+############################################################################################################################
+
+            # with open('ouroboros_setup.xyz', 'a') as f:
+            #     structure = np.array([thread[0].rotation @ v + thread[0].position for v in thread[0].hypermolecule])
+            #     atomnos = thread[0].hypermolecule_atomnos
+            #     for molecule in thread[1:]:
+            #         s = np.array([molecule.rotation @ v + molecule.position for v in molecule.hypermolecule])
+            #         structure = np.concatenate((structure, s))
+            #         atomnos = np.concatenate((atomnos, molecule.hypermolecule_atomnos))
+            #     write_xyz(structure, atomnos, f, title=f'Arrangement_{t}')
+        # quit()
+
+############################################################################################################################
+
+        atomnos = np.concatenate([molecule.atomnos for molecule in objects])
+        # just a way not to lose track of atomic numbers associated with coordinates
+
+        try:
+            os.remove('TS_out.xyz')
+        except:
+            pass
         
-        for thread in threads: # each run is set up similarly, with a random variation
+        # GENERATING ALL POSSIBLE COMBINATIONS OF CONFORMATIONS AND STORING THEM IN SELF.STRUCTURES
 
-            for molecule in thread[1:]: #first molecule is always frozen in place
+        conf_number = [len(molecule.atomcoords) for molecule in objects]
+        conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
+        # first index of each vector is the conformer number of the first molecule and so on...
 
-                delta_pos = np.array([(self.objects[0].dimensions[0] + self.objects[1].dimensions[0]), 0, 0]) # in angstroms
-                delta_rot = np.array([0, 0, np.pi])                                             # flip along z to face the first molecule
-                delta_pos += ((np.random.rand(3)*2. - 1.) * MAX_DIST) * np.pi / 180
-                delta_rot += ((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * np.pi / 180
+        self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
 
-                np.add(molecule.position, delta_pos, out=molecule.position, casting='unsafe')
+        for geometry_number, geometry in enumerate(embedded_structures):
 
-                delta_rot_mat = R.from_rotvec(delta_rot).as_matrix()
-                molecule.rotation = molecule.rotation @ delta_rot_mat
+            for molecule in geometry:
+                calc_positioned_conformers(molecule)
 
-        results = {i:{} for i in range(len(threads))}
-        score_record = {i:0 for i in range(len(threads))}
-        best_score = 0
+            for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
+                count_atoms = 0
 
-        try:
-            os.remove('debug_out.xyz')
-        except:
-            pass
+                for molecule_number, conformation in enumerate(conf_index): # 0, 0 then 1, 0 then 2, 0 (first [] of outer for loop)
+                    coords = geometry[molecule_number].positioned_conformers[conformation]
+                    n = len(geometry[molecule_number].atomnos)
+                    self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
+                    count_atoms += n
 
-        # pprint(threads)
+        print(f'Generated {len(self.structures)} transition state candidates')
 
-        for thread_number, thread in enumerate(threads):
-            iteration = 0
-            unproductive_iterations = 0
-            best_score = -1e100
-            far = True
+        ################################################# SANITY CHECK
 
-            while True:
+        constrained_indexes = [int(self.objects[0].reactive_indexes[0]),
+                               int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))]
 
-                score = 0
-                biggest_clash_vector = np.array([0,0,0])
+        graphs = [mol.graph for mol in self.objects]
+        
+        msk = np.array([sanity_check(structure, atomnos, constrained_indexes, graphs, max_new_bonds=3) for structure in self.structures])
+        self.structures = self.structures[msk]
+        print(f'Discarded {len([b for b in msk if b == False])} candidates for compenetration')
+        # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
 
-                for molecule in thread[1:]:
+        ################################################# GEOMETRY OPTIMIZATION
 
-                    min_dist = 1e5
-
-                    for i, atom in enumerate(molecule.hypermolecule):
-                        for j, ref_atom in enumerate(thread[0].hypermolecule):
-
-                            a = molecule.rotation @ atom + molecule.position
-                            b = ref_atom + thread[0].position
-
-                            dist = np.linalg.norm(a - b)
-
-
-                            if dist < D_CLASH:
-                                probability = molecule.weights[i] * thread[0].weights[j]
-                                score -= SLOPE*(D_CLASH - dist) # D_CLASH is also the minimum distance to feel repulsive interaction
-                                if dist < min_dist:
-                                    min_dist = dist
-                                    biggest_clash_vector = a - b
-
-                    dist = []
-                    orb_vecs = []
-                    for reactive_atom in molecule.reactive_atoms_classes:
-                        for orbital in reactive_atom.center:
-                            for ref_reactive_atom in thread[0].reactive_atoms_classes:
-                                for ref_orbital in ref_reactive_atom.center:
-
-                                    a = ref_orbital
-                                    b = molecule.rotation @ orbital + molecule.position
-
-                                    dist.append(np.linalg.norm(a - b))
-                                    orb_vecs.append([a, b])
-
-                    if min(dist) < (K_SOFTNESS/SLOPE):
-
-                        far = False
-                       
-                        orb1 = orb_vecs[dist.index(min(dist))][0] # closest couple of orbital vectors (absolute positioning)
-                        orb2 = orb_vecs[dist.index(min(dist))][1]
-
-                        orb_vers1 = norm(orb1 - thread[0].reactive_atoms_classes[0].coord)   # orbital versors, relative positioning
-                        orb_vers2 = norm(orb2 - molecule.reactive_atoms_classes[0].coord - molecule.position)
-
-                        alignment = np.abs(orb_vers1 @ orb_vers2)
-                        s = 1 - SLOPE/K_SOFTNESS * min(dist)
-                        score += s*alignment
-                        # print(f'ORB: s {s}, a {alignment} - {round(s*alignment,2)} points')
-                    else:
-                        far = True
-
-
-                if debug:
-                    it = '%-4s' % (iteration)
-                    print(f'Iteration {it} of thread {thread_number + 1}/{self.population}: score {round(score, 3)}, best {round(best_score, 3)}, unprod. it. {unproductive_iterations}')
-
-                else:
-                    loadbar(iteration + self.maxcycles*thread_number, self.maxcycles*self.population, f'Running generation {thread_number + 1}/{self.population}: ')
-
-                if debug:
-                    coords = []
-                    for molecule in thread:
-                        for i, atom in enumerate(molecule.hypermolecule):
-                            adjusted = molecule.rotation @ atom + molecule.position
-                            coords.append('%-4s %-12s %-12s %-12s' % (pt[molecule.hypermolecule_atomnos[i]].symbol, adjusted[0], adjusted[1], adjusted[2]))
-
-                        for reactive_atom in molecule.reactive_atoms_classes:
-
-                            for center in reactive_atom.center:
-                                adjusted = molecule.rotation @ center + molecule.position
-                                coords.append('%-4s %-12s %-12s %-12s' % ('D', adjusted[0], adjusted[1], adjusted[2]))
-
-                            if far:
-                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
-                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', 5, 5, 5))
-
-                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', 5, 5, 5))
-                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', 5, 5, 5))
-                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', 5, 5, 5))
-
-                            else:
-                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb1[0], orb1[1], orb1[2]))
-                                coords.append('%-4s %-12s %-12s %-12s' % ('Li', orb2[0], orb2[1], orb2[2]))
-
-                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', -orb_vers1[0], -orb_vers1[1], -orb_vers1[2]))
-                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', orb_vers2[0], orb_vers2[1], orb_vers2[2]))
-                                # coords.append('%-4s %-12s %-12s %-12s' % ('Be', 0, 0, 0))
-
-                    # coords.append('%-4s %-12s %-12s %-12s' % ('O', 0, 0, 0)) # verify origin position
-
-                    with open('debug_out.xyz', 'a') as f:
-                        f.write(f'{len(coords)}\nTEST\n')
-                        f.write('\n'.join(coords))
-                        f.write('\n')                    
-
-                if iteration == 0 or score > best_score:
-
-                    unproductive_iterations = 0
-
-                    if score > 0:
-                        for i, mol in enumerate(self.objects):
-                            results[thread_number] = [deepcopy(mol) for mol in thread]
-                            score_record[thread_number] = score
-
-                    last_step = deepcopy(thread)
-                    last_score = deepcopy(best_score)
-                    best_score = deepcopy(score)
-                    restart = False
-
-                elif not restart:
-                    thread = deepcopy(last_step)
-                    unproductive_iterations += 1
-
-                if iteration == self.maxcycles or score > 0.95:
-                    break
-
-                # if score > 1.01:
-                #     raise Exception('Something wrong happened. Sorry.')
-
-                for molecule in thread[1:]:
-
-                    if best_score <= 0.5:
-                        multiplier = min([1, 1 - best_score])
-                        delta_pos = ((np.random.rand(3)*2. - 1.) * MAX_DIST) * multiplier
-                        delta_rot_mat = R.from_rotvec(((np.random.rand(3)*2. - 1.) * MAX_ANGLE) * np.pi / 180 * multiplier).as_matrix()
-
-                    else:
-                        delta_pos = np.array([0.,0.,0.])
-                        delta_rot_mat = np.identity(3)
-
-                    if unproductive_iterations > 20:
-                        delta_pos += (np.random.rand(3)*2. - 1.) * 20
-                        restart = True
-                        unproductive_iterations = 0
-
-                    if far: # if far, bring them closer
-                        delta_pos += 0.5*(thread[0].reactive_atoms_classes[0].center[0] - molecule.rotation @ molecule.reactive_atoms_classes[0].center[0] - molecule.position) # will break for n mols
-
-                    # else: # if close, move towards and align angle to closest orbital, move away from biggest clash
-                       
-                    #     # WILL I EVER FIX THIS ALIGNMENT ISSUE? GOD ONLY KNOWS
-                    #     if np.linalg.norm(orb1-orb2) < 0.5:
-                    #         # rot_vec = R.align_vectors(np.array([-orb_vers1]), np.array([orb_vers2]))[0].as_rotvec()
-                    #         # delta_rot_mat = R.from_rotvec(rot_vec).as_matrix() @ delta_rot_mat
-
-                    #         alignment_mat = rotation_matrix_from_vectors(orb_vers2, -orb_vers1)
-                    #         delta_rot_mat = alignment_mat @ delta_rot_mat
-
-                    #         delta_pos += (orb2 - molecule.position) * np.sin(R.from_matrix(alignment_mat).as_rotvec())
-
-
-                    #     delta_pos += 0.5*(orb1 - orb2)
-
-                    #     # if best_score < 0.8:
-                    #     #     delta_pos += 0.1 * biggest_clash_vector
-
-
-                    np.add(molecule.position, delta_pos, out=molecule.position, casting='unsafe')
-
-                    # delta_rot_mat = R.from_rotvec(delta_rot).as_matrix()
-                    # molecule.rotation = molecule.rotation @ delta_rot_mat
-                    molecule.rotation = delta_rot_mat @ molecule.rotation
-                    # print('MOL ROT is', R.from_matrix(molecule.rotation).as_rotvec() * 180 / np.pi)
-
-                iteration += 1
-
-        t_stop = time.time()
-
-        print(f'Took {round(t_stop - t_start, 2)} s, about {round((t_stop - t_start)/self.maxcycles/self.population*1000, 3)} ms per iteration ({self.maxcycles*self.population})')
-
-        try:
-            os.remove('raw_results_out.xyz')
-        except:
-            pass
-
-        for run, thread in results.items():
-            if score_record[run] > 0:
-                coords = []
-                for molecule in thread:
-                    for i, atom in enumerate(molecule.hypermolecule):
-                        adjusted = molecule.rotation @ atom + molecule.position
-                        coords.append('%-4s %-12s %-12s %-12s' % (pt[molecule.hypermolecule_atomnos[i]].symbol, adjusted[0], adjusted[1], adjusted[2]))
-
-                with open('raw_results_out.xyz', 'a') as f:
-                    f.write(f'{len(coords)}\nGENERATION {run} - score {score_record[run]}\n')
-                    f.write('\n'.join(coords))
-                    f.write('\n')
-
-        print()
-        print('   Run   Score')
-        print('-----------------')
-        for run, score in score_record.items():
-            score = 'DNF' if score == 0 else round(score, 3)
-            print('   %-3s   %-4s' % (run, score))
-        print('-----------------\n')
-
-        def cartesian_product(*arrays):
-            return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
-
-        def calc_positioned_conformers(self):
-            self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
-
-        def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
-            '''
-            output is of _io.TextIOWrapper type
-
-            '''
-            assert atomnos.shape[0] == coords.shape[0]
-            assert coords.shape[1] == 3
-            string = ''
-            string += str(len(coords))
-            string += f'\n{title}\n'
-            for i, atom in enumerate(coords):
-                string += '%s\t%s %s %s\n' % (pt[atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6))
-            output.write(string)
-
-        if not debug:
-
-            geometries = [molecules for i, molecules in results.items() if score_record[i] > 0]
-            atomnos = np.concatenate([molecule.atomnos for molecule in objects])
-            # a way so that we don't lose track of the atomic numbers associated with coordinates
-
-
-            #  PLAN B: FOR LOOPS
-
+        self.energies = np.zeros(len(self.structures))
+        t_start = time.time()
+        for i, structure in enumerate(deepcopy(self.structures)):
+            loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
             try:
-                os.remove('TS_out.xyz')
-            except:
-                pass
-            
-            # GENERATING ALL POSSIBLE COMBINATIONS OF CONFORMATIONS AND STORING THEM IN SELF.STRUCTURES
+                intermediate_geometry, _ = Hookean_optimization(structure, atomnos, constrained_indexes, graphs, calculator='Mopac', method='PM7')
+                self.structures[i], self.energies[i] = optimize(intermediate_geometry, atomnos, constrained_indexes, graphs, calculator='Mopac', method='PM7')
+            except ValueError:
+                # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                # The easiest solution is to reject the structure and go on.
+                self.structures[i] = None
+                self.energies[i] = np.inf
 
-            conf_number = [len(molecule.atomcoords) for molecule in objects]
-            conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
-            # first index of each vector is the conformer number of the first molecule and so on...
+        loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
+        t_end = time.time()
+        print(f'Mopac PM7 optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
-            self.structures = np.zeros((int(len(conf_indexes)*int(len(geometries))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
+        ################################################# PRUNING: ENERGY
 
-            for geometry_number, geometry in enumerate(geometries):
+        self.energies = self.energies - np.min(self.energies)
+        # print(self.energies)
+        mask = self.energies < THRESHOLD_KCAL
+        self.structures = self.structures[mask]
+        self.energies = self.energies[mask]
+        print(f'Rejected {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
-                for molecule in geometry:
-                    calc_positioned_conformers(molecule)
+        ################################################# PRUNING: SIMILARITY
 
-                for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
-                    count_atoms = 0
+        self.structures, mask = prune_conformers(self.structures, self.energies, debug=True)
+        self.energies = self.energies[mask]
+        print(f'Rejected {len(np.where(mask == False)[0])} candidates for similarity')
 
-                    for molecule_number, conformation in enumerate(conf_index): # 0, 0 then 1, 0 then 2, 0 (first [] of outer for loop)
-                        coords = geometry[molecule_number].positioned_conformers[conformation]
-                        n = len(geometry[molecule_number].atomnos)
-                        self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
-                        count_atoms += n
+        ################################################# OUTPUT
 
-            print(f'Generated {len(self.structures)} transition state conformations')
-
-            with open('TS_out.xyz', 'w') as f:        
-                for i, structure in enumerate(self.structures):
-                    write_xyz(structure, atomnos, f, title=f'TS candidate {i}')
-
-
-
-            
-
-
-
-#                 # compute clashes
-#                 # compute Orb superposition
-#                 # score the arrangement
-#                 # if the best of this thread, store it
-#                 # if worse than before, decide if it is worth to keep it (Monte Carlo)
-#                 # if no new structure was found for N cycles, break
-#                 # modify it randomly, based on how far we are from ideality (gradient descent idea)
+        outname = 'TS_out.xyz'
+        with open(outname, 'w') as f:        
+            for i, structure in enumerate(self.structures):
+                write_xyz(structure, atomnos, f, title=f'TS candidate {i}')
+        print(f'Wrote {len(self.structures)} TS structures to {outname} file')
 
 
-# a = ['Resources/SN2/MeOH_ensemble.xyz', 5]
-# a = ['Resources/dienamine/dienamine_ensemble.xyz', 7]
+
+
+try:
+    os.remove('ouroboros_setup.xyz')
+except:
+    pass
+
+# a = ['Resources/SN2/MeOH_ensemble.xyz', 1]
+a = ['Resources/dienamine/dienamine_ensemble.xyz', 6]
 # a = ['Resources/SN2/amine_ensemble.xyz', 22]
-a = ['Resources/indole/indole_ensemble.xyz', 7]
+# a = ['Resources/indole/indole_ensemble.xyz', 6]
 
 
-# b = ['Resources/SN2/CH3Br_ensemble.xyz', 1]
-b = ['Resources/SN2/ketone_ensemble.xyz', 3]
+# b = ['Resources/SN2/CH3Br_ensemble.xyz', 0]
+b = ['Resources/SN2/ketone_ensemble.xyz', 2]
 
 
 inp = [a,b]
@@ -426,10 +388,12 @@ inp = [a,b]
 objects = [Hypermolecule(m[0], m[1]) for m in inp]
 
 docker = Docker(objects) # initialize docker with molecule density objects
-docker.setup(population=1, maxcycles=50) # set variables
+docker.setup(repeat=6) # set variables
+
+os.chdir('Resources/SN2')
 
 docker.run(debug=True)
 
-path = os.path.join(os.getcwd(), 'debug_out.vmd')
-# path = os.path.join(os.getcwd(), 'raw_results_out.vmd')
-check_call(f'vmd -e {path}'.split(), stdout=DEVNULL, stderr=STDOUT)
+path = os.path.join(os.getcwd(), 'TS_out.vmd')
+# check_call(f'vmd -e {path}'.split(), stdout=DEVNULL, stderr=STDOUT)
+os.system(f'vmd -e {path}')

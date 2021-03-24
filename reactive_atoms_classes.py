@@ -180,8 +180,7 @@ class Sp3:
         while True:
             print(('\nPlease, manually select the leaving group atom for molecule %s.'
                 '\nRotate with right click and select atoms by clicking.'
-                '\nThen go to Tools -> Constraints -> Constrain, and close the GUI.'
-                '\nBond view toggle with Ctrl+B\n') % (filename))
+                '\nThen go to Tools -> Constraints -> Constrain, and close the GUI.') % (filename))
 
             GUI(images=Images([atoms]), show_bonds=True).run()
             

@@ -32,7 +32,7 @@ def csearch(filename):
         return list(ids)
              
     def _calc_energy(mol, conformerId, minimizeIts):
-        ff = AllChem.MMFFGetMoleculeForceField(mol, AllChem.MMFFGetMoleculeProperties(mol), confId=conformerId)
+        ff = AllChem.MMFFGetMoleculeForceField(mol, AllChem.MMFFGetMoleculeProperties(mol), nonBondedThresh=100, confId=conformerId)
         ff.Initialize()
         ff.CalcEnergy()
         results = {}
@@ -73,7 +73,7 @@ def csearch(filename):
     pruneRmsThresh = 0.1
     clusterMethod = 'TFD'
     clusterThreshold = 0.2
-    minimizeIterations = 200
+    minimizeIterations = 1000
     print(f'\nInitializing CSearch: found {NumRotatableBonds(mol)} rotable bonds, generating {numConfs} structures')
 
 
@@ -212,7 +212,7 @@ if __name__ == '__main__':
     # ensemble, energies = csearch('SN2/ketone.mol')
     # ensemble, energies = csearch('SN2/MeOH.mol')
     # ensemble, energies = csearch('SN2/flex.mol')
-    ensemble, energies = csearch('EZ.mol')
+    ensemble, energies = csearch('bulk/tax.xyz')
 
     t_end = time.time()
     print(f'Took {round(t_end - t_start, 3)} s')

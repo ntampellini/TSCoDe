@@ -54,6 +54,24 @@ def kabsch(filename, indexes=None):
         
     return outname
 
+def graphize(coords, atomnos):
+    '''
+    :params coords: atomic coordinates as 3D vectors
+    :params atomnos: atomic numbers as a list
+    :return connectivity graph
+    '''
+    def d_min(e1, e2):
+        return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
+        # return 0.2 + (pt[e1].covalent_radius + pt[e2].covalent_radius)
+    # if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
+
+    matrix = np.zeros((len(coords),len(coords)))
+    for i in range(len(coords)):
+        for j in range(i,len(coords)):
+            if np.linalg.norm(coords[i]-coords[j]) < d_min(atomnos[i], atomnos[j]):
+                matrix[i][j] = 1
+
+    return nx.from_numpy_matrix(matrix)
 
 
 class Hypermolecule:
@@ -150,8 +168,7 @@ class Hypermolecule:
         while atoms.constraints == []:
             print(('\nPlease, manually select the reactive atom(s) for molecule %s.'
                     '\nRotate with right click and select atoms by clicking. Multiple selections can be done by Ctrl+Click.'
-                    '\nWith desired atom(s) selected, go to Tools -> Constraints -> Constrain, then close the GUI.'
-                    '\nBond view toggle with Ctrl+B\n') % (filename))
+                    '\nWith desired atom(s) selected, go to Tools -> Constraints -> Constrain, then close the GUI.') % (filename))
 
             GUI(images=Images([atoms]), show_bonds=True).run()
 
@@ -248,17 +265,7 @@ class Hypermolecule:
         :return: list of indexes
         '''
 
-        def d_min(e1, e2):
-            return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
-        # if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
-
-        matrix = np.zeros((len(coords),len(coords)))
-        for i in range(len(coords)):
-            for j in range(i,len(coords)):
-                if np.linalg.norm(coords[i]-coords[j]) < d_min(atomnos[i], atomnos[j]):
-                    matrix[i][j] = 1
-
-        self.graph = nx.from_numpy_matrix(matrix)
+        self.graph = graphize(coords, atomnos)
 
         indexes = set()
 
@@ -392,11 +399,12 @@ if __name__ == '__main__':
         # 1 : ('Resources/indole/indole_ensemble.xyz', 6),
         # 2 : ('Resources/SN2/amine_ensemble.xyz', 10),
         # 3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
-        4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
+        # 4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
         # 5 : ('Resources/SN2/flex_ensemble.xyz', None),
 
-        # 6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
-        # 7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
+        6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
+        7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
+        # 8 : ('Resources/bulk/tax.xyz', None)
 
             }
 
@@ -445,7 +453,7 @@ if __name__ == '__main__':
         pos = nx.spring_layout(obj.graph)
         nx.draw_networkx_nodes(obj.graph, pos=pos, node_size=1000, nodelist=obj.reactive_indexes, node_color='coral', alpha=0.5)
         nx.draw(obj.graph, pos=pos, labels=labels_dict, node_color=color_list)
-        # plt.show()
+        plt.show()
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
