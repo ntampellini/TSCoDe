@@ -72,6 +72,54 @@ def rotation_matrix_from_vectors(vec1, vec2):
     rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
     return rotation_matrix
 
+def polygonize(lengths):
+    '''
+    Returns coordinates for the polygon vertexes used in cyclical TS construction,
+    as a list of vector couples specifying starting and ending point of each pivot 
+    vector. For bimolecular TSs, returns vertexes for the centered superposition of
+    two segments. For trimolecular TSs, returns triangle vertexes.
+
+    :params vertexes: list of floats, used as polygon side lenghts.
+    :return vertexes_out: list of vectors couples (start, end)
+    '''
+    assert len(lengths) in (2,3)
+    lengths = sorted(lengths)
+    arr = np.zeros((len(lengths),2,3))
+
+    if len(lengths) == 2:
+        arr[0,0] = np.array([-lengths[0]/2,0,0])
+        arr[0,1] = np.array([+lengths[0]/2,0,0])
+        arr[1,0] = np.array([-lengths[1]/2,0,0])
+        arr[1,1] = np.array([+lengths[1]/2,0,0])
+
+        vertexes_out = np.vstack(([arr],[arr]))
+        vertexes_out[1,1] *= -1
+        # THIS WORKS
+
+    else:
+        arr[0,1] = np.array([lengths[0],0,0])
+        arr[1,0] = np.array([lengths[0],0,0])
+
+        a = np.power(lengths[0], 2)
+        b = np.power(lengths[1], 2)
+        c = np.power(lengths[2], 2)
+        x = (a-b+c)/(2*a**0.5)
+        y = (c-x**2)**0.5
+
+        arr[1,1] = np.array([x,y,0])
+        arr[2,0] = np.array([x,y,0])
+
+        vertexes_out = np.vstack(([arr],[arr],[arr],[arr],
+                                  [arr],[arr],[arr],[arr]))
+
+        swaps = [(1,2),(2,1),(3,1),(3,2),(4,0),(5,0),(5,1),(6,0),(6,2),(7,0),(7,1),(7,2)]
+
+        for t,v in swaps:
+            # triangle, vector couples to be swapped
+            vertexes_out[t,v][[0,1]] = vertexes_out[t,v][[1,0]]
+
+    return vertexes_out
+
 class Docker:
     def __init__(self, *objects):
         self.objects = list(*objects)
@@ -175,9 +223,6 @@ class Docker:
                 mol.pivots.append(pivot)
 
 
-
-
-
         for molecule in self.objects:
             set_pivots(molecule)
 
@@ -195,58 +240,28 @@ class Docker:
                 if True:
                     # TO DO: checks that the disposition has the desired atoms facing each other
 
-                    vertexes_list = polygonize(pivots)
-                    # getting vertexes to embed molecules with
-
-                    for vertexes in vertexes_list:
+                    for vecs in polygonize(pivots):
+                    # getting vertexes to embed molecules with and iterating over start/end points
 
                         threads.append([deepcopy(obj) for obj in self.objects])
                         thread = threads[-1]
                         # generating the thread we are going to modify
 
-                        for molecule in thread[1:]:
-                            molecule.position = 0###
-                        # first molecule stands in place, other ones are embedded
+                        for start, end in vecs:
+                        # setting molecular positions and rotations (embedding)
+
+
+                            # for molecule in thread[1:]:
+                            #     molecule.position = 0###
+                            # # first molecule stands in place, other ones are embedded
 
             else:
                 print('# Rejected embed for geometrical criterion')
 
-        # threads = []
-        # for _ in range(len(pivots_indexes)*len(mols_indexes)*self.repeat):
-        #     threads.append([deepcopy(obj) for obj in self.objects])
-        # # initializing the total number of threads based on the predicted number of dispositions
+######################################################################################################### RUN
 
-        # for t, thread in enumerate(threads): # each run is a different "regioisomer", repeated self.repeat times
-            # MODIFYING THREADS
 
-        #         for i, molecule in enumerate(thread[1:]): #first molecule is always frozen in place, other(s) are placed with an orbital criterion
 
-        #             ref_orb_vec = thread[i].centers[indexes[i]]  # absolute, arbitrarily long
-        #             # reference molecule is the one just before
-        #             mol_orb_vec = molecule.centers[indexes[i+1]]
-
-        #             ref_orb_vers = thread[i].orb_vers[indexes[i]]  # unit length, relative to orbital orientation
-        #             # reference molecule is the one just before
-        #             mol_orb_vers = molecule.orb_vers[indexes[i+1]]
-
-        #             molecule.rotation = rotation_matrix_from_vectors(mol_orb_vers, -ref_orb_vers)
-
-        #             molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
-
-        #             if repeated:
-
-        #                 pointer = molecule.rotation @ mol_orb_vers
-
-        #                 rotation = (np.random.rand()*2. - 1.) * np.pi    # random angle (radians) between -pi and pi
-        #                 quat = np.array([np.sin(rotation/2)*pointer[0],
-        #                                 np.sin(rotation/2)*pointer[1],
-        #                                 np.sin(rotation/2)*pointer[2],
-        #                                 np.cos(rotation/2)])            # normalized quaternion, scalar last (i j k w)
-
-        #                 delta_rot = R.from_quat(quat).as_matrix()
-        #                 molecule.rotation = delta_rot @ molecule.rotation
-
-        #                 molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
 
     def run(self, debug=False):
         '''
