@@ -72,6 +72,26 @@ def rotation_matrix_from_vectors(vec1, vec2):
     rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
     return rotation_matrix
 
+def rot_mat_from_pointer(pointer, angle):
+    '''
+    Returns the rotation matrix that rotates a system around the given pointer
+    of angle degrees. The algorithm is based on scipy quaternions.
+    :params pointer: a 3D vector
+    :params angle: a int/float, in degrees
+    :return rotation_matrix: matrix that applied to a point, rotates it along the pointer
+    '''
+    assert pointer.shape[0] == 3
+
+    pointer = norm(pointer)
+    angle *= np.pi/180
+
+    quat = np.array([np.sin(angle/2)*pointer[0],
+                    np.sin(angle/2)*pointer[1],
+                    np.sin(angle/2)*pointer[2],
+                    np.cos(angle/2)])            # normalized quaternion, scalar last (i j k w)
+
+    return R.from_quat(quat).as_matrix()
+
 def polygonize(lengths):
     '''
     Returns coordinates for the polygon vertexes used in cyclical TS construction,
@@ -128,13 +148,29 @@ class Docker:
     def setup(self, repeat=1):
         self.repeat = repeat
 
+    def get_constrained_indexes(self):
+        '''
+        '''
+        if all([len(molecule.reactive_atoms_classes) == 2 for molecule in self.objects]):
+            # SHIET(?)
+
+        else:
+        # Two molecules, string algorithm, one constraint
+            return [int(self.objects[0].reactive_indexes[0]),
+                    int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))]
+
+
+
+
+
+
     def string_embed(self):
         '''
         return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
         into self.structures. Algorithm used is the "string" algorithm (see docs).
         '''
         assert len(self.objects) == 2
-        # NOTE THAT THIS APPROACH WILL ONLY WORK FOR TWO MOLECULES, AND A REVISION MUST BE DONE TO GENERALIZE IT
+        # NOTE THAT THIS APPROACH WILL ONLY WORK FOR TWO MOLECULES, AND A REVISION MUST BE DONE TO GENERALIZE IT (BUT WOULD IT MAKE SENSE?)
 
         centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
         # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
@@ -165,14 +201,9 @@ class Docker:
                 if repeated:
 
                     pointer = molecule.rotation @ mol_orb_vers
-
                     rotation = (np.random.rand()*2. - 1.) * np.pi    # random angle (radians) between -pi and pi
-                    quat = np.array([np.sin(rotation/2)*pointer[0],
-                                    np.sin(rotation/2)*pointer[1],
-                                    np.sin(rotation/2)*pointer[2],
-                                    np.cos(rotation/2)])            # normalized quaternion, scalar last (i j k w)
-
-                    delta_rot = R.from_quat(quat).as_matrix()
+                    
+                    delta_rot = rot_mat_from_pointer(pointer, rotation)
                     molecule.rotation = delta_rot @ molecule.rotation
 
                     molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
@@ -215,53 +246,71 @@ class Docker:
             # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
 
             mol.pivots = []
+            mol.pivot_starts = []
 
             for i,j in indexes:
                 v1 = mol.reactive_atoms_classes[0].center[i]
                 v2 = mol.reactive_atoms_classes[1].center[j]
                 pivot = v1 - v2
                 mol.pivots.append(pivot)
+                mol.pivot_starts.append(v1)
 
+        print('Initializing CYCLICAL EMBED...')
 
         for molecule in self.objects:
             set_pivots(molecule)
 
         pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
-
-        mols_indexes = get_mols_indexes(len(self.objects))
-        # for (up to) 3 molecules, the only unique triangle is built with indexes (0,1,2), but there are more dispositions for 4+ mols
-        
+       
         threads = []
-        for mi in mols_indexes:
-            for pi in pivots_indexes:
-                pivots = [self.objects[m].pivots[pi[m]] for m in range(len(self.objects))]
-                norms = np.linalg.norm(pivots, axis=1)
-                if True:
-                    # TO DO: checks that the disposition has the desired atoms facing each other
+        for p, pi in enumerate(pivots_indexes):
 
-                    for vecs in polygonize(pivots):
-                    # getting vertexes to embed molecules with and iterating over start/end points
+            loadbar(p, len(pivots_indexes), prefix=f'Embedding structures ')
+            
+            pivots = [self.objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+            # getting the active pivots for this run
+            
+            pivot_starts = [self.objects[m].pivot_starts[[np.all(r) for r in self.objects[m].pivots == pivots[m]].index(True)] for m in range(len(pivots))]
+            # getting the origin of each pivot active in this run
+
+            norms = np.linalg.norm(pivots, axis=1)
+            # getting the pivots norms to feed into the polygonize function
+
+            if True:
+                # TO DO: checks that the disposition has the desired atoms facing each other
+
+                for vecs in polygonize(norms):
+                # getting vertexes to embed molecules with and iterating over start/end points
+
+                    systematic_angles = cartesian_product(*[range(self.repeat) for _ in self.objects]) * 360/self.repeat
+
+                    for angles in systematic_angles:
 
                         threads.append([deepcopy(obj) for obj in self.objects])
                         thread = threads[-1]
-                        # generating the thread we are going to modify
+                        # generating the thread we are going to modify and setting the thread pointer
 
-                        for start, end in vecs:
+                        for i, vec_pair in enumerate(vecs):
                         # setting molecular positions and rotations (embedding)
+                        # i is the molecule index, vecs is a tuple of start and end positions
+                        # for the pivot vector
 
+                            start, end = vec_pair
 
-                            # for molecule in thread[1:]:
-                            #     molecule.position = 0###
-                            # # first molecule stands in place, other ones are embedded
+                            thread[i].position = start - pivot_starts[i]
+
+                            angle = angles[i]
+                            step_rotation = rot_mat_from_pointer(pivots[i], angle)
+                            alignment_rotation = rotation_matrix_from_vectors(pivots[i], end-start)
+                            thread[i].rotation = step_rotation @ alignment_rotation
 
             else:
-                print('# Rejected embed for geometrical criterion')
+                print('# TO DO: Rejected embed: not matching imposed criterion')
+        loadbar(1, 1, prefix=f'Embedding structures ')
+        return threads
 
 ######################################################################################################### RUN
-
-
-
 
     def run(self, debug=False):
         '''
@@ -272,8 +321,8 @@ class Docker:
 
 
         if all([len(molecule.reactive_atoms_classes) == 2 for molecule in self.objects]):
+        # Generating all possible combinations of conformations based on one of two algs
             embedded_structures = self.cyclical_embed()
-            raise Exception('to be done')
         else:
             embedded_structures = self.string_embed()
 
@@ -301,11 +350,11 @@ class Docker:
         except:
             pass
         
-        # GENERATING ALL POSSIBLE COMBINATIONS OF CONFORMATIONS AND STORING THEM IN SELF.STRUCTURES
+        # Calculating new coordinates for embedded_structures and storing them in self.structures
 
         conf_number = [len(molecule.atomcoords) for molecule in objects]
         conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
-        # first index of each vector is the conformer number of the first molecule and so on...
+        # first index of each vector is the conformer number of the first molecule and so on
 
         self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
 
@@ -327,15 +376,20 @@ class Docker:
 
         ################################################# SANITY CHECK
 
-        constrained_indexes = [int(self.objects[0].reactive_indexes[0]),
-                               int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))]
+        constrained_indexes = self.get_constrained_indexes()
 
         graphs = [mol.graph for mol in self.objects]
         
         msk = np.array([sanity_check(structure, atomnos, constrained_indexes, graphs, max_new_bonds=3) for structure in self.structures])
         self.structures = self.structures[msk]
-        print(f'Discarded {len([b for b in msk if b == False])} candidates for compenetration')
+        print(f'Discarded {len([b for b in msk if b == False])} candidates for compenetration ({len([b for b in msk if b == True])} left)')
         # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
+
+        ################################################# PRUNING: SIMILARITY
+
+        self.structures, mask = prune_conformers(self.structures, self.energies, debug=True)
+        self.energies = self.energies[mask]
+        print(f'Rejected {len(np.where(mask == False)[0])} candidates for similarity')
 
         ################################################# GEOMETRY OPTIMIZATION
 
@@ -366,7 +420,7 @@ class Docker:
         self.energies = self.energies[mask]
         print(f'Rejected {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
-        ################################################# PRUNING: SIMILARITY
+        ################################################# PRUNING: SIMILARITY (AGAIN)
 
         self.structures, mask = prune_conformers(self.structures, self.energies, debug=True)
         self.energies = self.energies[mask]
@@ -381,34 +435,37 @@ class Docker:
         print(f'Wrote {len(self.structures)} TS structures to {outname} file')
 
 
+if __name__ == '__main__':
+
+    try:
+        os.remove('ouroboros_setup.xyz')
+    except:
+        pass
+
+    # a = ['Resources/SN2/MeOH_ensemble.xyz', 1]
+    a = ['Resources/dienamine/dienamine_ensemble.xyz', 6]
+    # a = ['Resources/SN2/amine_ensemble.xyz', 22]
+    # a = ['Resources/indole/indole_ensemble.xyz', 6]
 
 
-try:
-    os.remove('ouroboros_setup.xyz')
-except:
-    pass
-
-# a = ['Resources/SN2/MeOH_ensemble.xyz', 1]
-a = ['Resources/dienamine/dienamine_ensemble.xyz', 6]
-# a = ['Resources/SN2/amine_ensemble.xyz', 22]
-# a = ['Resources/indole/indole_ensemble.xyz', 6]
+    # b = ['Resources/SN2/CH3Br_ensemble.xyz', 0]
+    b = ['Resources/SN2/ketone_ensemble.xyz', 2]
 
 
-# b = ['Resources/SN2/CH3Br_ensemble.xyz', 0]
-b = ['Resources/SN2/ketone_ensemble.xyz', 2]
+    # inp = [a,b]
 
+    c = ['Resources/SN2/MeOH_ensemble.xyz', (1,5)]
+    inp = [c,c,c]
 
-inp = [a,b]
+    objects = [Hypermolecule(m[0], m[1]) for m in inp]
 
-objects = [Hypermolecule(m[0], m[1]) for m in inp]
+    docker = Docker(objects) # initialize docker with molecule density objects
+    docker.setup(repeat=3) # set variables
 
-docker = Docker(objects) # initialize docker with molecule density objects
-docker.setup(repeat=6) # set variables
+    os.chdir('Resources/SN2')
 
-os.chdir('Resources/SN2')
+    docker.run(debug=True)
 
-docker.run(debug=True)
-
-path = os.path.join(os.getcwd(), 'TS_out.vmd')
-# check_call(f'vmd -e {path}'.split(), stdout=DEVNULL, stderr=STDOUT)
-os.system(f'vmd -e {path}')
+    path = os.path.join(os.getcwd(), 'TS_out.vmd')
+    # check_call(f'vmd -e {path}'.split(), stdout=DEVNULL, stderr=STDOUT)
+    os.system(f'vmd -e {path}')
