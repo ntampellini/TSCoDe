@@ -137,7 +137,9 @@ class Sp3:
 
         if len([atom for atom in self.neighbors_symbols if atom in ['O', 'N', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
             self.leaving_group_coords = self.others[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
-        else: # if we cannot, ask user if we have not already
+        elif len([atom for atom in self.neighbors_symbols if atom not in ['H']]) == 1: # if no clear leaving group but we only have one atom != H
+            self.leaving_group_coords = self.others[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom not in ['H']][0])]
+        else: # if we cannot, ask user
             if not filename == None:
                 self.leaving_group_coords = self._set_leaving_group(filename, neighbors_indexes)
 

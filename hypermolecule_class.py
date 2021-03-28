@@ -404,14 +404,17 @@ if __name__ == '__main__':
 
         6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
         7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
-        # 8 : ('Resources/bulk/tax.xyz', None)
+        # 8 : ('Resources/bulk/tax.xyz', None),
+        9 : ('Resources/DA/diene.xyz', (2,7)),
+        10 : ('Resources/DA/dienophile.xyz', (3,5))
 
             }
 
-    # Hypermolecule(test[4][0], test[4][1]).write_hypermolecule()
+    Hypermolecule(test[9][0], test[9][1]).write_hypermolecule()
+    Hypermolecule(test[10][0], test[10][1]).write_hypermolecule()
 
 
-    # quit()
+    quit()
 
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
