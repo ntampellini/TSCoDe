@@ -1,6 +1,5 @@
 # To Do List
-. Ketone reactive_atoms class
-. rewrite pumping into reactive atom classes as prop(self)
+. debug trimolecular TSs poses
 . Introduce correct reactive atom matching in trimolecular TSs
 . Work out pure Mopac constraints
 . SE refinement of ensembles
@@ -10,3 +9,4 @@
 . Generate input from TS geometry
 . implement np_cache (low priority)
 . what about (CH3OH)2CH3Br TS? not cyclical, just assisted...
+. specify generic orbital parameter in variables to use as a KeyError fallback

@@ -9,14 +9,11 @@ from copy import deepcopy
 from cclib.io import ccread
 from rdkit.Chem import AllChem
 from reactive_atoms_classes import *
-from periodictable import core, covalent_radius
 from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
 from subprocess import DEVNULL, STDOUT, check_call
 warnings.simplefilter("ignore", UserWarning)
 
-pt = core.PeriodicTable(table="H=1")
-covalent_radius.init(pt)
 
 def kabsch(filename, indexes=None):
     '''
@@ -131,15 +128,10 @@ class Hypermolecule:
         self.atomcoords = np.array([self._orient_along_x(structure, reactive_vector) for structure in self.atomcoords])
         # After reading aligned conformers, they are stored as self.atomcoords after being translated to origin and aligned the reactive atom(s) to x axis.
 
-        for i, index in enumerate(self.reactive_indexes):
-            symbol = pt[self.atomnos[index]].symbol
-            atom_type = self.reactive_atoms_classes[i]
-
-            neighbors_indexes = list([(a, b) for a, b in self.graph.adjacency()][index][1].keys())
-            neighbors_indexes.remove(index)
+        for reactive_atom, index in zip(self.reactive_atoms_classes, self.reactive_indexes):
                        
-            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], symbol)
-            # pumping updated properties into reactive_atom class
+            reactive_atom.init(self, index)
+            # update properties into reactive_atom class
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
         if self.debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
@@ -361,12 +353,10 @@ class Hypermolecule:
             neighbors_indexes = list([(a, b) for a, b in self.graph.adjacency()][index][1].keys())
             neighbors_indexes.remove(index)
 
-            neighbors = len(neighbors_indexes)
-            atom_type = deepcopy(atom_type_dict[symbol + str(neighbors)])
+            atom_type = deepcopy(atom_type_dict[symbol + str(len(neighbors_indexes))])
 
-            atom_type.prop(self.atomcoords[0][index], self.atomcoords[0][neighbors_indexes], symbol, self.name, neighbors_indexes, [pt[self.atomnos[i]].symbol for i in neighbors_indexes])
-            # pumping required properties into reactive_atom class:
-            # reactive atom coordinates, symbol, neighbors coordinates, neighbor symbols
+            atom_type.init(self, index)
+            # setting the pointer to reactive_atom class
 
             self.reactive_atoms_classes.append(atom_type)
             if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {atom_type.neighbors_symbols}')
@@ -396,22 +386,23 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     test = {
 
-        # 1 : ('Resources/indole/indole_ensemble.xyz', 6),
-        # 2 : ('Resources/SN2/amine_ensemble.xyz', 10),
-        # 3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
-        # 4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
-        # 5 : ('Resources/SN2/flex_ensemble.xyz', None),
+        1 : ('Resources/indole/indole_ensemble.xyz', 6),
+        2 : ('Resources/SN2/amine_ensemble.xyz', 10),
+        3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
+        4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
+        5 : ('Resources/SN2/flex_ensemble.xyz', None),
 
         6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
         7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
-        # 8 : ('Resources/bulk/tax.xyz', None),
+        8 : ('Resources/bulk/tax.xyz', None),
         9 : ('Resources/DA/diene.xyz', (2,7)),
         10 : ('Resources/DA/dienophile.xyz', (3,5)),
-        11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5))
+        11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5)),
+        12 : ('Resources/SN2/ketone_ensemble.xyz', 5)
 
             }
 
-    t = Hypermolecule(test[6][0], test[6][1])
+    t = Hypermolecule(test[12][0], test[12][1])
     t._compute_hypermolecule()
     t.write_hypermolecule()
 

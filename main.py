@@ -360,7 +360,7 @@ class Docker:
             for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
                 count_atoms = 0
 
-                for molecule_number, conformation in enumerate(conf_index): # 0, 0 then 1, 0 then 2, 0 (first [] of outer for loop)
+                for molecule_number, conformation in enumerate(conf_index): # (0,0) then (1,0) then (2,0) (first [] of outer for-loop)
                     coords = geometry[molecule_number].positioned_conformers[conformation]
                     n = len(geometry[molecule_number].atomnos)
                     self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
@@ -521,10 +521,10 @@ if __name__ == '__main__':
     # b = ['Resources/SN2/ketone_ensemble.xyz', 2]
     # inp = [a,b]
 
-    # c = ['Resources/SN2/MeOH_ensemble.xyz', (1,5)]
+    c = ['Resources/SN2/MeOH_ensemble.xyz', (1,5)]
     # c = ['Resources/DA/CHCH3.xyz', [0,6]]
     # c = ['Resources/SN2/BrCl.xyz', [0,1]]
-    # inp = [c,c,c]
+    inp = [c,c,c]
 
     # d = ['Resources/DA/diene.xyz', (2,7)]
     # e = ['Resources/DA/dienophile.xyz', (3,5)]
@@ -535,10 +535,10 @@ if __name__ == '__main__':
     # e = ['Resources/DA/dienophile2.xyz', (3,5)]
     # inp = [d,e]
 
-    a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
-    b = ['Resources/acid_ensemble.xyz', (3,25)]
-    c = ['Resources/maleimide.xyz', (0,5)]
-    inp = (a,b,c)
+    # a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
+    # b = ['Resources/acid_ensemble.xyz', (3,25)]
+    # c = ['Resources/maleimide.xyz', (0,5)]
+    # inp = (a,b,c)
 
 
     objects = [Hypermolecule(m[0], m[1]) for m in inp]
