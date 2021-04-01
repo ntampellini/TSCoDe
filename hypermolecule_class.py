@@ -144,7 +144,7 @@ class Hypermolecule:
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
         if self.debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
 
-        self._compute_hypermolecule()
+        # self._compute_hypermolecule()
 
         self.centers = np.concatenate([r_atom.center for r_atom in self.reactive_atoms_classes])
         self.orb_vers = np.concatenate([norm(r_atom.center - r_atom.coord) for r_atom in self.reactive_atoms_classes])
@@ -380,7 +380,7 @@ class Hypermolecule:
         with open(hyp_name, 'w') as f:
             f.write(str(sum([len(atom.center) for atom in self.reactive_atoms_classes]) + len(self.hypermolecule)))
             f.write(f'\nHypermolecule originated from {self.rootname}\n')
-            orbs =np.array([atom_type.center for atom_type in self.reactive_atoms_classes]).flatten()
+            orbs =np.vstack([atom_type.center for atom_type in self.reactive_atoms_classes]).ravel()
             orbs = orbs.reshape((int(len(orbs)/3), 3))
             for orb in orbs:
                 f.write('%-5s %-8s %-8s %-8s\n' % ('D', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
@@ -404,14 +404,19 @@ if __name__ == '__main__':
 
         6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
         7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
-        # 8 : ('Resources/bulk/tax.xyz', None)
+        # 8 : ('Resources/bulk/tax.xyz', None),
+        9 : ('Resources/DA/diene.xyz', (2,7)),
+        10 : ('Resources/DA/dienophile.xyz', (3,5)),
+        11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5))
 
             }
 
-    # Hypermolecule(test[4][0], test[4][1]).write_hypermolecule()
+    t = Hypermolecule(test[11][0], test[11][1])
+    t._compute_hypermolecule()
+    t.write_hypermolecule()
 
 
-    # quit()
+    quit()
 
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
