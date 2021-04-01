@@ -43,7 +43,7 @@ class suppress_stdout_stderr(object):
             os.close(fd)
 
 
-def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_new_bonds=2, debug=False):
+def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_new_bonds=3, debug=False):
     '''
     :params TS_structure: list of coordinates for each atom in the TS
     :params TS_atomnos: list of atomic numbers for each atom in the TS
@@ -56,12 +56,12 @@ def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max
     :return result: bool, indicating structure sanity
     '''
     bonds = []
-    for i, graph in enumerate(mols_graphs):
+    for i in range(len(mols_graphs)):
         pos = 0
         while i != 0:
             pos += len(mols_graphs[i-1].nodes)
             i -= 1
-        for bond in [(a+pos, b+pos) for a, b in list(graph.edges) if a != b]:
+        for bond in [(a+pos, b+pos) for a, b in list(mols_graphs[i].edges) if a != b]:
             bonds.append(bond)
     bonds = set(bonds)
 
@@ -173,7 +173,8 @@ def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_gra
         view(atoms)
 
     try:
-        energy = atoms.get_total_energy()
+        with suppress_stdout_stderr():
+            energy = atoms.get_total_energy()
     except:
         energy = np.inf
 
@@ -282,7 +283,8 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calcula
         view(atoms)
 
     try:
-        energy = atoms.get_total_energy()
+        with suppress_stdout_stderr():
+            energy = atoms.get_total_energy()
     except:
         energy = np.inf
 
@@ -295,8 +297,10 @@ def rmsd_cache(tup):
     tgt, ref, atomnos1, atomnos2 = tup
     return rmsd(tgt, ref, atomnos1, atomnos2, center=True, minimize=True)
 
+def scramble(array, sequence):
+    return np.array([array[s] for s in sequence])
 
-def prune_conformers(structures, atomnos, energies, max_rmsd=1, debug=False):
+def prune_conformers(structures, atomnos, energies, max_rmsd=1.5, debug=False):
     '''
     Remove conformations that are too similar (have a small RMSD value).
     When removing structures, only the lowest energy one is kept.
@@ -350,29 +354,29 @@ def prune_conformers(structures, atomnos, energies, max_rmsd=1, debug=False):
     return structures[mask], mask
 
 
-def pre_prune_conformers(structures, atomnos, energies, k=10, max_rmsd=0.5, debug=False):
+def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1.5, debug=False):
     '''
     Initial removal of conformations that are too similar (have a small RMSD value)
     by splitting the structure set in k subsets and pruning conformations inside those.
-    When removing structures, only the lowest energy one is kept.
-
+    
     :params structures: numpy array of conformations
-    :params energies: list of energies for each conformation
     :params max_rmsd: maximum rmsd value to consider two structures identical, in Angstroms
     '''
-    # scrambling_indexes = list(np.random.permutation(len(structures)))
-    # unscrambling_indexes = [scrambling_indexes.index(i) for i in range(len(scrambling_indexes))]
+    r = np.arange(structures.shape[0])
+    sequence = np.random.permutation(r)
+    inv_sequence = np.array([np.where(sequence == i)[0][0] for i in r])
 
-    # structures = np.array([structures[i] for i in scrambling_indexes])
+
+    structures = scramble(structures, sequence)
     # # scrambling array before splitting, so to improve efficiency
 
     mask_out = []
     d = len(structures) // k
-    for step in range(d):
-        if step < d-1:
-            structures_subset = structures[k*step:k*(step+1)]
+    for step in range(k):
+        if step == k-1:
+            structures_subset = structures[d*step:]
         else:
-            structures_subset = structures[k*step:]
+            structures_subset = structures[d*step:d*(step+1)]
 
 
         rmsd_mat = np.zeros((len(structures_subset), len(structures_subset)))
@@ -396,11 +400,8 @@ def pre_prune_conformers(structures, atomnos, energies, k=10, max_rmsd=0.5, debu
         subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
         groups = [tuple(graph.nodes) for graph in subgraphs]
 
-        def en(tup):
-            ens = [energies[t] for t in tup]
-            return tup[ens.index(min(ens))]
-
-        best_of_cluster = [en(group) for group in groups]
+        best_of_cluster = [group[0] for group in groups]
+        # the first on of each cluster is returned - does not matter what it is at this stage
         rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
 
         rejects = []
@@ -421,9 +422,9 @@ def pre_prune_conformers(structures, atomnos, energies, k=10, max_rmsd=0.5, debu
     
     mask = np.concatenate(mask_out)
 
-    # mask = np.array([mask[i] for i in unscrambling_indexes])
-    # structures = np.array([structures[i] for i in unscrambling_indexes])
-    # # undoing the previous shuffling, therefore preserving the input ordering
+    mask = scramble(mask, inv_sequence)
+    structures = scramble(structures, inv_sequence)
+    # # undoing the previous shuffling, therefore preserving the input order
 
     return structures[mask], mask
 

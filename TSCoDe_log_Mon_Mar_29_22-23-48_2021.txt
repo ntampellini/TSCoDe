@@ -1,0 +1,13 @@
+TSCoDe - input structures/indexes were: Resources/SN2/MeOH_ensemble.xyz/[1 5] Resources/SN2/MeOH_ensemble.xyz/[1 5] Resources/SN2/MeOH_ensemble.xyz/[1 5]
+rotation_steps was 2: 180.0 degrees turns performed
+Initializing cyclical embed...
+Generated 512 transition state candidates (0.92 s)
+Discarded 272 candidates for compenetration (240 left, 1.11 s)
+similarity pre-processing (k=50) - 0.52 s - kept 151/240
+similarity pre-processing (k=10) - 0.41 s - kept 69/151
+similarity pre-processing (k=5) - 0.18 s - kept 39/69
+similarity pre-processing (k=2) - 0.15 s - kept 19/39
+similarity processing     (k=1) - 0.08 s - kept 9/19
+Discarded 231 candidates for similarity (9 left, 1.34 s)
+Mopac PM7 optimization took 0.0 s (0.0 s per structure)
+Wrote 9 TS structures to TS_out.xyz file - Total time 3.4 s
