@@ -212,7 +212,8 @@ if __name__ == '__main__':
     # ensemble, energies = csearch('SN2/ketone.mol')
     # ensemble, energies = csearch('SN2/MeOH.mol')
     # ensemble, energies = csearch('SN2/flex.mol')
-    ensemble, energies = csearch('bulk/tax.xyz')
+    # ensemble, energies = csearch('bulk/tax.xyz')
+    ensemble, energies = csearch('acid.sdf')
 
     t_end = time.time()
     print(f'Took {round(t_end - t_start, 3)} s')

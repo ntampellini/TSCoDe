@@ -2,9 +2,8 @@ import numpy as np
 from parameters import *
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
-
-def norm(vec):
-    return vec / np.linalg.norm(vec)
+# TO DO: change with alignment function from linalg_tools
+from linalg_tools import *
 
 class Single:
     '''
@@ -42,7 +41,7 @@ class Single:
             print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using half the bonding distance.')
 
         self.center = np.array([orb_dim * norm(self.coord - self.others) + self.coord])
-        return None
+
 
 class Sp2:
     '''
@@ -83,8 +82,6 @@ class Sp2:
 
         self.center += self.coord
 
-        return None
-
 
 class Sp: # BROKEN for sure, needs to fixed, eventually
     '''
@@ -108,8 +105,6 @@ class Sp: # BROKEN for sure, needs to fixed, eventually
         self.others = bonded_atom_coords
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
        
-        return None
-
 
 class Sp3:
     '''
@@ -155,8 +150,6 @@ class Sp3:
         self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
 
         self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
-
-        return None
 
     def _set_leaving_group(self, filename, neighbors_indexes):
         '''
@@ -204,6 +197,7 @@ class Sp3:
 
         return leaving_group_coords
 
+
 class Ether:
     '''
     '''
@@ -239,25 +233,25 @@ class Ether:
 
         self.vectors = orb_dim * np.array([norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
         
-        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([-np.mean(self.vectors, axis=0)]))[0].as_matrix()
+        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.vectors, axis=0))
 
-        alignment_on_z = R.align_vectors(np.array([[0,0,1]]), np.array([self.vectors[0]]))[0].as_matrix()
 
-        rotoreflexion_matrix = np.array([[ np.cos(2*np.pi/4), np.sin(2*np.pi/4),  0],
-                                         [-np.sin(2*np.pi/4), np.cos(2*np.pi/4),  0],
-                                         [                 0,                 0, -1]])
+        orb_mat = rot_mat_from_pointer(np.mean(self.vectors, axis=0), 90) @ rot_mat_from_pointer(norm(np.cross(self.vectors[0], self.vectors[1])), 180)
 
-        self.center = np.array([v @ alignment_on_z @ rotoreflexion_matrix @ np.linalg.inv(alignment_on_z) for v in self.vectors])
+        self.center = np.array([orb_mat @ v for v in self.vectors])
+        
         self.center += self.coord
         # two vectors defining the position of the two orbital lobes centers
 
 
-        return None
+class Ketone:
+    '''
+    '''
 
 atom_type_dict = {
              'H1' : Single(),
-             'C1' : Single(),
-             'C2' : Sp(), # toroidal geometry
+             'C1' : Single(), # deprotonated terminal alkyne?
+            #  'C2' : Sp(), # toroidal geometry (or carbene, or vinyl anion - #panik)
              'C3' : Sp2(), # double ball
              'C4' : Sp3(), # one ball: on the back of weakest bond. If can't tell which is which, one big ball
              'N1' : Single(),

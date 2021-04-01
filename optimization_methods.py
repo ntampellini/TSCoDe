@@ -67,14 +67,15 @@ def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max
 
     new_bonds = {(a, b) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
-    try:
-        delta_bonds.remove(tuple(constrained_indexes))
-    except:
-        pass
-    try:
-        delta_bonds.remove(tuple(reversed(constrained_indexes)))
-    except:
-        pass
+    for c_bond in constrained_indexes:
+        try:
+            delta_bonds.remove(tuple(c_bond))
+        except KeyError:
+            pass
+        try:
+            delta_bonds.remove(tuple(reversed(tuple(c_bond))))
+        except KeyError:
+            pass
 
     if debug:
         if len(delta_bonds) > 0:
@@ -143,7 +144,7 @@ def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_gra
             k = k_dict[key]
             constraints.append(Hookean(a1=bond_a, a2=bond_b, rt=rt, k=k))
             i += 1
-        except:
+        except KeyError:
             pass
     # print(f'Hookean-protected {i} CH bonds')
 

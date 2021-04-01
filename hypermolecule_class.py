@@ -411,7 +411,7 @@ if __name__ == '__main__':
 
             }
 
-    t = Hypermolecule(test[11][0], test[11][1])
+    t = Hypermolecule(test[6][0], test[6][1])
     t._compute_hypermolecule()
     t.write_hypermolecule()
 

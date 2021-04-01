@@ -1,5 +1,6 @@
 # To Do List
-. Ether cross product
+. Ketone reactive_atoms class
+. rewrite pumping into reactive atom classes as prop(self)
 . Introduce correct reactive atom matching in trimolecular TSs
 . Work out pure Mopac constraints
 . SE refinement of ensembles
@@ -8,3 +9,4 @@
 . Resolve Calc_Energy Issue (error in .sdf bonds perception?) -> PM7 SP? -> Required?
 . Generate input from TS geometry
 . implement np_cache (low priority)
+. what about (CH3OH)2CH3Br TS? not cyclical, just assisted...
