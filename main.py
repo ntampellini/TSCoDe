@@ -164,6 +164,54 @@ class Docker:
         self.rotation_steps = int(steps)
         self.optimize = optimize
 
+        if len(self.objects) in (2,3):
+        # Calculating the number of conformation combinations based on embed type
+            if all([len(molecule.reactive_atoms_classes) == 2 for molecule in self.objects]):
+
+                def set_pivots(mol):
+                    '''
+                    params mol: Hypermolecule class
+                    Function sets the mol.pivots attribute, that is a list
+                    containing each vector connecting two orbitals on different atoms
+                    '''
+
+                    indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes])
+                    # indexes of vectors in mol.center. Reactive atoms are necessarily 2 and so for one center on atom 0 and 
+                    # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
+
+                    mol.pivots = []
+                    mol.pivot_means = []
+
+                    for i,j in indexes:
+                        v1 = mol.reactive_atoms_classes[0].center[i]
+                        v2 = mol.reactive_atoms_classes[1].center[j]
+                        pivot = v2 - v1
+                        mol.pivots.append(pivot)
+                        mol.pivot_means.append(np.mean((v1,v2), axis=0))
+
+                for molecule in self.objects:
+                    set_pivots(molecule)
+
+                self.embed = 'cyclical'
+                self.candidates = self.rotation_steps**len(self.objects)*np.prod([len(mol.coords) for mol in self.object])
+                self.candidates *= np.prod([len(mol.pivots) for mol in self.object])*8
+                # The number 8 is the number of different triangles originated from three oriented vectors
+
+
+            elif all([len(molecule.reactive_atoms_classes) == 1 for molecule in self.objects]) and len(self.objects) == 2:
+                self.embed = 'string'
+                self.candidates = self.rotation_steps**len(self.objects)*np.prod([len(mol.coords) for mol in self.object])
+                self.candidates *= 2
+                # The number 2 is the number of different arrangementsof two oriented vectors (parallel, antiparallel)
+
+            else:
+                raise InputError('Bad input - The only molecular configurations accepted are: 1) two or three molecules with two reactive centers each or 2) two molecules with one reactive center each.')
+        else:
+            raise InputError('Bad input - too many molecules specified (3 max).')
+
+        log_print(f'Setup performed correctly. {self.candidates} candidates will be generated.')
+
+
     def get_string_constrained_indexes(self):
         '''
         Get constrained indexes referring to the transition states.
@@ -283,32 +331,10 @@ class Docker:
                 if sorted(mit.circular_shifts(reversed(p)))[0] not in unique_perms:
                     unique_perms.append(p)
             return sorted(unique_perms)
+        # this was actually ready for n-gons implementation, but I think we will never use with n>3
         
-        def set_pivots(mol):
-            '''
-            params mol: Hypermolecule class
-            Function sets the mol.pivots attribute, that is a list
-            containing each vector connecting two orbitals on different atoms
-            '''
-
-            indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes])
-            # indexes of vectors in mol.center. Reactive atoms are necessarily 2 and so for one center on atom 0 and 
-            # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
-
-            mol.pivots = []
-            mol.pivot_means = []
-
-            for i,j in indexes:
-                v1 = mol.reactive_atoms_classes[0].center[i]
-                v2 = mol.reactive_atoms_classes[1].center[j]
-                pivot = v2 - v1
-                mol.pivots.append(pivot)
-                mol.pivot_means.append(np.mean((v1,v2), axis=0))
 
         log_print('Initializing cyclical embed...')
-
-        for molecule in self.objects:
-            set_pivots(molecule)
 
         pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -380,7 +406,12 @@ class Docker:
     def run(self, debug=False):
         '''
         '''
+
+        assert self.candidates < 1e9
+        # TO DO: perform some action if this number is crazy high
+
         print()
+
         head = ' '.join([f'{mol.name}/{mol.reactive_indexes}' for mol in self.objects])
         log.write('TSCoDe - input structures/indexes were: ' + head)
         log.write('\n')
@@ -388,16 +419,11 @@ class Docker:
 
         t_start_run = time.time()
 
-        if len(self.objects) in (2,3):
-        # Generating all possible combinations of conformations based on one of two algs
-            if all([len(molecule.reactive_atoms_classes) == 2 for molecule in self.objects]):
-                embedded_structures = self.cyclical_embed()
-            elif all([len(molecule.reactive_atoms_classes) == 1 for molecule in self.objects]) and len(self.objects) == 2:
-                embedded_structures = self.string_embed()
-            else:
-                raise InputError('Bad input - The only molecular configurations accepted are: 1) two or three molecules with two reactive centers each or 2) two molecules with one reactive center each.')
+        if self.embed == 'cyclical':
+            embedded_structures = self.cyclical_embed()
         else:
-            raise InputError('Bad input - too many molecules specified (3 max).')
+            embedded_structures = self.string_embed()
+
 
         atomnos = np.concatenate([molecule.atomnos for molecule in objects])
         # cumulative list of atomic numbers associated with coordinates
