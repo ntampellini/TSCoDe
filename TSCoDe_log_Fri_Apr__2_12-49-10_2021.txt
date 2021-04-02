@@ -1,0 +1,7 @@
+Setup performed correctly. 27648 candidates will be generated.
+TSCoDe - input structures/indexes were: Resources/dienamine/dienamine_ensemble.xyz/[ 6 23] Resources/acid_ensemble.xyz/[ 3 25] Resources/maleimide.xyz/[0 5]
+rotation_steps was 3: 120.0 degrees turns performed
+Initializing cyclical embed...
+Generated 27648 transition state candidates (13.04 s)
+Discarded 27648 candidates for compenetration (0 left, 1304.23 s)
+Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try enlarging the search space by specifying a larger "steps" value.

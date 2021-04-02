@@ -19,7 +19,7 @@ class Single:
     def __repr__(self):
         return 'Single Bond'
 
-    def init(self, mol, i) -> None:
+    def init(self, mol, i, update=False) -> None:
         '''
         '''
         symbol = pt[mol.atomnos[i]].symbol
@@ -31,14 +31,16 @@ class Single:
         self.coord = mol.atomcoords[0][i]
         self.other = mol.atomcoords[0][neighbors_indexes][0]
 
-        try:
-            key = symbol + ' ' + str(self)
-            orb_dim = orb_dim_dict[key]
-        except KeyError:
-            orb_dim = 0.5*np.linalg.norm(self.coord - self.other)
-            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using half the bonding distance.')
+        if update:
 
-        self.center = np.array([orb_dim * norm(self.coord - self.other) + self.coord])
+            try:
+                key = symbol + ' ' + str(self)
+                orb_dim = orb_dim_dict[key]
+            except KeyError:
+                orb_dim = 0.5*np.linalg.norm(self.coord - self.other)
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using half the bonding distance.')
+
+            self.center = np.array([orb_dim * norm(self.coord - self.other) + self.coord])
 
 
 class Sp2:
@@ -50,7 +52,7 @@ class Sp2:
     def __repr__(self):
         return 'sp2'
 
-    def init(self, mol, i) -> None:
+    def init(self, mol, i, update=False) -> None:
         '''
         '''
         symbol = pt[mol.atomnos[i]].symbol
@@ -67,18 +69,20 @@ class Sp2:
                                               np.cross(norm(self.vectors[1]), norm(self.vectors[2])),
                                               np.cross(norm(self.vectors[2]), norm(self.vectors[0]))]), axis=0))
 
-        try:
-            key = symbol + ' ' + str(self)
-            orb_dim = orb_dim_dict[key]
-        except KeyError:
-            orb_dim = np.linalg.norm(self.coord - self.others[0])
-            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using a full bonding distance.')
-        
-        self.center = np.array([self.orb_vec, -self.orb_vec]) * orb_dim
+        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), self.orb_vec)
 
-        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
+        if update:
 
-        self.center += self.coord
+            try:
+                key = symbol + ' ' + str(self)
+                orb_dim = orb_dim_dict[key]
+            except KeyError:
+                orb_dim = np.linalg.norm(self.coord - self.others[0])
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using a full bonding distance.')
+            
+            self.center = np.array([self.orb_vec, -self.orb_vec]) * orb_dim      
+
+            self.center += self.coord
 
 
 class Sp: # BROKEN for sure, needs to fixed, eventually
@@ -90,7 +94,7 @@ class Sp: # BROKEN for sure, needs to fixed, eventually
     def __repr__(self):
         return 'sp'
 
-    def init(self, mol, i) -> None:
+    def init(self, mol, i, update=False) -> None:
         '''
         '''
         symbol = pt[mol.atomnos[i]].symbol
@@ -112,7 +116,7 @@ class Sp3:
     def __repr__(self):
         return 'sp3'
 
-    def init(self, mol, i) -> None:
+    def init(self, mol, i, update=False) -> None:
         '''
         '''
 
@@ -134,17 +138,18 @@ class Sp3:
             self.leaving_group_coords = self._set_leaving_group(mol.name, neighbors_indexes)
 
         self.orb_vec = self.coord - self.leaving_group_coords
+        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), self.orb_vec)
 
-        try:
-            key = symbol + ' ' + str(self)
-            orb_dim = orb_dim_dict[key]
-        except KeyError:
-            orb_dim = 1
-            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+        if update:
 
-        self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
+            try:
+                key = symbol + ' ' + str(self)
+                orb_dim = orb_dim_dict[key]
+            except KeyError:
+                orb_dim = 1
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
 
-        self.alignment_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([self.center[0]]))[0].as_matrix()
+            self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
 
     def _set_leaving_group(self, filename, neighbors_indexes):
         '''
@@ -202,7 +207,7 @@ class Ether:
     def __repr__(self):
         return 'Ether'
 
-    def init(self, mol, i) -> None:
+    def init(self, mol, i, update=False) -> None:
         '''
         '''
 
@@ -216,27 +221,25 @@ class Ether:
         self.others = mol.atomcoords[0][neighbors_indexes]
 
         self.vectors = self.others - self.coord # vectors connecting center to each of the two substituents
-
-        try:
-            key = symbol + ' ' + str(self)
-            orb_dim = orb_dim_dict[key]
-        except KeyError:
-            orb_dim = 1
-            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
-
-
-
-        self.vectors = orb_dim * np.array([norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
-        
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.vectors, axis=0))
 
+        if update:
 
-        orb_mat = rot_mat_from_pointer(np.mean(self.vectors, axis=0), 90) @ rot_mat_from_pointer(norm(np.cross(self.vectors[0], self.vectors[1])), 180)
+            try:
+                key = symbol + ' ' + str(self)
+                orb_dim = orb_dim_dict[key]
+            except KeyError:
+                orb_dim = 1
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
 
-        self.center = np.array([orb_mat @ v for v in self.vectors])
-        
-        self.center += self.coord
-        # two vectors defining the position of the two orbital lobes centers
+            self.vectors = orb_dim * np.array([norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
+
+            orb_mat = rot_mat_from_pointer(np.mean(self.vectors, axis=0), 90) @ rot_mat_from_pointer(norm(np.cross(self.vectors[0], self.vectors[1])), 180)
+
+            self.center = np.array([orb_mat @ v for v in self.vectors])
+            
+            self.center += self.coord
+            # two vectors defining the position of the two orbital lobes centers
 
 
 class Ketone:
@@ -248,7 +251,7 @@ class Ketone:
     def __repr__(self):
         return 'Ketone'
 
-    def init(self, mol, i) -> None:
+    def init(self, mol, i, update=False) -> None:
         '''
         '''
 
@@ -262,37 +265,81 @@ class Ketone:
         self.other = mol.atomcoords[0][neighbors_indexes][0]
 
         self.vector = self.other - self.coord # vector connecting center to substituent
-
-        try:
-            key = symbol + ' ' + str(self)
-            orb_dim = orb_dim_dict[key]
-        except KeyError:
-            orb_dim = 1
-            print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
-
-        neighbors_of_neighbor_indexes = list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys())
-        neighbors_of_neighbor_indexes.remove(i)
-        neighbors_of_neighbor_indexes.remove(neighbors_indexes[0])
-
-        self.vector = norm(self.vector)*orb_dim
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -self.vector)
 
-        if len(neighbors_of_neighbor_indexes) == 2:
-            a1 = mol.atomcoords[0][neighbors_of_neighbor_indexes[0]]
-            a2 = mol.atomcoords[0][neighbors_of_neighbor_indexes[1]]
-            pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
+        if update:
 
-        else:
-            r = np.random.rand()
-            v0 = self.vector[0]
-            v1 = self.vector[1]
-            v2 = self.vector[2]
-            pivot = np.array([r,r,-r*(v0+v1)/v2])
-     
-        self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
+            try:
+                key = symbol + ' ' + str(self)
+                orb_dim = orb_dim_dict[key]
+            except KeyError:
+                orb_dim = 1
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
 
-        self.center += self.coord
-        # two vectors defining the position of the two orbital lobes centers
+            neighbors_of_neighbor_indexes = list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys())
+            neighbors_of_neighbor_indexes.remove(i)
+            neighbors_of_neighbor_indexes.remove(neighbors_indexes[0])
+
+            self.vector = norm(self.vector)*orb_dim
+
+            if len(neighbors_of_neighbor_indexes) == 2:
+                a1 = mol.atomcoords[0][neighbors_of_neighbor_indexes[0]]
+                a2 = mol.atomcoords[0][neighbors_of_neighbor_indexes[1]]
+                pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
+
+            else:
+                r = np.random.rand()
+                v0 = self.vector[0]
+                v1 = self.vector[1]
+                v2 = self.vector[2]
+                pivot = np.array([r,r,-r*(v0+v1)/v2])
+        
+            self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
+
+            self.center += self.coord
+            # two vectors defining the position of the two orbital lobes centers
+
+
+class Imine:
+    '''
+    '''
+    def __init__(self):
+        pass
+    
+    def __repr__(self):
+        return 'Imine'
+
+    def init(self, mol, i, update=False) -> None:
+        '''
+        '''
+
+        symbol = pt[mol.atomnos[i]].symbol
+        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
+        neighbors_indexes.remove(i)
+
+
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.coord = mol.atomcoords[0][i]
+        self.others = mol.atomcoords[0][neighbors_indexes]
+
+        self.vectors = self.others - self.coord # vector connecting center to substituent
+
+        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.vectors, axis=0))
+
+        if update:
+
+            try:
+                key = symbol + ' ' + str(self)
+                orb_dim = orb_dim_dict[key]
+            except KeyError:
+                orb_dim = 1
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+        
+            self.center = np.array([norm(-np.mean(self.vectors, axis=0))*orb_dim])
+
+            self.center += self.coord
+            # two vectors defining the position of the two orbital lobes centers
+
 
 atom_type_dict = {
              'H1' : Single(),
@@ -301,7 +348,7 @@ atom_type_dict = {
              'C3' : Sp2(), # double ball
              'C4' : Sp3(), # one ball: on the back of weakest bond. If can't tell which is which, we ask user
              'N1' : Single(),
-            #  'N2' : 'imine', # one ball on free side
+             'N2' : Imine(), # one ball on free side
              'N3' : Sp2(), # or one ball on free side?
              'N4' : Sp3(),
              'O1' : Ketone(), # two balls 120° apart. Also for alkoxides, good enough

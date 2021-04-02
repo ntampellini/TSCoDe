@@ -62,6 +62,9 @@ def rotation_matrix_from_vectors(vec1, vec2):
     :return mat: A transform matrix (3x3) which when applied to vec1, aligns it with vec2.
 
     """
+    assert vec1.shape == (3,)
+    assert vec2.shape == (3,)
+
     a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
     v = np.cross(a, b)
     if np.linalg.norm(v) != 0:

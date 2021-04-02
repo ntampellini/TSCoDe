@@ -29,6 +29,8 @@ orb_dim_dict = {
                 'S Ether' : 1,
 
                 'O Ketone': 1,
-                'S Ketone': 1
+                'S Ketone': 1,
+
+                'N Imine' : 1,
                 }       
 # Half-lenght of the transition state bonding distance involving that atom

@@ -63,7 +63,6 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
 class Docker:
     def __init__(self, *objects):
         self.objects = list(*objects)
-        self.objects = sorted(self.objects, key=lambda x: len(x.atomnos), reverse=True)
     
     def setup(self, steps=6, optimize=True):
         '''
@@ -129,7 +128,8 @@ class Docker:
         '''
         # Two molecules, string algorithm, one constraint for all
         return [[int(self.objects[0].reactive_indexes[0]),
-                    int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))] for _ in range(len(self.structures))]
+                 int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))] for _ in range(len(self.structures))]
+                 # TO DO: check if it works and if the second list comprehension is correct
 
     def get_cyclical_reactive_indexes(self, n):
         '''
@@ -178,7 +178,7 @@ class Docker:
 
         log_print('Initializing string embed...')
 
-        self.constrained_indexes = self.get_string_constrained_indexes()
+        constrained_indexes = self.get_string_constrained_indexes()
 
         centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
         # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
@@ -250,7 +250,7 @@ class Docker:
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
        
         threads = []
-        self.constrained_indexes = []
+        constrained_indexes = []
         for p, pi in enumerate(pivots_indexes):
 
             loadbar(p, len(pivots_indexes), prefix=f'Embedding structures ')
@@ -259,7 +259,7 @@ class Docker:
             # getting the active pivots for this run
             
             pivot_means = [self.objects[m].pivot_means[[np.all(r) for r in self.objects[m].pivots == pivots[m]].index(True)] for m in range(len(pivots))]
-            # getting the origin of each pivot active in this run
+            # getting the mean point of each pivot active in this run
 
             norms = np.linalg.norm(pivots, axis=1)
             # getting the pivots norms to feed into the polygonize function
@@ -281,10 +281,9 @@ class Docker:
                         thread = threads[-1]
                         # generating the thread we are going to modify and setting the thread pointer
 
-                        self.constrained_indexes.append(ids)
+                        constrained_indexes.append(ids)
                         # Save indexes to be constrained later in the optimization step
 
-                        # log_vecs = []
                         for i, vec_pair in enumerate(vecs):
                         # setting molecular positions and rotations (embedding)
                         # i is the molecule index, vecs is a tuple of start and end positions
@@ -294,21 +293,26 @@ class Docker:
                             angle = angles[i]
 
                             alignment_rotation = rotation_matrix_from_vectors(pivots[i], end-start)
+                            # OK ABOVE
 
-                            step_rotation = rot_mat_from_pointer(alignment_rotation @ pivots[i], angle)
-                            center_of_rotation = np.mean(vec_pair, axis=0)
+                            # step_rotation = rot_mat_from_pointer(alignment_rotation @ pivots[i], angle)
+                            step_rotation = rot_mat_from_pointer(end-start, angle)
+                            # center_of_rotation = np.mean(vec_pair, axis=0)
+                            center_of_rotation = alignment_rotation @ pivot_means[i]
 
                             thread[i].rotation = step_rotation @ alignment_rotation
 
-                            pos = center_of_rotation - thread[i].rotation @ pivot_means[i]
-                            thread[i].position = step_rotation @ (pos - center_of_rotation) + center_of_rotation
+                            # pos = center_of_rotation - thread[i].rotation @ pivot_means[i]
+                            # thread[i].position = step_rotation @ (pos + center_of_rotation) - center_of_rotation
+                            pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pivot_means[i]
+                            thread[i].position = center_of_rotation - step_rotation @ center_of_rotation + pos
 
                 else:
                     log_print('# TO DO: Rejected embed: not matching imposed criterion')
 
         loadbar(1, 1, prefix=f'Embedding structures ')
 
-        self.constrained_indexes = np.array(self.constrained_indexes)
+        self.dispositions_constrained_indexes = np.array(constrained_indexes)
 
         return threads
 
@@ -351,6 +355,9 @@ class Docker:
         # first index of each vector is the conformer number of the first molecule and so on
 
         self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
+        n_of_constraints = self.dispositions_constrained_indexes.shape[1]
+        self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2))
+        # we will be getting constrained indexes for each combination of conformations from the general self.disposition_constrained_indexes array
 
         for geometry_number, geometry in enumerate(embedded_structures):
 
@@ -364,7 +371,11 @@ class Docker:
                     coords = geometry[molecule_number].positioned_conformers[conformation]
                     n = len(geometry[molecule_number].atomnos)
                     self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
+                    self.constrained_indexes[geometry_number*len(conf_indexes)+i] = self.dispositions_constrained_indexes[geometry_number]
                     count_atoms += n
+
+        del self.dispositions_constrained_indexes
+        # cleaning the old, general data on indexes that ignored conformations
 
         t_end = time.time()
         log_print(f'Generated {len(self.structures)} transition state candidates ({round(t_end-t_start_run, 2)} s)')
@@ -447,48 +458,46 @@ class Docker:
 
                     finally:
                         log.write(f'Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s\n')
-            else:
-                self.exit_status[:] = True
 
-            loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
-            t_end = time.time()
-            log_print(f'Mopac PM7 optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
+                t_end = time.time()
+                log_print(f'Mopac PM7 optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
-            ################################################# PRUNING: EXIT STATUS
+                ################################################# PRUNING: EXIT STATUS
 
-            mask = self.exit_status
-            self.structures = self.structures[mask]
-            self.energies = self.energies[mask]
-            self.constrained_indexes = self.constrained_indexes[mask]
+                mask = self.exit_status
+                self.structures = self.structures[mask]
+                self.energies = self.energies[mask]
+                self.constrained_indexes = self.constrained_indexes[mask]
 
-            if np.any(mask == False):
-                log_print(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
+                if np.any(mask == False):
+                    log_print(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
 
-            ################################################# PRUNING: ENERGY
-        
-            if len(self.structures) == 0:
-                raise ZeroCandidatesError()
-
-            self.energies = self.energies - np.min(self.energies)
-            mask = self.energies < THRESHOLD_KCAL
-            self.structures = self.structures[mask]
-            self.energies = self.energies[mask]
-
-            if np.any(mask == False):
-                log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
-
-            ################################################# PRUNING: SIMILARITY (AGAIN)
-
-            if len(self.structures) == 0:
-                raise ZeroCandidatesError()
-
-            t_start = time.time()
-            self.structures, mask = prune_conformers(self.structures, atomnos, self.energies)
-            self.energies = self.energies[mask]
-            t_end = time.time()
+                ################################################# PRUNING: ENERGY
             
-            if np.any(mask == False):
-                log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                if len(self.structures) == 0:
+                    raise ZeroCandidatesError()
+
+                self.energies = self.energies - np.min(self.energies)
+                mask = self.energies < THRESHOLD_KCAL
+                self.structures = self.structures[mask]
+                self.energies = self.energies[mask]
+
+                if np.any(mask == False):
+                    log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
+
+                ################################################# PRUNING: SIMILARITY (AGAIN)
+
+                if len(self.structures) == 0:
+                    raise ZeroCandidatesError()
+
+                t_start = time.time()
+                self.structures, mask = prune_conformers(self.structures, atomnos, self.energies)
+                self.energies = self.energies[mask]
+                t_end = time.time()
+                
+                if np.any(mask == False):
+                    log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
 
         except ZeroCandidatesError:
             s = 'Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try enlarging the search space by specifying a larger "steps" value.'
@@ -521,9 +530,10 @@ if __name__ == '__main__':
     # b = ['Resources/SN2/ketone_ensemble.xyz', 2]
     # inp = [a,b]
 
-    c = ['Resources/SN2/MeOH_ensemble.xyz', (1,5)]
+    # c = ['Resources/SN2/MeOH_ensemble.xyz', (1,5)]
     # c = ['Resources/DA/CHCH3.xyz', [0,6]]
     # c = ['Resources/SN2/BrCl.xyz', [0,1]]
+    c = ['Resources/NOH.xyz', (0,1)]
     inp = [c,c,c]
 
     # d = ['Resources/DA/diene.xyz', (2,7)]
@@ -535,10 +545,10 @@ if __name__ == '__main__':
     # e = ['Resources/DA/dienophile2.xyz', (3,5)]
     # inp = [d,e]
 
-    # a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
-    # b = ['Resources/acid_ensemble.xyz', (3,25)]
-    # c = ['Resources/maleimide.xyz', (0,5)]
-    # inp = (a,b,c)
+    a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
+    b = ['Resources/acid_ensemble.xyz', (3,25)]
+    c = ['Resources/maleimide.xyz', (0,5)]
+    inp = (a,b,c)
 
 
     objects = [Hypermolecule(m[0], m[1]) for m in inp]
@@ -555,3 +565,5 @@ if __name__ == '__main__':
     print('Opening VMD...')
     with suppress_stdout_stderr():
         os.system(f'vmd -e {path}')
+
+    print()

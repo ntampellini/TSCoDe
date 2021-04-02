@@ -116,21 +116,18 @@ class Hypermolecule:
 
         self._inspect_reactive_atoms() # sets reactive atoms properties to rotate the ensemble correctly afterwards
 
-        if type(self.reactive_indexes) is int:
-            reactive_vector = np.mean(np.array([structure[self.reactive_indexes] for structure in self.atomcoords]), axis=0)
-        else:
-            reactive_vector = []
-            for structure in self.atomcoords:
-                for index in self.reactive_indexes:
-                    reactive_vector.append(structure[index])
-            reactive_vector = np.mean(np.array(reactive_vector), axis=0)
+        reactive_vector = []
+        for structure in self.atomcoords:
+            for index in self.reactive_indexes:
+                reactive_vector.append(structure[index])
+        reactive_vector = np.mean(np.array(reactive_vector), axis=0)
 
         self.atomcoords = np.array([self._orient_along_x(structure, reactive_vector) for structure in self.atomcoords])
         # After reading aligned conformers, they are stored as self.atomcoords after being translated to origin and aligned the reactive atom(s) to x axis.
 
         for reactive_atom, index in zip(self.reactive_atoms_classes, self.reactive_indexes):
                        
-            reactive_atom.init(self, index)
+            reactive_atom.init(self, index, update=True)
             # update properties into reactive_atom class
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
@@ -398,11 +395,12 @@ if __name__ == '__main__':
         9 : ('Resources/DA/diene.xyz', (2,7)),
         10 : ('Resources/DA/dienophile.xyz', (3,5)),
         11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5)),
-        12 : ('Resources/SN2/ketone_ensemble.xyz', 5)
+        12 : ('Resources/SN2/ketone_ensemble.xyz', 5),
+        13 : ('Resources/NOH.xyz', (0,1))
 
             }
 
-    t = Hypermolecule(test[12][0], test[12][1])
+    t = Hypermolecule(test[13][0], test[13][1])
     t._compute_hypermolecule()
     t.write_hypermolecule()
 

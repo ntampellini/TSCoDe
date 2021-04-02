@@ -77,15 +77,6 @@ def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max
         except KeyError:
             pass
 
-    if debug:
-        if len(delta_bonds) > 0:
-            print('Some scrambling occurred: bonds out of place are', len(delta_bonds), delta_bonds)
-        else:
-            print('Transition state starting point looks OK')
-
-    # atoms = Atoms(''.join([pt[i].symbol for i in TS_atomnos]), positions=TS_structure)
-    # view(atoms)
-
     if len(delta_bonds) > max_new_bonds:
         return False
     else:
@@ -301,7 +292,7 @@ def rmsd_cache(tup):
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
 
-def prune_conformers(structures, atomnos, energies, max_rmsd=1.5, debug=False):
+def prune_conformers(structures, atomnos, energies, max_rmsd=0.5, debug=False):
     '''
     Remove conformations that are too similar (have a small RMSD value).
     When removing structures, only the lowest energy one is kept.
@@ -355,7 +346,7 @@ def prune_conformers(structures, atomnos, energies, max_rmsd=1.5, debug=False):
     return structures[mask], mask
 
 
-def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1.5, debug=False):
+def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1, debug=False):
     '''
     Initial removal of conformations that are too similar (have a small RMSD value)
     by splitting the structure set in k subsets and pruning conformations inside those.
