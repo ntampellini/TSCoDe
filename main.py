@@ -11,7 +11,6 @@ from parameters import *
 import os
 import time
 from cclib.io import ccread
-from openbabel import openbabel as ob
 from ase import Atoms
 from ase.visualize import view
 from ase.optimize import BFGS
@@ -388,11 +387,13 @@ class Docker:
             t_start = time.time()
             mask = np.zeros(len(self.structures), dtype=bool)
             num = len(self.structures)
+            ids = [len(mol.atomnos) for mol in self.objects]
             for s, structure in enumerate(self.structures):
                 p = True if num > 100 and s % (num // 100) == 0 else False
                 if p:
                     loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
-                mask[s] = sanity_check(structure, atomnos, self.constrained_indexes[s], graphs, max_new_bonds=3)
+                # mask[s] = sanity_check(structure, atomnos, self.constrained_indexes[s], graphs, max_new_bonds=3)
+                mask[s] = compenetration_check(structure, ids)
             loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
             self.structures = self.structures[mask]
             self.constrained_indexes = self.constrained_indexes[mask]

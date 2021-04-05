@@ -1,6 +1,6 @@
 import os, time
 import numpy as np
-import cynetworkx as nx
+import networkx as nx
 from spyrmsd.rmsd import rmsd
 from cclib.io import ccread
 from ase import Atoms
@@ -41,6 +41,56 @@ class suppress_stdout_stderr(object):
         # Close all file descriptors
         for fd in self.null_fds + self.save_fds:
             os.close(fd)
+
+def compenetration_check(coords, ids):
+    thresh = 1.2
+    clashes = 0
+    if len(ids) == 2:
+        m1 = coords[0:ids[0]]
+        m2 = coords[ids[0]:]
+        for v1 in m1:
+            for v2 in m2:
+                delta = v1-v2
+                dist = np.linalg.norm(delta)
+                if delta < thresh:
+                    clashes += 1
+                if clashes > 2:
+                    return False
+        return True
+
+    else:
+        m1 = coords[0:ids[0]]
+        m2 = coords[ids[0]:ids[0]+ids[1]]
+        m3 = coords[ids[0]+ids[1]:]
+
+        for v1 in m1:
+            for v2 in m2:
+                delta = v1-v2
+                dist = np.linalg.norm(delta)
+                if dist < thresh:
+                    clashes += 1
+                if clashes > 2:
+                    return False
+
+        for v2 in m2:
+            for v3 in m3:
+                delta = v2-v3
+                dist = np.linalg.norm(delta)
+                if dist < thresh:
+                    clashes += 1
+                if clashes > 2:
+                    return False
+
+        for v3 in m3:
+            for v1 in m1:
+                delta = v3-v1
+                dist = np.linalg.norm(delta)
+                if dist < 1.2:
+                    clashes += 1
+                if clashes > 2:
+                    return False
+
+        return True
 
 
 def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_new_bonds=3, debug=False):
