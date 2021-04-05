@@ -1,5 +1,5 @@
 # To Do List
-. debug trimolecular TSs poses
+(solved?) debug trimolecular TSs poses
 . if molecule read fails, do not go on
 . Introduce correct reactive atom matching in trimolecular TSs
 . Work out pure Mopac constraints

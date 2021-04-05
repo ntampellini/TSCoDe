@@ -1,6 +1,6 @@
 import os, time
 import numpy as np
-import networkx as nx
+import cynetworkx as nx
 from spyrmsd.rmsd import rmsd
 from cclib.io import ccread
 from ase import Atoms
