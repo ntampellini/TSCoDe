@@ -1,0 +1,11 @@
+Setup performed correctly. 221184 candidates will be generated.
+TSCoDe - input structures/indexes were: Resources/dienamine/dienamine_ensemble.xyz/[ 6 23] Resources/acid_ensemble.xyz/[ 3 25] Resources/maleimide.xyz/[0 5]
+rotation_steps was 6: 60.0 degrees turns performed
+Initializing cyclical embed...
+Generated 221184 transition state candidates (107.41 s)
+Discarded 213945 candidates for compenetration (7239 left, 480.59 s)
+similarity pre-processing (k=1000) - 23.17 s - kept 7229/7239
+similarity pre-processing (k=500) - 34.23 s - kept 7195/7229
+similarity pre-processing (k=200) - 64.16 s - kept 7146/7195
+similarity pre-processing (k=100) - 113.65 s - kept 7075/7146
+similarity pre-processing (k=50) - 224.52 s - kept 6929/7075

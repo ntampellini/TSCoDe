@@ -14,6 +14,8 @@ from scipy.spatial.transform import Rotation as R
 from subprocess import DEVNULL, STDOUT, check_call
 warnings.simplefilter("ignore", UserWarning)
 
+class CCReadError(Exception):
+    pass
 
 def kabsch(filename, indexes=None):
     '''
@@ -96,24 +98,29 @@ class Hypermolecule:
         if reactive_atoms is None:
             reactive_atoms = self._set_reactive_atoms(filename)
 
-        ccread_object = self._align_ensemble(filename, reactive_atoms)
-
+        # ccread_object = self._align_ensemble(filename, reactive_atoms)
+        ccread_object = ccread(filename)
         coordinates = np.array(ccread_object.atomcoords)
 
+        self.reactive_indexes = np.array(reactive_atoms)
+        # alignment_indexes = self._alignment_indexes(ccread_object.atomcoords[0], ccread_object.atomnos, self.reactive_indexes)
+
+        if len(ccread_object.atomnos) == 0:
+            raise CCReadError(f'Cannot read file {filename}')
 
         self.atomnos = ccread_object.atomnos
         self.position = np.array([0,0,0], dtype=float)  # used in Docker class
         self.rotation = np.identity(3)                  # used in Docker class - rotation matrix
 
-        if all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))]):     # Checking that ensemble has constant length
-            if self.debug: print(f'DEBUG--> Initializing object {filename}\nDEBUG--> Found {len(coordinates)} structures with {len(coordinates[0])} atoms')
-        else:
-            raise Exception(f'Ensemble not recognized, no constant lenght. len are {[len(i) for i in coordinates]}')
+        assert all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))])     # Checking that ensemble has constant length
+        if self.debug: print(f'DEBUG--> Initializing object {filename}\nDEBUG--> Found {len(coordinates)} structures with {len(coordinates[0])} atoms')
+
 
         self.centroid = np.sum(np.sum(coordinates, axis=0), axis=0) / (len(coordinates) * len(coordinates[0]))
         if self.debug: print('DEBUG--> Centroid was', self.centroid)
         self.atomcoords = coordinates - self.centroid
-
+        self.graph = graphize(self.atomcoords[0], self.atomnos)
+        # show_graph(self)
         self._inspect_reactive_atoms() # sets reactive atoms properties to rotate the ensemble correctly afterwards
 
         reactive_vector = []
@@ -244,74 +251,74 @@ class Hypermolecule:
                             max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
                             max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
     
-    def _alignment_indexes(self, coords, atomnos, reactive_atoms):
-        '''
-        Return the indexes to align the molecule to, given a list of
-        atoms that should be reacting. List is composed by reactive atoms
-        plus adjacent atoms.
-        :param coords: coordinates of a single molecule
-        :param reactive atoms: int or list of ints
-        :return: list of indexes
-        '''
+    # def _alignment_indexes(self, coords, atomnos, reactive_atoms):
+    #     '''
+    #     Return the indexes to align the molecule to, given a list of
+    #     atoms that should be reacting. List is composed by reactive atoms
+    #     plus adjacent atoms.
+    #     :param coords: coordinates of a single molecule
+    #     :param reactive atoms: int or list of ints
+    #     :return: list of indexes
+    #     '''
 
-        self.graph = graphize(coords, atomnos)
+    #     self.graph = graphize(coords, atomnos)
 
-        indexes = set()
+    #     indexes = set()
 
-        for atom in reactive_atoms:
-            indexes |= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
-        if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
-        return list(indexes)
+    #     for atom in reactive_atoms:
+    #         indexes |= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
+    #     if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
+    #     return list(indexes)
 
-    def _align_ensemble(self, filename, reactive_atoms):
-        '''
-        Align a set of conformers to the first one.
-        Alignment is done on reactive atom(s) and its immediate neighbors.
-        If ensembles has readable energies, they are kept, otherwise thy are calculated at MMFF level.
+    # def _align_ensemble(self, filename, reactive_atoms):
+    #     '''
+    #     Align a set of conformers to the first one.
+    #     Alignment is done on reactive atom(s) and its immediate neighbors.
+    #     If ensembles has readable energies, they are kept, otherwise thy are calculated at MMFF level.
 
-        filename            Input file name, must be a single structure file
-        reactive_atoms      Index of atoms that will link during the desired reaction.
-                            May be either int or list of int.
-        return              Writes a new filename_aligned.xyz file and returns its name
+    #     filename            Input file name, must be a single structure file
+    #     reactive_atoms      Index of atoms that will link during the desired reaction.
+    #                         May be either int or list of int.
+    #     return              Writes a new filename_aligned.xyz file and returns its name
 
-        '''
-        try:
-            if type(reactive_atoms) == int:
-                reactive_atoms = [reactive_atoms]
-        except Exception:
-            raise Exception('Unrecognized reactive atoms IDs. Argument must either be one int or a list of ints.')
+    #     '''
+    #     # try:
+    #     #     if type(reactive_atoms) == int:
+    #     #         reactive_atoms = [reactive_atoms]
+    #     # except Exception:
+    #     #     raise Exception('Unrecognized reactive atoms IDs. Argument must either be one int or a list of ints.')
 
-        self.reactive_indexes = np.array(reactive_atoms) # they count from 1, we count from 0
+    #     self.reactive_indexes = np.array(reactive_atoms)
 
-        self.energies = self._get_ensemble_energies(filename)
+    #     if self.debug: print(f'DEBUG--> Read Conformational ensemble from file {filename} : {len(self.energies)} conformers found.')
 
-        if self.debug: print(f'DEBUG--> Read Conformational ensemble from file {filename} : {len(self.energies)} conformers found.')
+    #     data = ccread(filename)  # if we could read energies directly from ensemble, actually take those
+    #     try:
+    #         assert len(data.scfenergies) == len(data.atomcoords)
+    #         self.energies = data.scfenergies / 23.06054194532933
+    #         self.energies -= min(self.energies)
 
-        data = ccread(filename)  # if we could read energies directly from ensemble, actually take those
-        try:
-            assert len(data.scfenergies) == len(data.atomcoords)
-            self.energies = data.scfenergies / 23.06054194532933
-            self.energies -= min(self.energies)
+    #         if self.debug: print(f'DEBUG--> Read relative energies from ensemble : {self.energies} kcal/mol')
 
-            if self.debug: print(f'DEBUG--> Read relative energies from ensemble : {self.energies} kcal/mol')
+    #     except:
+    #         # self.energies = self._get_ensemble_energies(filename)
+    #         self.energies = np.zeros(len(self.atomcoords), dtype=float)
+    #         self.energies = np.array(self.energies) - np.min(self.energies)
+    #         if self.debug: print(f'DEBUG--> Computed relative energies for the ensemble : {self.energies} kcal/mol')
 
-        except:
-            self.energies = np.array(self.energies) - min(self.energies)
-            if self.debug: print(f'DEBUG--> Computed relative energies for the ensemble : {self.energies} kcal/mol')
+    #     alignment_indexes = self._alignment_indexes(data.atomcoords[0], data.atomnos, self.reactive_indexes)
 
-        alignment_indexes = self._alignment_indexes(data.atomcoords[0], data.atomnos, self.reactive_indexes)
+    #     del data
 
-        del data
+    #     # if alignment_indexes is None:               # Eventually we should raise an error I think, but we could also warn and leave this
+    #     #     print(f'UNABLE TO UNDERSTAND REACTIVE ATOMS INDEX(ES): Ensemble for {self.rootname} aligned on all atoms, may generate undesired results.')
 
-        if alignment_indexes is None:               # Eventually we should raise an error I think, but we could also warn and leave this
-            print(f'UNABLE TO UNDERSTAND REACTIVE ATOMS INDEX(ES): Ensemble for {self.rootname} aligned on all atoms, may generate undesired results.')
+    #     outname = kabsch(filename, alignment_indexes)
 
-        outname = kabsch(filename, alignment_indexes)
+    #     ccread_object = ccread(outname)
+    #     os.remove(outname)    # <--- FINAL ALIGNED ENSEMBLE
 
-        ccread_object = ccread(outname)
-        os.remove(outname)    # <--- FINAL ALIGNED ENSEMBLE
-
-        return ccread_object
+    #     return ccread_object
 
 
     def _orient_along_x(self, array, vector):
@@ -383,29 +390,30 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     test = {
 
-        1 : ('Resources/indole/indole_ensemble.xyz', 6),
-        2 : ('Resources/SN2/amine_ensemble.xyz', 10),
-        3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
-        4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
-        5 : ('Resources/SN2/flex_ensemble.xyz', None),
+        # 1 : ('Resources/indole/indole_ensemble.xyz', 6),
+        # 2 : ('Resources/SN2/amine_ensemble.xyz', 10),
+        # 3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
+        # 4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
+        # 5 : ('Resources/SN2/flex_ensemble.xyz', None),
 
-        6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
-        7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
-        8 : ('Resources/bulk/tax.xyz', None),
-        9 : ('Resources/DA/diene.xyz', (2,7)),
-        10 : ('Resources/DA/dienophile.xyz', (3,5)),
-        11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5)),
-        12 : ('Resources/SN2/ketone_ensemble.xyz', 5),
-        13 : ('Resources/NOH.xyz', (0,1))
+        # 6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
+        # 7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
+        # 8 : ('Resources/bulk/tax.xyz', None),
+        # 9 : ('Resources/DA/diene.xyz', (2,7)),
+        # 10 : ('Resources/DA/dienophile.xyz', (3,5)),
+        # 11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5)),
+        # 12 : ('Resources/SN2/ketone_ensemble.xyz', 5),
+        # 13 : ('Resources/NOH.xyz', (0,1)),
+        14 : ('Resources/acid_ensemble.xyz', (3,25))
 
             }
 
-    t = Hypermolecule(test[13][0], test[13][1])
-    t._compute_hypermolecule()
-    t.write_hypermolecule()
+    # t = Hypermolecule(test[14][0], test[14][1])
+    # t._compute_hypermolecule()
+    # t.write_hypermolecule()
 
 
-    quit()
+    # quit()
 
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
@@ -440,7 +448,32 @@ if __name__ == '__main__':
            'S':'gold',
            'Br':'brown'}
 
-    for obj in [Hypermolecule(path, indexes) for path, indexes in test.values()]:
+    # for obj in [Hypermolecule(path, indexes) for path, indexes in test.values()]:
+    # # for obj in [Hypermolecule('Resources/acid_ensemble.xyz', (3,25))]:
+    #     labels_dict = {i:pt[n].symbol for i, n in enumerate(obj.atomnos)}
+
+    #     color_list = [col[i] for i in labels_dict.values()]
+    #     pos = nx.spring_layout(obj.graph)
+    #     nx.draw_networkx_nodes(obj.graph, pos=pos, node_size=1000, nodelist=obj.reactive_indexes, node_color='coral', alpha=0.5)
+    #     nx.draw(obj.graph, pos=pos, labels=labels_dict, node_color=color_list)
+    #     plt.show()
+
+    #     fig = plt.figure()
+    #     ax = fig.add_subplot(111, projection='3d')
+    #     x = [v[0] for v in obj.hypermolecule]
+    #     y = [v[1] for v in obj.hypermolecule]
+    #     z = [v[2] for v in obj.hypermolecule]
+
+    #     ax.set_box_aspect([1,1,1])
+    #     plot = ax.scatter(x, y, z, s=100, label=obj.rootname, c=obj.weights, vmin=0, vmax=1, cmap='YlOrRd', alpha=0.5)
+    #     plt.colorbar(plot)
+    #     set_axes_equal(ax)
+    #     plt.tight_layout()
+    #     plt.show()
+
+
+    def show_graph(obj):
+        import matplotlib.pyplot as plt
         labels_dict = {i:pt[n].symbol for i, n in enumerate(obj.atomnos)}
 
         color_list = [col[i] for i in labels_dict.values()]
@@ -449,21 +482,7 @@ if __name__ == '__main__':
         nx.draw(obj.graph, pos=pos, labels=labels_dict, node_color=color_list)
         plt.show()
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        x = [v[0] for v in obj.hypermolecule]
-        y = [v[1] for v in obj.hypermolecule]
-        z = [v[2] for v in obj.hypermolecule]
-
-        ax.set_box_aspect([1,1,1])
-        plot = ax.scatter(x, y, z, s=100, label=obj.rootname, c=obj.weights, vmin=0, vmax=1, cmap='YlOrRd', alpha=0.5)
-        plt.colorbar(plot)
-        set_axes_equal(ax)
-        plt.tight_layout()
-        plt.show()
-
-
-
+    t = Hypermolecule(test[14][0], test[14][1])
 
     # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')
     # en = test._get_ensemble_energies('Resources/SN2/flex_ensemble.xyz')

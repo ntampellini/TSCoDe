@@ -42,95 +42,45 @@ class suppress_stdout_stderr(object):
         for fd in self.null_fds + self.save_fds:
             os.close(fd)
 
-def compenetration_check(coords, ids):
-    thresh = 1.2
-    clashes = 0
-    if len(ids) == 2:
-        m1 = coords[0:ids[0]]
-        m2 = coords[ids[0]:]
-        for v1 in m1:
-            for v2 in m2:
-                delta = v1-v2
-                dist = np.linalg.norm(delta)
-                if delta < thresh:
-                    clashes += 1
-                if clashes > 2:
-                    return False
-        return True
 
-    else:
-        m1 = coords[0:ids[0]]
-        m2 = coords[ids[0]:ids[0]+ids[1]]
-        m3 = coords[ids[0]+ids[1]:]
+# def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_new_bonds=3, debug=False):
+#     '''
+#     :params TS_structure: list of coordinates for each atom in the TS
+#     :params TS_atomnos: list of atomic numbers for each atom in the TS
+#     :params constrained_indexes: indexes of constrained atoms in the TS geometry
+#     :params mols_graphs: list of molecule.graph objects, containing connectivity information
+#     :params max_new_bonds: maximum number of apperent new bonds in TS geometry to accept the
+#                            structure as a valid one. Too high values may cause ugly results,
+#                            too low might discard structures that would have led to good results.
 
-        for v1 in m1:
-            for v2 in m2:
-                delta = v1-v2
-                dist = np.linalg.norm(delta)
-                if dist < thresh:
-                    clashes += 1
-                if clashes > 2:
-                    return False
+#     :return result: bool, indicating structure sanity
+#     '''
+#     bonds = []
+#     for i in range(len(mols_graphs)):
+#         pos = 0
+#         while i != 0:
+#             pos += len(mols_graphs[i-1].nodes)
+#             i -= 1
+#         for bond in [(a+pos, b+pos) for a, b in list(mols_graphs[i].edges) if a != b]:
+#             bonds.append(bond)
+#     bonds = set(bonds)
 
-        for v2 in m2:
-            for v3 in m3:
-                delta = v2-v3
-                dist = np.linalg.norm(delta)
-                if dist < thresh:
-                    clashes += 1
-                if clashes > 2:
-                    return False
+#     new_bonds = {(a, b) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
+#     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
+#     for c_bond in constrained_indexes:
+#         try:
+#             delta_bonds.remove(tuple(c_bond))
+#         except KeyError:
+#             pass
+#         try:
+#             delta_bonds.remove(tuple(reversed(tuple(c_bond))))
+#         except KeyError:
+#             pass
 
-        for v3 in m3:
-            for v1 in m1:
-                delta = v3-v1
-                dist = np.linalg.norm(delta)
-                if dist < 1.2:
-                    clashes += 1
-                if clashes > 2:
-                    return False
-
-        return True
-
-
-def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_new_bonds=3, debug=False):
-    '''
-    :params TS_structure: list of coordinates for each atom in the TS
-    :params TS_atomnos: list of atomic numbers for each atom in the TS
-    :params constrained_indexes: indexes of constrained atoms in the TS geometry
-    :params mols_graphs: list of molecule.graph objects, containing connectivity information
-    :params max_new_bonds: maximum number of apperent new bonds in TS geometry to accept the
-                           structure as a valid one. Too high values may cause ugly results,
-                           too low might discard structures that would have led to good results.
-
-    :return result: bool, indicating structure sanity
-    '''
-    bonds = []
-    for i in range(len(mols_graphs)):
-        pos = 0
-        while i != 0:
-            pos += len(mols_graphs[i-1].nodes)
-            i -= 1
-        for bond in [(a+pos, b+pos) for a, b in list(mols_graphs[i].edges) if a != b]:
-            bonds.append(bond)
-    bonds = set(bonds)
-
-    new_bonds = {(a, b) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
-    delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
-    for c_bond in constrained_indexes:
-        try:
-            delta_bonds.remove(tuple(c_bond))
-        except KeyError:
-            pass
-        try:
-            delta_bonds.remove(tuple(reversed(tuple(c_bond))))
-        except KeyError:
-            pass
-
-    if len(delta_bonds) > max_new_bonds:
-        return False
-    else:
-        return True
+#     if len(delta_bonds) > max_new_bonds:
+#         return False
+#     else:
+#         return True
 
 
 def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calculator, method='PM7', debug=False):
@@ -206,8 +156,11 @@ def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_gra
     try:
         with suppress_stdout_stderr():
             opt.run(fmax=0.05)
-    except Exception as e:
-        print(e)
+    except IndexError as e:
+        # Ase will throw an IndexError if it cannot work out constraints in the
+        # specified partial optimization. We will ignore it here, and return an inifinite energy
+        # return atoms.positions, np.inf
+        raise e
 
     if debug:
         t_end = time.time()
@@ -217,7 +170,8 @@ def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_gra
     try:
         with suppress_stdout_stderr():
             energy = atoms.get_total_energy()
-    except:
+    except Exception as e:
+        raise e
         energy = np.inf
 
     return atoms.positions, energy
@@ -277,9 +231,11 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calcula
 
         try:
             with suppress_stdout_stderr():
-                opt.run(steps=100, opt='modredundant')
-        except Exception as e:
-            print(e)
+                opt.run(fmax=0.05)
+        except IndexError:
+            # Ase will throw an IndexError if it cannot work out constraints in the
+            # specified partial optimization. We will ignore it here, and return an inifinite energy
+            return atoms.positions, np.inf
 
     elif calculator == 'Mopac':
         atoms.calc = MOPAC(label=jobname, command=f'{MOPAC_COMMAND} {jobname}.mop', method=method)
@@ -290,8 +246,11 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calcula
         try:
             with suppress_stdout_stderr():
                 opt.run(fmax=0.05)
-        except Exception as e:
-            print(e)
+        except IndexError as e:
+            # Ase will throw an IndexError if it cannot work out constraints in the
+            # specified partial optimization. We will ignore it here, and return an inifinite energy
+            # return atoms.positions, np.inf, False
+            raise e
 
     else:
         raise Exception('Calculator not recognized')
@@ -332,71 +291,76 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calcula
 
     return atoms.positions, energy, not_scrambled
 
+# def cached_rmsd(tgt, ref, atomnos):
+#     return rmsd(tgt, ref, atomnos, atomnos, center=True, minimize=True)
+
 # from numpy_lru_cache_decorator import np_cache
 # @np_cache(maxsize=10000)
-# @lru_cache(maxsize=10000)
-def rmsd_cache(tup):
-    tgt, ref, atomnos1, atomnos2 = tup
-    return rmsd(tgt, ref, atomnos1, atomnos2, center=True, minimize=True)
+# def cached_rmsd(array, atomnos):
+#     i = int(array.shape[0]/2)
+#     tgt = array[:i]
+#     ref = array[i:]
+#     return rmsd(tgt, ref, atomnos, atomnos, center=True, minimize=True)
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
 
-def prune_conformers(structures, atomnos, energies, max_rmsd=0.5, debug=False):
-    '''
-    Remove conformations that are too similar (have a small RMSD value).
-    When removing structures, only the lowest energy one is kept.
+# def prune_conformers(structures, atomnos, energies, max_rmsd=0.5, debug=False):
+#     '''
+#     Remove conformations that are too similar (have a small RMSD value).
+#     When removing structures, only the lowest energy one is kept.
 
-    :params structures: numpy array of conformations
-    :params energies: list of energies for each conformation
-    :params max_rmsd: maximum rmsd value to consider two structures identical, in Angstroms
-    '''
-    rmsd_mat = np.zeros((len(structures), len(structures)))
-    rmsd_mat[:] = np.nan
-    for i, tgt in enumerate(structures):
-        for j, ref in enumerate(structures[i+1:]):
-            rmsd_mat[i, i+j+1] = rmsd_cache((tgt, ref, atomnos, atomnos))
+#     :params structures: numpy array of conformations
+#     :params energies: list of energies for each conformation
+#     :params max_rmsd: maximum rmsd value to consider two structures identical, in Angstroms
+#     '''
 
-    matches = np.where(rmsd_mat < max_rmsd)
-    matches = [(i,j) for i,j in zip(matches[0], matches[1])]
+#     rmsd_mat = np.zeros((len(structures), len(structures)))
+#     rmsd_mat[:] = np.nan
+#     for i, tgt in enumerate(structures):
+#         for j, ref in enumerate(structures[i+1:]):
+#             rmsd_mat[i, i+j+1] = rmsd(tgt, ref, atomnos, atomnos, center=True, minimize=True)
 
-    g = nx.Graph(matches)
+#     matches = np.where(rmsd_mat < max_rmsd)
+#     matches = [(i,j) for i,j in zip(matches[0], matches[1])]
 
-    if debug:
-        g.add_nodes_from(range(len(structures)))
-        pos = nx.spring_layout(g)
-        nx.draw(g, pos=pos, labels={i:i for i in range(len(g))})
-        import matplotlib.pyplot as plt
-        plt.show()
+#     g = nx.Graph(matches)
 
-    subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
-    groups = [tuple(graph.nodes) for graph in subgraphs]
+#     if debug:
+#         g.add_nodes_from(range(len(structures)))
+#         pos = nx.spring_layout(g)
+#         nx.draw(g, pos=pos, labels={i:i for i in range(len(g))})
+#         import matplotlib.pyplot as plt
+#         plt.show()
 
-    def en(tup):
-        ens = [energies[t] for t in tup]
-        return tup[ens.index(min(ens))]
+#     subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+#     groups = [tuple(graph.nodes) for graph in subgraphs]
 
-    best_of_cluster = [en(group) for group in groups]
-    rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+#     def en(tup):
+#         ens = [energies[t] for t in tup]
+#         return tup[ens.index(min(ens))]
 
-    rejects = []
-    def flatten(seq):
-        for s in seq:
-            if type(s) in (tuple, list, set):
-                flatten(s)
-            else:
-                rejects.append(s)
+#     best_of_cluster = [en(group) for group in groups]
+#     rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
 
-    flatten(rejects_sets)
+#     rejects = []
+#     def flatten(seq):
+#         for s in seq:
+#             if type(s) in (tuple, list, set):
+#                 flatten(s)
+#             else:
+#                 rejects.append(s)
 
-    mask = np.array([True for _ in range(len(structures))], dtype=bool)
-    for i in rejects:
-        mask[i] = False
+#     flatten(rejects_sets)
 
-    return structures[mask], mask
+#     mask = np.array([True for _ in range(len(structures))], dtype=bool)
+#     for i in rejects:
+#         mask[i] = False
+
+#     return structures[mask], mask
 
 
-def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1, debug=False):
+def prune_conformers(structures, atomnos, k=1, max_rmsd=1, energies=None, debug=False):
     '''
     Initial removal of conformations that are too similar (have a small RMSD value)
     by splitting the structure set in k subsets and pruning conformations inside those.
@@ -404,13 +368,14 @@ def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1, debug=False):
     :params structures: numpy array of conformations
     :params max_rmsd: maximum rmsd value to consider two structures identical, in Angstroms
     '''
-    r = np.arange(structures.shape[0])
-    sequence = np.random.permutation(r)
-    inv_sequence = np.array([np.where(sequence == i)[0][0] for i in r])
+    if k != 1:
+        r = np.arange(structures.shape[0])
+        sequence = np.random.permutation(r)
+        inv_sequence = np.array([np.where(sequence == i)[0][0] for i in r])
 
-
-    structures = scramble(structures, sequence)
-    # # scrambling array before splitting, so to improve efficiency
+        structures = scramble(structures, sequence)
+        # scrambling array before splitting, so to improve efficiency when doing
+        # multiple runs of group pruning
 
     mask_out = []
     d = len(structures) // k
@@ -425,7 +390,8 @@ def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1, debug=False):
         rmsd_mat[:] = np.nan
         for i, tgt in enumerate(structures_subset):
             for j, ref in enumerate(structures_subset[i+1:]):
-                rmsd_mat[i, i+j+1] = rmsd_cache((tgt, ref, atomnos, atomnos))
+                rmsd_mat[i, i+j+1] = rmsd(tgt, ref, atomnos, atomnos, center=True, minimize=True)
+
 
         matches = np.where(rmsd_mat < max_rmsd)
         matches = [(i,j) for i,j in zip(matches[0], matches[1])]
@@ -442,9 +408,18 @@ def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1, debug=False):
         subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
         groups = [tuple(graph.nodes) for graph in subgraphs]
 
-        best_of_cluster = [group[0] for group in groups]
-        # the first on of each cluster is returned - does not matter what it is at this stage
-        rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+        if energies is not None:
+            # if we have energies, the most stable of each cluster is returned
+            def en(tup):
+                ens = [energies[t] for t in tup]
+                return tup[ens.index(min(ens))]
+
+            best_of_cluster = [en(group) for group in groups]
+
+        else:
+            best_of_cluster = [group[0] for group in groups]
+            # if we do not, the first on of each cluster is returned
+            rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
 
         rejects = []
         def flatten(seq):
@@ -453,7 +428,6 @@ def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1, debug=False):
                     flatten(s)
                 else:
                     rejects.append(s)
-
         flatten(rejects_sets)
 
         mask = np.array([True for _ in range(len(structures_subset))], dtype=bool)
@@ -464,9 +438,10 @@ def pre_prune_conformers(structures, atomnos, k=10, max_rmsd=1, debug=False):
     
     mask = np.concatenate(mask_out)
 
-    mask = scramble(mask, inv_sequence)
-    structures = scramble(structures, inv_sequence)
-    # # undoing the previous shuffling, therefore preserving the input order
+    if k != 1:
+        mask = scramble(mask, inv_sequence)
+        structures = scramble(structures, inv_sequence)
+        # undoing the previous shuffling, therefore preserving the input order
 
     return structures[mask], mask
 

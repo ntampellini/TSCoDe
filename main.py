@@ -10,15 +10,10 @@ from copy import deepcopy
 from parameters import *
 import os
 import time
-from cclib.io import ccread
-from ase import Atoms
-from ase.visualize import view
-from ase.optimize import BFGS
-from ase.constraints import FixAtoms
-from ase.calculators.mopac import MOPAC
 from optimization_methods import *
 from subprocess import DEVNULL, STDOUT, check_call
 from linalg_tools import *
+from compenetration import compenetration_check
 
 class ZeroCandidatesError(Exception):
     pass
@@ -240,7 +235,7 @@ class Docker:
                 if sorted(mit.circular_shifts(reversed(p)))[0] not in unique_perms:
                     unique_perms.append(p)
             return sorted(unique_perms)
-        # this was actually ready for n-gons implementation, but I think we will never use with n>3
+        # this was actually ready for n-gons implementation, but I think we will never use it with n>3
         
 
         log_print('Initializing cyclical embed...')
@@ -326,10 +321,9 @@ class Docker:
 
         print()
 
-        head = ' '.join([f'{mol.name}/{mol.reactive_indexes}' for mol in self.objects])
-        log.write('TSCoDe - input structures/indexes were: ' + head)
-        log.write('\n')
-        log.write(f'rotation_steps was {self.rotation_steps}: {round(360/self.rotation_steps, 2)} degrees turns performed\n')
+        head = '\n'.join([f'{mol.rootname} - Reactive indexes {mol.reactive_indexes}' for mol in self.objects])
+        log_print('TSCoDe - input structures/indexes were: ' + head)
+        log_print(f'rotation_steps was {self.rotation_steps}: {round(360/self.rotation_steps, 2)} degrees turns performed\n')
 
         t_start_run = time.time()
 
@@ -355,7 +349,7 @@ class Docker:
 
         self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
         n_of_constraints = self.dispositions_constrained_indexes.shape[1]
-        self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2))
+        self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2), dtype=int)
         # we will be getting constrained indexes for each combination of conformations from the general self.disposition_constrained_indexes array
 
         for geometry_number, geometry in enumerate(embedded_structures):
@@ -394,6 +388,7 @@ class Docker:
                     loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
                 # mask[s] = sanity_check(structure, atomnos, self.constrained_indexes[s], graphs, max_new_bonds=3)
                 mask[s] = compenetration_check(structure, ids)
+
             loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
             self.structures = self.structures[mask]
             self.constrained_indexes = self.constrained_indexes[mask]
@@ -404,30 +399,51 @@ class Docker:
             # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
 
             ################################################# PRUNING: SIMILARITY
+            import prune as p
+            # test
+            self.temp = deepcopy(self.structures)
+            t_start = time.time()
 
+            before = len(self.temp)
+            for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
+                if 5*k < len(self.temp):
+                    t_start_int = time.time()
+                    self.temp, mask = p.prune_conformers(self.temp, atomnos, k=k)
+                    t_end_int = time.time()
+                    log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
+            
+            self.temp, mask = p.prune_conformers(self.temp, atomnos, max_rmsd=1.5)
+            t_end = time.time()
+            log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
+
+            if np.any(mask == False):
+                log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s) - CYTHON')
+
+            ################################################ KILL ABOVE
             if len(self.structures) == 0:
                 raise ZeroCandidatesError()
 
             t_start = time.time()
 
             before = len(self.structures)
-            for k in (4000, 2000, 1000, 500, 200, 100, 50, 10, 5, 2):
-                if 4*k < len(self.structures):
+            for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
+                if 5*k < len(self.structures):
                     t_start_int = time.time()
-                    self.structures, mask = pre_prune_conformers(self.structures, atomnos, k=k)
+                    self.structures, mask = prune_conformers(self.structures, atomnos, k=k)
                     self.constrained_indexes = self.constrained_indexes[mask]
                     t_end_int = time.time()
-                    log.write(f'similarity pre-processing (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}\n')
+                    log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
             
-            self.structures, mask = prune_conformers(self.structures, atomnos, np.array([0 for _ in range(len(self.structures))]))
+            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=1.5)
             t_end = time.time()
-            log.write(f'similarity processing     (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}\n')
+            log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
             self.constrained_indexes = self.constrained_indexes[mask]
 
             if np.any(mask == False):
                 log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-
+                # TO DO: find out why this does not get printed
+            quit()
             ################################################# GEOMETRY OPTIMIZATION
 
             if len(self.structures) == 0:
@@ -442,9 +458,10 @@ class Docker:
                     loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
                     try:
                         t_start_opt = time.time()
-                        intermediate_geometry, _ = Hookean_optimization(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
-                        self.structures[i], self.energies[i], self.exit_status[i] = optimize(intermediate_geometry, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
-                        t_end_opt = time.time()
+                        # intermediate_geometry, _ = Hookean_optimization(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
+                        # self.structures[i], self.energies[i], self.exit_status[i] = optimize(intermediate_geometry, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
+                        self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
+
 
                         exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'
 
@@ -458,7 +475,8 @@ class Docker:
                         exit_str = 'FAILED TO READ FILE'
 
                     finally:
-                        log.write(f'Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s\n')
+                        t_end_opt = time.time()
+                        log_print(f'Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s')
 
                 loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                 t_end = time.time()
@@ -527,15 +545,15 @@ if __name__ == '__main__':
     # a = ['Resources/SN2/amine_ensemble.xyz', 22]
     # a = ['Resources/indole/indole_ensemble.xyz', 6]
     ######################################################
-    b = ['Resources/SN2/CH3Br_ensemble.xyz', 0]
+    # b = ['Resources/SN2/CH3Br_ensemble.xyz', 0]
     # b = ['Resources/SN2/ketone_ensemble.xyz', 2]
     # inp = [a,b]
 
     # c = ['Resources/SN2/MeOH_ensemble.xyz', (1,5)]
     # c = ['Resources/DA/CHCH3.xyz', [0,6]]
     # c = ['Resources/SN2/BrCl.xyz', [0,1]]
-    c = ['Resources/NOH.xyz', (0,1)]
-    inp = [c,c,c]
+    # c = ['Resources/NOH.xyz', (0,1)]
+    # inp = [c,c,c]
 
     # d = ['Resources/DA/diene.xyz', (2,7)]
     # e = ['Resources/DA/dienophile.xyz', (3,5)]
@@ -550,6 +568,7 @@ if __name__ == '__main__':
     b = ['Resources/acid_ensemble.xyz', (3,25)]
     c = ['Resources/maleimide.xyz', (0,5)]
     inp = (a,b,c)
+    # inp = (b,b)
 
 
     objects = [Hypermolecule(m[0], m[1]) for m in inp]

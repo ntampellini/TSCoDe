@@ -70,9 +70,8 @@ atomnos = np.random.choice([1,6,7,8], n)
 a = 13
 b = 34
 c = 100 - a - b
-ids = (a, b, c)
-# ids = (30, 70)
-# %%
+ids = [a, b, c]
+# ids = [30, 70]
 def compenetration_check(coords, ids):
     thresh = 1.2
     clashes = 0
@@ -123,9 +122,19 @@ def compenetration_check(coords, ids):
 
         return True
 
-# %%
+import compenetration as c
+# %% Python
 %%time
-for _ in range(10000):
-    compenetration(coords, ids)
+for _ in range(int(1e5)):
+    compenetration_check(coords, ids)
 
+# %% Cython
+%%time
+for _ in range(int(1e5)):
+    c.compenetration_check(coords, ids)
+
+# %% Cython 2
+%%time
+for _ in range(int(1e5)):
+    c.compenetration_check2(coords, ids)
 # %%
