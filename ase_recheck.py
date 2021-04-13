@@ -28,3 +28,9 @@ view(atoms)
 constraints
 
 # %%
+os.environ['PATH'].split(';')
+# os.system('mopac2016')
+
+# %%
+import ase
+ase.__version__

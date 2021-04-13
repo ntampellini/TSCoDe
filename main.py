@@ -123,7 +123,7 @@ class Docker:
         # Two molecules, string algorithm, one constraint for all
         return [[int(self.objects[0].reactive_indexes[0]),
                  int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))] for _ in range(len(self.structures))]
-                 # TO DO: check if it works and if the second list comprehension is correct
+                 # TODO: check if it works and if the second list comprehension is correct
 
     def get_cyclical_reactive_indexes(self, n):
         '''
@@ -265,7 +265,7 @@ class Docker:
                 # get indexes of atoms that face each other
 
                 if True: # if all([couple in couples for couple in ids]) or smth
-                    # TO DO: checks that the disposition has the desired atoms facing each other
+                    # TODO: checks that the disposition has the desired atoms facing each other
 
                     systematic_angles = cartesian_product(*[range(self.rotation_steps) for _ in self.objects]) * 360/self.rotation_steps
 
@@ -302,7 +302,7 @@ class Docker:
                             thread[i].position = center_of_rotation - step_rotation @ center_of_rotation + pos
 
                 else:
-                    log_print('# TO DO: Rejected embed: not matching imposed criterion')
+                    log_print('# TODO: Rejected embed: not matching imposed criterion')
 
         loadbar(1, 1, prefix=f'Embedding structures ')
 
@@ -317,12 +317,12 @@ class Docker:
         '''
 
         assert self.candidates < 1e9
-        # TO DO: perform some action if this number is crazy high
+        # TODO: perform some action if this number is crazy high
 
         print()
 
         head = '\n'.join([f'{mol.rootname} - Reactive indexes {mol.reactive_indexes}' for mol in self.objects])
-        log_print('TSCoDe - input structures/indexes were: ' + head)
+        log_print('TSCoDe - input structures/indexes were:\n' + head)
         log_print(f'rotation_steps was {self.rotation_steps}: {round(360/self.rotation_steps, 2)} degrees turns performed\n')
 
         t_start_run = time.time()
@@ -399,27 +399,29 @@ class Docker:
             # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
 
             ################################################# PRUNING: SIMILARITY
-            import prune as p
-            # test
-            self.temp = deepcopy(self.structures)
-            t_start = time.time()
+            # import prune as p
+            # # test
+            # self.temp = deepcopy(self.structures)
+            # t_start = time.time()
 
-            before = len(self.temp)
-            for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
-                if 5*k < len(self.temp):
-                    t_start_int = time.time()
-                    self.temp, mask = p.prune_conformers(self.temp, atomnos, k=k)
-                    t_end_int = time.time()
-                    log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
+            # before = len(self.temp)
+            # for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
+            #     if 5*k < len(self.temp):
+            #         t_start_int = time.time()
+            #         self.temp, mask = p.prune_conformers(self.temp, atomnos, k=k)
+            #         t_end_int = time.time()
+            #         log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
             
-            self.temp, mask = p.prune_conformers(self.temp, atomnos, max_rmsd=1.5)
-            t_end = time.time()
-            log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
+            # self.temp, mask = p.prune_conformers(self.temp, atomnos, max_rmsd=1.5)
+            # t_end = time.time()
+            # log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
 
-            if np.any(mask == False):
-                log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s) - CYTHON')
+            # if np.any(mask == False):
+            #     log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s) - CYTHON')
 
-            ################################################ KILL ABOVE
+            # ################################################ KILL ABOVE
+            import prune as p
+            # TODO: cleanup
             if len(self.structures) == 0:
                 raise ZeroCandidatesError()
 
@@ -429,12 +431,12 @@ class Docker:
             for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
                 if 5*k < len(self.structures):
                     t_start_int = time.time()
-                    self.structures, mask = prune_conformers(self.structures, atomnos, k=k)
+                    self.structures, mask = p.prune_conformers(self.structures, atomnos, max_rmsd=0.5, k=k)
                     self.constrained_indexes = self.constrained_indexes[mask]
                     t_end_int = time.time()
                     log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
             
-            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=1.5)
+            self.structures, mask = p.prune_conformers(self.structures, atomnos, max_rmsd=1.5)
             t_end = time.time()
             log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
@@ -442,10 +444,9 @@ class Docker:
 
             if np.any(mask == False):
                 log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                # TO DO: find out why this does not get printed
-            quit()
+                # TODO: find out why this does not get printed
+            
             ################################################# GEOMETRY OPTIMIZATION
-
             if len(self.structures) == 0:
                 raise ZeroCandidatesError()
 
@@ -560,21 +561,21 @@ if __name__ == '__main__':
     # inp = [d,e]
     # inp = [e,e,e]
 
-    # d = ['Resources/DA/diene2.xyz', (0,6)]
-    # e = ['Resources/DA/dienophile2.xyz', (3,5)]
-    # inp = [d,e]
+    d = ['Resources/DA/diene2.xyz', (0,6)]
+    e = ['Resources/DA/dienophile2.xyz', (3,5)]
+    inp = [d,e]
 
-    a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
-    b = ['Resources/acid_ensemble.xyz', (3,25)]
-    c = ['Resources/maleimide.xyz', (0,5)]
-    inp = (a,b,c)
+    # a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
+    # b = ['Resources/acid_ensemble.xyz', (3,25)]
+    # c = ['Resources/maleimide.xyz', (0,5)]
+    # inp = (a,b,c)
     # inp = (b,b)
 
 
     objects = [Hypermolecule(m[0], m[1]) for m in inp]
 
     docker = Docker(objects) # initialize docker with molecule density objects
-    docker.setup(steps=3, optimize=False) # set variables
+    docker.setup(steps=6, optimize=True) # set variables
 
     os.chdir('Resources/SN2')
 
@@ -585,5 +586,3 @@ if __name__ == '__main__':
     print('Opening VMD...')
     with suppress_stdout_stderr():
         os.system(f'vmd -e {path}')
-
-    print()

@@ -98,15 +98,14 @@ class Hypermolecule:
         if reactive_atoms is None:
             reactive_atoms = self._set_reactive_atoms(filename)
 
-        # ccread_object = self._align_ensemble(filename, reactive_atoms)
         ccread_object = ccread(filename)
+        if ccread_object is None:
+            raise CCReadError(f'Cannot read file {filename}')
+
         coordinates = np.array(ccread_object.atomcoords)
 
         self.reactive_indexes = np.array(reactive_atoms)
         # alignment_indexes = self._alignment_indexes(ccread_object.atomcoords[0], ccread_object.atomnos, self.reactive_indexes)
-
-        if len(ccread_object.atomnos) == 0:
-            raise CCReadError(f'Cannot read file {filename}')
 
         self.atomnos = ccread_object.atomnos
         self.position = np.array([0,0,0], dtype=float)  # used in Docker class

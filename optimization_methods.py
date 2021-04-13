@@ -151,8 +151,6 @@ def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_gra
         atoms.calc = MOPAC(label=jobname, command=f'{MOPAC_COMMAND} {jobname}.mop', method=method)
         opt = BFGS(atoms, trajectory=f'{jobname}.traj', logfile=f'{jobname}.traj_log')
 
-    t_start = time.time()
-
     try:
         with suppress_stdout_stderr():
             opt.run(fmax=0.05)
@@ -162,17 +160,12 @@ def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_gra
         # return atoms.positions, np.inf
         raise e
 
-    if debug:
-        t_end = time.time()
-        print('Hookean Constraints are', [c.pairs for c in atoms.constraints if 'pairs' in vars(c)])
-        view(atoms)
-
     try:
         with suppress_stdout_stderr():
             energy = atoms.get_total_energy()
     except Exception as e:
         raise e
-        energy = np.inf
+        # energy = np.inf
 
     return atoms.positions, energy
 
@@ -445,18 +438,18 @@ def prune_conformers(structures, atomnos, k=1, max_rmsd=1, energies=None, debug=
 
     return structures[mask], mask
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    from hypermolecule_class import Hypermolecule
-    os.chdir(r'C:\Users\Nik\Desktop\Coding\TSCoDe\mopac_tests')
+#     from hypermolecule_class import Hypermolecule
+#     os.chdir(r'C:\Users\Nik\Desktop\Coding\TSCoDe\mopac_tests')
 
-    mol1 = Hypermolecule('../Resources/indole/indole_ensemble.xyz', 6)
-    mol2 = Hypermolecule('../Resources/SN2/ketone_ensemble.xyz', 2)
+#     mol1 = Hypermolecule('../Resources/indole/indole_ensemble.xyz', 6)
+#     mol2 = Hypermolecule('../Resources/SN2/ketone_ensemble.xyz', 2)
 
-    TS = ccread('TS_out3.xyz')
-    v = (TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph])
+#     TS = ccread('TS_out3.xyz')
+#     v = (TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph])
 
-    if sanity_check(*v, debug=True):
+    # if compenetration_check(*v, debug=True):
         # Hookean_optimization(TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph], calculator='Mopac', method='PM7', debug=True) # faster than Gaussian (8s)
         # Hookean_optimization(TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph], calculator='Gaussian', method='PM6', debug=True) # f'in slow (58s)
         # optimize(TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph], calculator='Mopac', method='PM6', debug=True) # works
@@ -464,8 +457,8 @@ if __name__ == '__main__':
         # gaussian does not recognize the constraint...
 
         # checking time cost of Hook+regular compared to regular
-        c, e = Hookean_optimization(TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph], calculator='Mopac', method='PM7', debug=True)
-        print(c.shape, TS.atomcoords[0].shape)
+        # c, e = Hookean_optimization(TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph], calculator='Mopac', method='PM7', debug=True)
+        # print(c.shape, TS.atomcoords[0].shape)
         # optimize(c, TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph], calculator='Mopac', method='PM7', debug=True)
         # optimize(TS.atomcoords[0], TS.atomnos, [6,2+len(mol1.atomnos)], [mol1.graph, mol2.graph], calculator='Mopac', method='PM7', debug=True)
 

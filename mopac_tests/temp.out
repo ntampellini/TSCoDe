@@ -2,7 +2,7 @@
  ** Site#: 36969        For non-commercial use only    Version 21.051W 64BITS **
  *******************************************************************************
  ** Cite this program as: MOPAC2016, Version: 21.051W, James J. P. Stewart,   **
- ** Stewart Computational Chemistry, web: HTTP://OpenMOPAC.net. Days left: 330**
+ ** Stewart Computational Chemistry, web: HTTP://OpenMOPAC.net. Days left: 313**
  *******************************************************************************
  **                                                                           **
  **                                MOPAC2016                                  **
@@ -12,7 +12,7 @@
                               PM7 CALCULATION RESULTS
 
  *******************************************************************************
- *  CALCULATION DONE:                                Sat Mar 27 15:36:29 2021  *
+ *  CALCULATION DONE:                                Tue Apr 13 16:07:18 2021  *
  *  PM7        - The PM7 Hamiltonian to be used
  *  1SCF       - DO 1 SCF AND THEN STOP 
  *  T=         - A TIME OF 172800.0 SECONDS REQUESTED
@@ -125,8 +125,8 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
 
                               PM7 CALCULATION
                                                        MOPAC2016 (Version: 21.051W)
-                                                       Sat Mar 27 15:36:29 2021
-                                                       No. of days remaining = 330
+                                                       Tue Apr 13 16:07:18 2021
+                                                       No. of days remaining = 313
 
 
 
@@ -156,8 +156,8 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
 
           SCF CALCULATIONS        =          1
  
-          WALL-CLOCK TIME         =          0.047 SECONDS
-          COMPUTATION TIME        =          0.141 SECONDS
+          WALL-CLOCK TIME         =          0.039 SECONDS
+          COMPUTATION TIME        =          0.125 SECONDS
 
           LARGEST ATOMIC GRADIENTS
 
@@ -195,9 +195,9 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
       9          3  C    CARTESIAN Z    -0.643400    119.972128  KCAL/ANGSTROM
      10          4  C    CARTESIAN X    -0.000020    159.198324  KCAL/ANGSTROM
      11          4  C    CARTESIAN Y     0.259830     59.076300  KCAL/ANGSTROM
-     12          4  C    CARTESIAN Z     0.748510   -160.122797  KCAL/ANGSTROM
+     12          4  C    CARTESIAN Z     0.748510   -160.122798  KCAL/ANGSTROM
      13          5  C    CARTESIAN X    -0.000060     10.076155  KCAL/ANGSTROM
-     14          5  C    CARTESIAN Y    -1.018350     12.270381  KCAL/ANGSTROM
+     14          5  C    CARTESIAN Y    -1.018350     12.270382  KCAL/ANGSTROM
      15          5  C    CARTESIAN Z     1.339300     -3.492965  KCAL/ANGSTROM
      16          6  C    CARTESIAN X     0.000020     -0.117589  KCAL/ANGSTROM
      17          6  C    CARTESIAN Y    -2.152430    -13.795407  KCAL/ANGSTROM
@@ -207,7 +207,7 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
      21          7  C    CARTESIAN Z     1.260220    -59.550658  KCAL/ANGSTROM
      22          8  C    CARTESIAN X    -0.000020    114.690215  KCAL/ANGSTROM
      23          8  C    CARTESIAN Y     2.450350    -25.804584  KCAL/ANGSTROM
-     24          8  C    CARTESIAN Z     0.188530    -13.698523  KCAL/ANGSTROM
+     24          8  C    CARTESIAN Z     0.188530    -13.698522  KCAL/ANGSTROM
      25          9  N    CARTESIAN X     0.000030    251.523960  KCAL/ANGSTROM
      26          9  N    CARTESIAN Y     1.697140     -8.346887  KCAL/ANGSTROM
      27          9  N    CARTESIAN Z    -0.955690    -14.629994  KCAL/ANGSTROM
@@ -231,18 +231,18 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
      45         15  H    CARTESIAN Z     0.141570     -6.037911  KCAL/ANGSTROM
      46         16  H    CARTESIAN X     0.000000     81.471967  KCAL/ANGSTROM
      47         16  H    CARTESIAN Y     2.065280    -18.685040  KCAL/ANGSTROM
-     48         16  H    CARTESIAN Z    -1.896610     34.809805  KCAL/ANGSTROM
+     48         16  H    CARTESIAN Z    -1.896610     34.809806  KCAL/ANGSTROM
      49         17  C    CARTESIAN X     1.954510   -181.036166  KCAL/ANGSTROM
      50         17  C    CARTESIAN Y     1.908720    -17.554598  KCAL/ANGSTROM
      51         17  C    CARTESIAN Z    -1.116400     -4.895967  KCAL/ANGSTROM
-     52         18  C    CARTESIAN X     1.999350   -207.636207  KCAL/ANGSTROM
+     52         18  C    CARTESIAN X     1.999350   -207.636208  KCAL/ANGSTROM
      53         18  C    CARTESIAN Y     0.824230    -37.380821  KCAL/ANGSTROM
      54         18  C    CARTESIAN Z    -0.034010      0.718130  KCAL/ANGSTROM
      55         19  C    CARTESIAN X     1.999950    -72.602395  KCAL/ANGSTROM
-     56         19  C    CARTESIAN Y     1.586910     23.472781  KCAL/ANGSTROM
+     56         19  C    CARTESIAN Y     1.586910     23.472782  KCAL/ANGSTROM
      57         19  C    CARTESIAN Z     1.260220    -39.723998  KCAL/ANGSTROM
      58         20  C    CARTESIAN X     1.999420    -66.150718  KCAL/ANGSTROM
-     59         20  C    CARTESIAN Y     2.915280    -35.774513  KCAL/ANGSTROM
+     59         20  C    CARTESIAN Y     2.915280    -35.774514  KCAL/ANGSTROM
      60         20  C    CARTESIAN Z     1.127490    -11.820515  KCAL/ANGSTROM
      61         21  C    CARTESIAN X     1.988900    -55.755617  KCAL/ANGSTROM
      62         21  C    CARTESIAN Y     3.178590    -82.521715  KCAL/ANGSTROM
@@ -250,17 +250,17 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
      64         22  O    CARTESIAN X     1.997070     -1.899625  KCAL/ANGSTROM
      65         22  O    CARTESIAN Y     4.307270     21.677281  KCAL/ANGSTROM
      66         22  O    CARTESIAN Z    -0.782440      2.599028  KCAL/ANGSTROM
-     67         23  C    CARTESIAN X     3.230630     -1.999443  KCAL/ANGSTROM
+     67         23  C    CARTESIAN X     3.230630     -1.999442  KCAL/ANGSTROM
      68         23  C    CARTESIAN Y    -0.065660     -0.346922  KCAL/ANGSTROM
      69         23  C    CARTESIAN Z    -0.160100     -1.847452  KCAL/ANGSTROM
      70         24  H    CARTESIAN X     1.019400   -150.103329  KCAL/ANGSTROM
-     71         24  H    CARTESIAN Y     1.862810    -13.684544  KCAL/ANGSTROM
+     71         24  H    CARTESIAN Y     1.862810    -13.684543  KCAL/ANGSTROM
      72         24  H    CARTESIAN Z    -1.683010    115.735950  KCAL/ANGSTROM
      73         25  H    CARTESIAN X     2.810080     -4.689607  KCAL/ANGSTROM
      74         25  H    CARTESIAN Y     1.871410      1.993710  KCAL/ANGSTROM
      75         25  H    CARTESIAN Z    -1.796790      5.496189  KCAL/ANGSTROM
      76         26  H    CARTESIAN X     1.099840   -194.869679  KCAL/ANGSTROM
-     77         26  H    CARTESIAN Y     0.200120     68.194481  KCAL/ANGSTROM
+     77         26  H    CARTESIAN Y     0.200120     68.194480  KCAL/ANGSTROM
      78         26  H    CARTESIAN Z    -0.093930      0.167664  KCAL/ANGSTROM
      79         27  H    CARTESIAN X     1.999520    -14.590213  KCAL/ANGSTROM
      80         27  H    CARTESIAN Y     1.089320      9.802190  KCAL/ANGSTROM
@@ -274,7 +274,7 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
      88         30  H    CARTESIAN X     3.228410     -0.971611  KCAL/ANGSTROM
      89         30  H    CARTESIAN Y    -0.591250      1.080091  KCAL/ANGSTROM
      90         30  H    CARTESIAN Z    -1.120930      0.210421  KCAL/ANGSTROM
-     91         31  H    CARTESIAN X     3.250560     -0.881444  KCAL/ANGSTROM
+     91         31  H    CARTESIAN X     3.250560     -0.881445  KCAL/ANGSTROM
      92         31  H    CARTESIAN Y    -0.819110      0.985391  KCAL/ANGSTROM
      93         31  H    CARTESIAN Z     0.634910      0.115914  KCAL/ANGSTROM
 
@@ -454,6 +454,6 @@ PM7 1SCF GRADIENTS RELSCF=0.0001
 
 
 
- TOTAL JOB TIME:             0.06 SECONDS
+ TOTAL JOB TIME:             0.07 SECONDS
 
  == MOPAC DONE ==

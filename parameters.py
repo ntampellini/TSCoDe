@@ -1,6 +1,7 @@
 # Calculators parameters
 GAUSSIAN_COMMAND = 'g09'
 MOPAC_COMMAND = 'mopac2016'
+# MOPAC_COMMAND = r'C:\Program Files\MOPAC\mopac2016.exe'
 THRESHOLD_KCAL = 10
 
 # Distribution-correcting constants
