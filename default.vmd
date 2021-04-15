@@ -1,0 +1,7 @@
+display resetview
+mol new {/User/andreapellegrini/Desktop/Coding/Python/TSCoDe/debug_out.xyz}
+mol representation CPK 0.500000 0.300000 20.000000 15.000000
+mol color Name
+mol selection all
+mol material Opaque
+mol addrep top
