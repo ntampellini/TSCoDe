@@ -1,0 +1,5 @@
+a = mol1 2 3
+b = mol2 4 7
+c = mol3 4 9
+PAIRING a[2], b[4]
+METHOD PM7

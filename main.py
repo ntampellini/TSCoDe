@@ -14,6 +14,7 @@ from optimization_methods import *
 from subprocess import DEVNULL, STDOUT, check_call
 from linalg_tools import *
 from compenetration import compenetration_check
+from prune import prune_conformers
 
 class ZeroCandidatesError(Exception):
     pass
@@ -24,8 +25,9 @@ class InputError(Exception):
 stamp = time.ctime().replace(' ','_').replace(':','-')
 log = open(f'TSCoDe_log_{stamp}.txt', 'a', buffering=1)
 
-def log_print(string=''):
-    print(string)
+def log_print(string='', p=True):
+    if p:
+        print(string)
     string += '\n'
     log.write(string)
 
@@ -399,29 +401,7 @@ class Docker:
             # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
 
             ################################################# PRUNING: SIMILARITY
-            # import prune as p
-            # # test
-            # self.temp = deepcopy(self.structures)
-            # t_start = time.time()
 
-            # before = len(self.temp)
-            # for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
-            #     if 5*k < len(self.temp):
-            #         t_start_int = time.time()
-            #         self.temp, mask = p.prune_conformers(self.temp, atomnos, k=k)
-            #         t_end_int = time.time()
-            #         log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
-            
-            # self.temp, mask = p.prune_conformers(self.temp, atomnos, max_rmsd=1.5)
-            # t_end = time.time()
-            # log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)} - CYTHON')
-
-            # if np.any(mask == False):
-            #     log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s) - CYTHON')
-
-            # ################################################ KILL ABOVE
-            import prune as p
-            # TODO: cleanup
             if len(self.structures) == 0:
                 raise ZeroCandidatesError()
 
@@ -431,12 +411,12 @@ class Docker:
             for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
                 if 5*k < len(self.structures):
                     t_start_int = time.time()
-                    self.structures, mask = p.prune_conformers(self.structures, atomnos, max_rmsd=0.5, k=k)
+                    self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=0.5, k=k)
                     self.constrained_indexes = self.constrained_indexes[mask]
                     t_end_int = time.time()
                     log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
             
-            self.structures, mask = p.prune_conformers(self.structures, atomnos, max_rmsd=1.5)
+            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=1)
             t_end = time.time()
             log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
@@ -477,7 +457,7 @@ class Docker:
 
                     finally:
                         t_end_opt = time.time()
-                        log_print(f'Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s')
+                        log_print(f'Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
 
                 loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                 t_end = time.time()
@@ -512,7 +492,7 @@ class Docker:
                     raise ZeroCandidatesError()
 
                 t_start = time.time()
-                self.structures, mask = prune_conformers(self.structures, atomnos, self.energies)
+                self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=1)
                 self.energies = self.energies[mask]
                 t_end = time.time()
                 

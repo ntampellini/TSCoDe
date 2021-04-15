@@ -1,0 +1,26 @@
+Setup performed correctly. 4608 candidates will be generated.
+TSCoDe - input structures/indexes were:
+Resources/DA/diene2 - Reactive indexes [0 6]
+Resources/DA/dienophile2 - Reactive indexes [3 5]
+rotation_steps was 6: 60.0 degrees turns performed
+
+Initializing cyclical embed...
+Generated 1152 transition state candidates (1.8 s)
+Discarded 1044 candidates for compenetration (108 left, 0.19 s)
+similarity pre-processing   (k=20) - 0.05 s - kept 86/108
+similarity pre-processing   (k=10) - 0.05 s - kept 59/86
+similarity pre-processing   (k=5) - 0.05 s - kept 38/59
+similarity pre-processing   (k=2) - 0.03 s - kept 17/38
+similarity final processing (k=1) - 0.02 s - kept 8/17
+Discarded 100 candidates for similarity (8 left, 0.19 s)
+Mopac PM7 optimization: Structure 0 SCRAMBLED - took 12.19 s
+Mopac PM7 optimization: Structure 1 SCRAMBLED - took 14.23 s
+Mopac PM7 optimization: Structure 2 CONVERGED - took 5.11 s
+Mopac PM7 optimization: Structure 3 CONVERGED - took 3.66 s
+Mopac PM7 optimization: Structure 4 CONVERGED - took 7.91 s
+Mopac PM7 optimization: Structure 5 CONVERGED - took 4.16 s
+Mopac PM7 optimization: Structure 6 SCRAMBLED - took 13.97 s
+Mopac PM7 optimization: Structure 7 SCRAMBLED - took 13.7 s
+Mopac PM7 optimization took 74.93 s (9.37 s per structure)
+Discarded 4 candidates because optimizations failed or scrambled some atoms (4 left)
+Wrote 4 TS structures to TS_out.xyz file - Total time 77.12 s
