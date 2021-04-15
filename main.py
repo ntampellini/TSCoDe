@@ -441,7 +441,7 @@ class Docker:
                         t_start_opt = time.time()
                         # intermediate_geometry, _ = Hookean_optimization(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
                         # self.structures[i], self.energies[i], self.exit_status[i] = optimize(intermediate_geometry, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
-                        self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
+                        self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure, atomnos, self.constrained_indexes[i], graphs, method='PM7')
 
 
                         exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'

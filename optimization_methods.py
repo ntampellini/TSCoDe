@@ -10,7 +10,10 @@ from ase.calculators.mopac import MOPAC
 from ase.calculators.gaussian import Gaussian, GaussianOptimizer
 from ase.optimize import BFGS
 from hypermolecule_class import pt, graphize
-from parameters import GAUSSIAN_COMMAND, MOPAC_COMMAND
+from parameters import MOPAC_COMMAND
+from linalg_tools import norm, dihedral
+from subprocess import DEVNULL, STDOUT, check_call
+
 # from functools import lru_cache
 
 class suppress_stdout_stderr(object):
@@ -41,47 +44,6 @@ class suppress_stdout_stderr(object):
         # Close all file descriptors
         for fd in self.null_fds + self.save_fds:
             os.close(fd)
-
-
-# def sanity_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_new_bonds=3, debug=False):
-#     '''
-#     :params TS_structure: list of coordinates for each atom in the TS
-#     :params TS_atomnos: list of atomic numbers for each atom in the TS
-#     :params constrained_indexes: indexes of constrained atoms in the TS geometry
-#     :params mols_graphs: list of molecule.graph objects, containing connectivity information
-#     :params max_new_bonds: maximum number of apperent new bonds in TS geometry to accept the
-#                            structure as a valid one. Too high values may cause ugly results,
-#                            too low might discard structures that would have led to good results.
-
-#     :return result: bool, indicating structure sanity
-#     '''
-#     bonds = []
-#     for i in range(len(mols_graphs)):
-#         pos = 0
-#         while i != 0:
-#             pos += len(mols_graphs[i-1].nodes)
-#             i -= 1
-#         for bond in [(a+pos, b+pos) for a, b in list(mols_graphs[i].edges) if a != b]:
-#             bonds.append(bond)
-#     bonds = set(bonds)
-
-#     new_bonds = {(a, b) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
-#     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
-#     for c_bond in constrained_indexes:
-#         try:
-#             delta_bonds.remove(tuple(c_bond))
-#         except KeyError:
-#             pass
-#         try:
-#             delta_bonds.remove(tuple(reversed(tuple(c_bond))))
-#         except KeyError:
-#             pass
-
-#     if len(delta_bonds) > max_new_bonds:
-#         return False
-#     else:
-#         return True
-
 
 def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calculator, method='PM7', debug=False):
     '''
@@ -169,10 +131,98 @@ def Hookean_optimization(TS_structure, TS_atomnos, constrained_indexes, mols_gra
 
     return atoms.positions, energy
 
+def scramble(array, sequence):
+    return np.array([array[s] for s in sequence])
 
-def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calculator='Mopac', method='PM7', debug=False):
+def read_mop_out(filename):
     '''
-    Performs a geometry partial optimization (POPT) with Gaussian or Mopac at $method level, 
+    Reads a MOPAC output looking for optimized coordinates and energy.
+    :params filename: name of MOPAC filename (.out extension)
+    :return coords, energy: array of optimized coordinates and absolute energy, in kcal/mol
+    '''
+    # symbols = []
+    coords = []
+    with open('temp.out', 'r') as f:
+        while True:
+            line = f.readline()
+            if 'SCF FIELD WAS ACHIEVED' in line:
+                    while True:
+                        line = f.readline()
+                        if 'FINAL HEAT OF FORMATION' in line:
+                            energy = line.split()[5]
+                            # in kcal/mol
+                        if 'CARTESIAN COORDINATES' in line:
+                            line = f.readline()
+                            line = f.readline()
+                            while line != '\n':
+                                splitted = line.split()
+                                # symbols.append(splitted[1])
+                                coords.append([float(splitted[2]),
+                                               float(splitted[3]),
+                                               float(splitted[4])])
+                                            
+                                line = f.readline()
+                            break
+                    break
+
+    return np.array(coords), energy
+
+def mopac_opt(coords, atomnos, constrained_indexes, method='PM7', title='TSCoDe candidate'):
+    '''
+    '''
+    order = []
+    s = [method + '\n' + title + '\n\n']
+    for i, num in enumerate(atomnos):
+        if i not in constrained_indexes:
+            order.append(i)
+            s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[num].symbol, coords[i][0], coords[i][1], coords[i][2]))
+
+    free_indexes = list(set(range(len(atomnos))) - set(constrained_indexes.ravel()))
+    # print('free indexes are', free_indexes, '\n')
+
+    for a, b in constrained_indexes:
+            
+            order.append(b)
+            order.append(a)
+
+            c, d = np.random.choice(free_indexes, 2)
+            while c == d:
+                c, d = np.random.choice(free_indexes, 2)
+            # indexes of reference atoms (staring from 1? Not in constrained_indexes though!)
+
+            dist = np.linalg.norm(coords[a] - coords[b]) # in Angstrom
+            # print(f'DIST - {dist} - between {a} {b}')
+
+            angle = np.arccos(norm(coords[a] - coords[b]) @ norm(coords[c] - coords[b]))*180/np.pi # in degrees
+            # print(f'ANGLE - {angle} - between {a} {b} {c}')
+
+            d_angle = dihedral([coords[a],
+                                coords[b],
+                                coords[c],
+                                coords[d]])
+            d_angle += 360 if d_angle < 0 else 0
+            # print(f'D_ANGLE - {d_angle} - between {a} {b} {c} {d}')
+
+            list_len = len(s)
+            s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[atomnos[b]].symbol, coords[b][0], coords[b][1], coords[b][2]))
+            s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[a]].symbol, dist, angle, d_angle, list_len, free_indexes.index(c)+1, free_indexes.index(d)+1))
+            # print(f'Blocked bond between mopac ids {list_len} {list_len+1}\n')
+
+    s = ''.join(s)
+    with open(f'{title}.mop', 'w') as f:
+        f.write(s)
+
+    inv_order = [order.index(i) for i in range(len(order))]
+    # undoing the atomic scramble that was needed by the mopac input requirements
+    
+    check_call(f'{MOPAC_COMMAND} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
+    opt_coords, energy = read_mop_out(f'{title}.out')
+
+    return scramble(opt_coords, inv_order), energy
+
+def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, method='PM7', title='temp', debug=False):
+    '''
+    Performs a geometry partial optimization (POPT) with Mopac at $method level, 
     constraining the distance between the specified atom pair. Moreover, performs a check of atomic
     pairs distances to ensure to have preserved molecular identities and prevented atom scrambling.
 
@@ -180,22 +230,13 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calcula
     :params TS_atomnos: list of atomic numbers for each atom in the TS
     :params constrained_indexes: indexes of constrained atoms in the TS geometry
     :params mols_graphs: list of molecule.graph objects, containing connectivity information
-    :params mols_atomnos: list of molecule.atomnos lists, containing atomic number for all atoms
     :params method: Level of theory to be used in geometry optimization. Default if UFF.
 
-    :return opt_struct: optimized structure
+    :return opt_coords: optimized structure
     :return energy: absolute energy of structure, in kcal/mol
-    :return scrambled: bool, indicating if the optimization shifted up some bonds (except the constrained ones)
+    :return not_scrambled: bool, indicating if the optimization shifted up some bonds (except the constrained ones)
     '''
     assert len(TS_structure) == sum([len(graph.nodes) for graph in mols_graphs])
-
-    atoms = Atoms(''.join([pt[i].symbol for i in TS_atomnos]), positions=TS_structure)
-
-    if len(constrained_indexes) == 1:
-        atoms.set_constraint(FixBondLength(*constrained_indexes[0]))
-    else:
-        atoms.set_constraint(FixBondLengths(constrained_indexes))
-    # print('opt Constraints are', [c.pairs for c in atoms.constraints if hasattr(c,'pairs')])
 
     bonds = []
     for i, graph in enumerate(mols_graphs):
@@ -210,47 +251,9 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calcula
     bonds = set(bonds)
     # creating bond set containing all bonds present in the desired transition state
 
-    jobname = 'temp'
-    if calculator == 'Gaussian':
-        # atoms.calc = Gaussian(label=jobname, command=f'{GAUSSIAN_COMMAND} {jobname}.com {jobname}.log', method=method)
-        calc_opt = Gaussian(label=jobname,
-                            command=f'{GAUSSIAN_COMMAND} {jobname}.com {jobname}.log',
-                            method=method,
-                            addsec='B %s %s F' % (constrained_indexes[0]+1, constrained_indexes[1]+1))
-                            # Gaussian atom indexing starts at 1 and not at 0 like VMD/Python
-        opt = GaussianOptimizer(atoms, calc_opt)
+    opt_coords, energy = mopac_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, title=title)
 
-        t_start = time.time()
-
-        try:
-            with suppress_stdout_stderr():
-                opt.run(fmax=0.05)
-        except IndexError:
-            # Ase will throw an IndexError if it cannot work out constraints in the
-            # specified partial optimization. We will ignore it here, and return an inifinite energy
-            return atoms.positions, np.inf
-
-    elif calculator == 'Mopac':
-        atoms.calc = MOPAC(label=jobname, command=f'{MOPAC_COMMAND} {jobname}.mop', method=method)
-        opt = BFGS(atoms, trajectory=f'{jobname}.traj', logfile=f'{jobname}.traj_log')
-
-        t_start = time.time()
-
-        try:
-            with suppress_stdout_stderr():
-                opt.run(fmax=0.05)
-        except IndexError as e:
-            # Ase will throw an IndexError if it cannot work out constraints in the
-            # specified partial optimization. We will ignore it here, and return an inifinite energy
-            # return atoms.positions, np.inf, False
-            raise e
-
-    else:
-        raise Exception('Calculator not recognized')
-
-    t_end = time.time()
-
-    new_bonds = {(a, b) for a, b in list(graphize(atoms.positions, TS_atomnos).edges) if a != b}
+    new_bonds = {(a, b) for a, b in list(graphize(opt_coords, TS_atomnos).edges) if a != b}
     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
     # print('delta_bonds is', list(delta_bonds))
 
@@ -262,96 +265,8 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, calcula
     else:
         not_scrambled = True
 
-    # with open('log.txt', 'a') as f:
-    #     if not_scrambled:
-    #         f.write(f'Structure looks good')
-    #     else:
-    #         f.write(f'rejected - delta bonds are {len(delta_bonds)}: {delta_bonds}')
-    #     f.write(f' - constrained ids were {constrained_indexes}\n')
 
-
-    if debug:
-        print(f'{calculator} {method} opt time', round(t_end-t_start, 3), 's')
-        if not not_scrambled:
-            print('Some scrambling occurred: bonds out of place are', delta_bonds)
-        view(atoms)
-
-    try:
-        with suppress_stdout_stderr():
-            energy = atoms.get_total_energy()
-    except:
-        energy = np.inf
-
-    return atoms.positions, energy, not_scrambled
-
-# def cached_rmsd(tgt, ref, atomnos):
-#     return rmsd(tgt, ref, atomnos, atomnos, center=True, minimize=True)
-
-# from numpy_lru_cache_decorator import np_cache
-# @np_cache(maxsize=10000)
-# def cached_rmsd(array, atomnos):
-#     i = int(array.shape[0]/2)
-#     tgt = array[:i]
-#     ref = array[i:]
-#     return rmsd(tgt, ref, atomnos, atomnos, center=True, minimize=True)
-
-def scramble(array, sequence):
-    return np.array([array[s] for s in sequence])
-
-# def prune_conformers(structures, atomnos, energies, max_rmsd=0.5, debug=False):
-#     '''
-#     Remove conformations that are too similar (have a small RMSD value).
-#     When removing structures, only the lowest energy one is kept.
-
-#     :params structures: numpy array of conformations
-#     :params energies: list of energies for each conformation
-#     :params max_rmsd: maximum rmsd value to consider two structures identical, in Angstroms
-#     '''
-
-#     rmsd_mat = np.zeros((len(structures), len(structures)))
-#     rmsd_mat[:] = np.nan
-#     for i, tgt in enumerate(structures):
-#         for j, ref in enumerate(structures[i+1:]):
-#             rmsd_mat[i, i+j+1] = rmsd(tgt, ref, atomnos, atomnos, center=True, minimize=True)
-
-#     matches = np.where(rmsd_mat < max_rmsd)
-#     matches = [(i,j) for i,j in zip(matches[0], matches[1])]
-
-#     g = nx.Graph(matches)
-
-#     if debug:
-#         g.add_nodes_from(range(len(structures)))
-#         pos = nx.spring_layout(g)
-#         nx.draw(g, pos=pos, labels={i:i for i in range(len(g))})
-#         import matplotlib.pyplot as plt
-#         plt.show()
-
-#     subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
-#     groups = [tuple(graph.nodes) for graph in subgraphs]
-
-#     def en(tup):
-#         ens = [energies[t] for t in tup]
-#         return tup[ens.index(min(ens))]
-
-#     best_of_cluster = [en(group) for group in groups]
-#     rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
-
-#     rejects = []
-#     def flatten(seq):
-#         for s in seq:
-#             if type(s) in (tuple, list, set):
-#                 flatten(s)
-#             else:
-#                 rejects.append(s)
-
-#     flatten(rejects_sets)
-
-#     mask = np.array([True for _ in range(len(structures))], dtype=bool)
-#     for i in rejects:
-#         mask[i] = False
-
-#     return structures[mask], mask
-
+    return opt_coords, energy, not_scrambled
 
 def prune_conformers(structures, atomnos, k=1, max_rmsd=1, energies=None, debug=False):
     '''

@@ -2,7 +2,7 @@
  ** Site#: 36969        For non-commercial use only    Version 21.051W 64BITS **
  *******************************************************************************
  ** Cite this program as: MOPAC2016, Version: 21.051W, James J. P. Stewart,   **
- ** Stewart Computational Chemistry, web: HTTP://OpenMOPAC.net. Days left: 312**
+ ** Stewart Computational Chemistry, web: HTTP://OpenMOPAC.net. Days left: 311**
  *******************************************************************************
  **                                                                           **
  **                                MOPAC2016                                  **
@@ -12,7 +12,7 @@
                               PM7 CALCULATION RESULTS
 
  *******************************************************************************
- *  CALCULATION DONE:                                Wed Apr 14 18:29:44 2021  *
+ *  CALCULATION DONE:                                Thu Apr 15 15:24:52 2021  *
  *  PM7        - The PM7 Hamiltonian to be used
  *  T=         - A TIME OF 172800.0 SECONDS REQUESTED
  *  DUMP=N     - RESTART FILE WRITTEN EVERY 7200.0 SECONDS REQUESTED
@@ -88,37 +88,37 @@ PM7
 
           DIAGONAL MATRIX USED AS START HESSIAN
 
- CYCLE:     1 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:   188.958 HEAT: 0.8078119
- CYCLE:     2 TIME:   0.016 TIME LEFT:  2.00D  GRAD.:   290.257 HEAT: -3.670451
+ CYCLE:     1 TIME:   0.047 TIME LEFT:  2.00D  GRAD.:   188.958 HEAT: 0.8078119
+ CYCLE:     2 TIME:   0.031 TIME LEFT:  2.00D  GRAD.:   290.257 HEAT: -3.670451
  CYCLE:     3 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:   124.398 HEAT: -12.39243
- CYCLE:     4 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:   413.426 HEAT: -12.66992
- CYCLE:     5 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:   312.547 HEAT: -18.54265
- CYCLE:     6 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:   129.026 HEAT: -23.83139
+ CYCLE:     4 TIME:   0.012 TIME LEFT:  2.00D  GRAD.:   413.426 HEAT: -12.66992
+ CYCLE:     5 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:   312.547 HEAT: -18.54265
+ CYCLE:     6 TIME:   0.016 TIME LEFT:  2.00D  GRAD.:   129.026 HEAT: -23.83139
  CYCLE:     7 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:   135.800 HEAT: -25.03643
- CYCLE:     8 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    66.676 HEAT: -27.19581
- CYCLE:     9 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    88.472 HEAT: -27.87264
+ CYCLE:     8 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    66.676 HEAT: -27.19581
+ CYCLE:     9 TIME:   0.012 TIME LEFT:  2.00D  GRAD.:    88.472 HEAT: -27.87264
  CYCLE:    10 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    43.434 HEAT: -29.15800
  CYCLE:    11 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    44.228 HEAT: -30.95426
- CYCLE:    12 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    61.324 HEAT: -33.70430
- CYCLE:    13 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    63.624 HEAT: -36.19342
- CYCLE:    14 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    99.820 HEAT: -37.80777
+ CYCLE:    12 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    61.324 HEAT: -33.70430
+ CYCLE:    13 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    63.624 HEAT: -36.19342
+ CYCLE:    14 TIME:   0.016 TIME LEFT:  2.00D  GRAD.:    99.820 HEAT: -37.80777
  CYCLE:    15 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    77.632 HEAT: -38.50424
- CYCLE:    16 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    95.928 HEAT: -38.64573
- CYCLE:    17 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    65.580 HEAT: -39.80537
+ CYCLE:    16 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    95.928 HEAT: -38.64573
+ CYCLE:    17 TIME:   0.012 TIME LEFT:  2.00D  GRAD.:    65.580 HEAT: -39.80537
  CYCLE:    18 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    36.649 HEAT: -40.32777
  CYCLE:    19 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    32.043 HEAT: -40.53851
  CYCLE:    20 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    18.309 HEAT: -40.87774
  CYCLE:    21 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    42.251 HEAT: -40.93807
- CYCLE:    22 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    24.065 HEAT: -41.48788
- CYCLE:    23 TIME:   0.023 TIME LEFT:  2.00D  GRAD.:    27.620 HEAT: -41.55412
- CYCLE:    24 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    12.132 HEAT: -41.78251
- CYCLE:    25 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    18.111 HEAT: -41.90568
+ CYCLE:    22 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    24.065 HEAT: -41.48788
+ CYCLE:    23 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    27.620 HEAT: -41.55412
+ CYCLE:    24 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    12.132 HEAT: -41.78251
+ CYCLE:    25 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    18.111 HEAT: -41.90568
  CYCLE:    26 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    15.943 HEAT: -42.05122
- CYCLE:    27 TIME:   0.016 TIME LEFT:  2.00D  GRAD.:    23.361 HEAT: -42.09700
+ CYCLE:    27 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:    23.361 HEAT: -42.09700
  CYCLE:    28 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:    15.809 HEAT: -42.15943
- CYCLE:    29 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:     8.216 HEAT: -42.19809
+ CYCLE:    29 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:     8.216 HEAT: -42.19809
  CYCLE:    30 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:     2.677 HEAT: -42.22791
- CYCLE:    31 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:     2.803 HEAT: -42.23972
+ CYCLE:    31 TIME:   0.020 TIME LEFT:  2.00D  GRAD.:     2.803 HEAT: -42.23972
  CYCLE:    32 TIME:   0.000 TIME LEFT:  2.00D  GRAD.:     2.874 HEAT: -42.25269
  CYCLE:    33 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:     1.761 HEAT: -42.25941
  CYCLE:    34 TIME:   0.008 TIME LEFT:  2.00D  GRAD.:     1.388 HEAT: -42.26273
@@ -140,8 +140,8 @@ PM7
 
                               PM7 CALCULATION
                                                        MOPAC2016 (Version: 21.051W)
-                                                       Wed Apr 14 18:29:45 2021
-                                                       No. of days remaining = 312
+                                                       Thu Apr 15 15:24:52 2021
+                                                       No. of days remaining = 311
 
 
 
@@ -171,8 +171,8 @@ PM7
 
           SCF CALCULATIONS        =         46
  
-          WALL-CLOCK TIME         =          0.242 SECONDS
-          COMPUTATION TIME        =          0.891 SECONDS
+          WALL-CLOCK TIME         =          0.352 SECONDS
+          COMPUTATION TIME        =          1.000 SECONDS
 
 
 
@@ -202,25 +202,25 @@ PM7
 
                              CARTESIAN COORDINATES
 
-   1    C       -0.703573531    -1.741097137    -0.518501830
+   1    C       -0.703573531    -1.741097136    -0.518501832
    2    H       -1.225240320    -2.281434022    -1.311013542
-   3    H       -2.488065398    -0.806523243     0.250396448
-   4    H       -1.051802966    -0.694662321     1.341533813
-   5    C        0.698134634    -1.742789830    -0.515980684
-   6    H        1.220316739    -2.285997978    -1.305994674
-   7    H        1.043186224    -0.690923951     1.342211610
+   3    H       -2.488065397    -0.806523243     0.250396448
+   4    H       -1.051802966    -0.694662322     1.341533812
+   5    C        0.698134633    -1.742789831    -0.515980684
+   6    H        1.220316739    -2.285997977    -1.305994675
+   7    H        1.043186223    -0.690923952     1.342211609
    8    H        2.483123917    -0.813722553     0.257289482
-   9    O        0.003904784     2.145775460     1.493190996
-  10    C       -1.142431793     1.721712664     0.802102161
-  11    C        1.149398631     1.732029396     0.794105950
-  12    O       -2.221629155     1.998897831     1.223153540
-  13    O        2.228278746     2.028617473     1.202705015
+   9    O        0.003904784     2.145775459     1.493190998
+  10    C       -1.142431794     1.721712665     0.802102162
+  11    C        1.149398630     1.732029395     0.794105952
+  12    O       -2.221629156     1.998897829     1.223153541
+  13    O        2.228278746     2.028617473     1.202705016
   14    H       -1.334194331     0.852709847    -1.253664981
-  15    H        1.339906311     0.849553677    -1.255173566
-  16    C       -0.694244260     0.949851308    -0.390959574
-  17    C       -1.416107735    -0.934493305     0.346843933
-  18    C        0.700059374     0.950579021    -0.392386560
-  19    C        1.410512048    -0.936306276     0.349985574
+  15    H        1.339906311     0.849553677    -1.255173565
+  16    C       -0.694244260     0.949851305    -0.390959573
+  17    C       -1.416107735    -0.934493308     0.346843934
+  18    C        0.700059374     0.950579023    -0.392386560
+  19    C        1.410512048    -0.936306275     0.349985573
 
 
            Empirical Formula: C8 H8 O3  =    19 atoms
@@ -299,6 +299,6 @@ PM7
 
 
 
- TOTAL JOB TIME:             0.24 SECONDS
+ TOTAL JOB TIME:             0.36 SECONDS
 
  == MOPAC DONE ==

@@ -199,56 +199,56 @@ class Hypermolecule:
         return energies
 
 
-    def _compute_hypermolecule(self):
-        '''
-        '''
-        self.hypermolecule_atomnos = []
-        clusters = {i:{} for i in range(len((self.atomnos)))}  # {atom_index:{cluster_number:[position,times_found]}}
-        for i, atom_number in enumerate(self.atomnos):
-            atoms_arrangement = [conformer[i] for conformer in self.atomcoords]
-            cluster_number = 0
-            clusters[i][cluster_number] = [atoms_arrangement[0], 1]  # first structure has rel E = 0 so its weight is surely 1
-            self.hypermolecule_atomnos.append(atom_number)
-            radii = pt[atom_number].covalent_radius
-            for j, atom in enumerate(atoms_arrangement[1:]):
+    # def _compute_hypermolecule(self):
+    #     '''
+    #     '''
+    #     self.hypermolecule_atomnos = []
+    #     clusters = {i:{} for i in range(len((self.atomnos)))}  # {atom_index:{cluster_number:[position,times_found]}}
+    #     for i, atom_number in enumerate(self.atomnos):
+    #         atoms_arrangement = [conformer[i] for conformer in self.atomcoords]
+    #         cluster_number = 0
+    #         clusters[i][cluster_number] = [atoms_arrangement[0], 1]  # first structure has rel E = 0 so its weight is surely 1
+    #         self.hypermolecule_atomnos.append(atom_number)
+    #         radii = pt[atom_number].covalent_radius
+    #         for j, atom in enumerate(atoms_arrangement[1:]):
 
-                weight = np.exp(-self.energies[j+1] / BREADTH * 503.2475342795285 / self.T)
-                # print(f'Atom {i} in conf {j+1} weight is {weight} - rel. E was {self.energies[j+1]}')
+    #             weight = np.exp(-self.energies[j+1] / BREADTH * 503.2475342795285 / self.T)
+    #             # print(f'Atom {i} in conf {j+1} weight is {weight} - rel. E was {self.energies[j+1]}')
 
-                for cluster_number, reference in deepcopy(clusters[i]).items():
-                    if np.linalg.norm(atom - reference[0]) < radii:
-                        clusters[i][cluster_number][1] += weight
-                    else:
-                        clusters[i][max(clusters[i].keys())+1] = [atom, weight]
-                        self.hypermolecule_atomnos.append(atom_number)
+    #             for cluster_number, reference in deepcopy(clusters[i]).items():
+    #                 if np.linalg.norm(atom - reference[0]) < radii:
+    #                     clusters[i][cluster_number][1] += weight
+    #                 else:
+    #                     clusters[i][max(clusters[i].keys())+1] = [atom, weight]
+    #                     self.hypermolecule_atomnos.append(atom_number)
 
-        self.weights = [[] for _ in range(len(self.atomnos))]
-        self.hypermolecule = []
+    #     self.weights = [[] for _ in range(len(self.atomnos))]
+    #     self.hypermolecule = []
 
-        for i in range(len(self.atomnos)):
-            for _, data in clusters[i].items():
-                self.weights[i].append(data[1])
-                self.hypermolecule.append(data[0])
+    #     for i in range(len(self.atomnos)):
+    #         for _, data in clusters[i].items():
+    #             self.weights[i].append(data[1])
+    #             self.hypermolecule.append(data[0])
 
-        def flatten(array):
-            out = []
-            def rec(l):
-                for e in l:
-                    if type(e) in [list, np.ndarray]:
-                        rec(e)
-                    else:
-                        out.append(float(e))
-            rec(array)
-            return out
+    #     def flatten(array):
+    #         out = []
+    #         def rec(l):
+    #             for e in l:
+    #                 if type(e) in [list, np.ndarray]:
+    #                     rec(e)
+    #                 else:
+    #                     out.append(float(e))
+    #         rec(array)
+    #         return out
 
-        self.hypermolecule = np.asarray(self.hypermolecule)
-        self.weights = np.array(self.weights).flatten()
-        self.weights = np.array([weights / np.sum(weights) for weights in self.weights])
-        self.weights = flatten(self.weights)
+    #     self.hypermolecule = np.asarray(self.hypermolecule)
+    #     self.weights = np.array(self.weights).flatten()
+    #     self.weights = np.array([weights / np.sum(weights) for weights in self.weights])
+    #     self.weights = flatten(self.weights)
 
-        self.dimensions = (max([coord[0] for coord in self.hypermolecule]) - min([coord[0] for coord in self.hypermolecule]),
-                            max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
-                            max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
+    #     self.dimensions = (max([coord[0] for coord in self.hypermolecule]) - min([coord[0] for coord in self.hypermolecule]),
+    #                         max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
+    #                         max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
     
     # def _alignment_indexes(self, coords, atomnos, reactive_atoms):
     #     '''

@@ -1,12 +1,10 @@
 # Calculators parameters
-GAUSSIAN_COMMAND = 'g09'
-MOPAC_COMMAND = 'mopac2016'
-# MOPAC_COMMAND = r'C:\Program Files\MOPAC\mopac2016.exe'
-THRESHOLD_KCAL = 10
 
-# Distribution-correcting constants
-# BREADTH = 2
-BREADTH = 1e6
+MOPAC_COMMAND = 'mopac2016'
+# command with which mopac will be called from the command line
+
+THRESHOLD_KCAL = 1000
+# energy threshold (kcal/mol) for TS retention after constrained optimization
 
 orb_dim_dict = {
                 'H Single Bond' : 1,

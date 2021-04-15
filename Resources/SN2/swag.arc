@@ -3,8 +3,8 @@
                      SUMMARY OF  PM7 CALCULATION, Site No: 36969
 
                                                        MOPAC2016 (Version: 21.051W)
-                                                       Wed Apr 14 18:29:45 2021
-                                                       No. of days remaining = 312
+                                                       Thu Apr 15 15:24:52 2021
+                                                       No. of days remaining = 311
 
            Empirical Formula: C8 H8 O3  =    19 atoms
 
@@ -36,8 +36,8 @@
             O    12    H     6     5.66192
             H    14    H     7     3.02907
           SCF CALCULATIONS        =         46
-          WALL-CLOCK TIME         =          0.242 SECONDS
-          COMPUTATION TIME        =          0.891 SECONDS
+          WALL-CLOCK TIME         =          0.359 SECONDS
+          COMPUTATION TIME        =          1.062 SECONDS
 
 
           FINAL GEOMETRY OBTAINED
