@@ -15,6 +15,7 @@ from subprocess import DEVNULL, STDOUT, check_call
 from linalg_tools import *
 from compenetration import compenetration_check
 from prune import prune_conformers
+import re
 
 class ZeroCandidatesError(Exception):
     pass
@@ -24,6 +25,32 @@ class InputError(Exception):
 
 stamp = time.ctime().replace(' ','_').replace(':','-')
 log = open(f'TSCoDe_log_{stamp}.txt', 'a', buffering=1)
+
+def parse_input(filename):
+    '''
+    TODO: desc
+    '''
+
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+
+    lines = [line for line in lines if line[0] != '#']
+    lines = [line for line in lines if line != '\n']
+    
+    try:
+        assert len(lines) in (2,3)
+
+        inp = []
+        for line in lines:
+            filename, *reactive_atoms = line.split()
+            reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
+            inp.append((filename, reactive_indexes))
+
+        return inp
+        
+    except Exception as e:
+        print(e)
+        raise InputError(f'Error in reading {filename}. Please check your syntax.')
 
 def log_print(string='', p=True):
     if p:
@@ -57,8 +84,48 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
     output.write(string)
 
 class Docker:
-    def __init__(self, *objects):
-        self.objects = list(*objects)
+    def __init__(self, filename, objects):
+        self.objects = objects
+        self.ids = [len(mol.atomnos) for mol in self.objects]
+        self._read_pairings(filename)
+
+    def _read_pairings(self, filename):
+        '''
+        '''
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+
+        lines = [line for line in lines if line[0] != '#']
+        lines = [line for line in lines if line != '\n']
+        
+        parsed = []
+
+        for i, line in enumerate(lines):
+            pairings = line.split()[1:]
+            
+            pairings = [[int(i[:-1]), i[-1]] for i in pairings if i.lower().islower()]
+            if i > 0:
+                for z in pairings:
+                    z[0] += sum([j for j in self.ids[:i]])
+
+            for j in pairings:
+                parsed.append(j)
+
+        links = {j:[] for j in set([i[1] for i in parsed])}
+        for index, tag in parsed:
+            links[tag].append(index)
+
+        pairings = list(links.values())
+
+        self.pairings = [sorted(i) for i in pairings]
+
+        if self.pairings == []:
+            s = 'No atom pairing imposed. Computing all possible dispositions.'
+        else:
+            pairings = [line.split()]
+            s = f'Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)'
+        log_print(s)
+
     
     def setup(self, steps=6, optimize=True):
         '''
@@ -99,9 +166,24 @@ class Docker:
 
                 self.embed = 'cyclical'
                 self.candidates = self.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
-                self.candidates *= np.prod([len(mol.pivots) for mol in self.objects])*8
-                # The number 8 is the number of different triangles originated from three oriented vectors
+                self.candidates *= np.prod([len(mol.pivots) for mol in self.objects])
+                if len(self.objects) == 3:
+                    self.candidates *= 8
+                # The number 8 is the number of different triangles originated from three oriented vectors,
+                # if no parings are to be respected. If there are, each reduces the number of candidates to be computed in
+                # the next section.
 
+                if self.pairings != []:
+                    if len(self.objects) == 2:
+                        n = 2
+                    else:
+                        if len(self.pairings) == 1:
+                            n = 4
+                        else:
+                            n = 8
+                    self.candidates /= n
+                # if the user specified some pairings to be respected, we have less candidates to check
+                self.candidates = int(self.candidates)
 
             elif all([len(molecule.reactive_atoms_classes) == 1 for molecule in self.objects]) and len(self.objects) == 2:
                 self.embed = 'string'
@@ -125,7 +207,6 @@ class Docker:
         # Two molecules, string algorithm, one constraint for all
         return [[int(self.objects[0].reactive_indexes[0]),
                  int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))] for _ in range(len(self.structures))]
-                 # TODO: check if it works and if the second list comprehension is correct
 
     def get_cyclical_reactive_indexes(self, n):
         '''
@@ -162,6 +243,7 @@ class Docker:
 
             oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
             couples = [[oriented[0][1], oriented[1][0]], [oriented[1][1], oriented[2][0]], [oriented[2][1], oriented[0][0]]]
+            couples = [sorted(c) for c in couples]
             return couples
 
     def string_embed(self):
@@ -266,8 +348,8 @@ class Docker:
                 ids = self.get_cyclical_reactive_indexes(v)
                 # get indexes of atoms that face each other
 
-                if True: # if all([couple in couples for couple in ids]) or smth
-                    # TODO: checks that the disposition has the desired atoms facing each other
+                if self.pairings == [] or all([pair in ids for pair in self.pairings]):
+                    # TODO: make it work
 
                     systematic_angles = cartesian_product(*[range(self.rotation_steps) for _ in self.objects]) * 360/self.rotation_steps
 
@@ -289,8 +371,7 @@ class Docker:
                             angle = angles[i]
 
                             alignment_rotation = rotation_matrix_from_vectors(pivots[i], end-start)
-                            # OK ABOVE
-
+                            
                             # step_rotation = rot_mat_from_pointer(alignment_rotation @ pivots[i], angle)
                             step_rotation = rot_mat_from_pointer(end-start, angle)
                             # center_of_rotation = np.mean(vec_pair, axis=0)
@@ -303,8 +384,6 @@ class Docker:
                             pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pivot_means[i]
                             thread[i].position = center_of_rotation - step_rotation @ center_of_rotation + pos
 
-                else:
-                    log_print('# TODO: Rejected embed: not matching imposed criterion')
 
         loadbar(1, 1, prefix=f'Embedding structures ')
 
@@ -383,13 +462,12 @@ class Docker:
             t_start = time.time()
             mask = np.zeros(len(self.structures), dtype=bool)
             num = len(self.structures)
-            ids = [len(mol.atomnos) for mol in self.objects]
             for s, structure in enumerate(self.structures):
                 p = True if num > 100 and s % (num // 100) == 0 else False
                 if p:
                     loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
                 # mask[s] = sanity_check(structure, atomnos, self.constrained_indexes[s], graphs, max_new_bonds=3)
-                mask[s] = compenetration_check(structure, ids)
+                mask[s] = compenetration_check(structure, self.ids)
 
             loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
             self.structures = self.structures[mask]
@@ -424,9 +502,9 @@ class Docker:
 
             if np.any(mask == False):
                 log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                # TODO: find out why this does not get printed
             
             ################################################# GEOMETRY OPTIMIZATION
+
             if len(self.structures) == 0:
                 raise ZeroCandidatesError()
 
@@ -503,7 +581,7 @@ class Docker:
             s = 'Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try enlarging the search space by specifying a larger "steps" value.'
             log_print(s)
             raise ZeroCandidatesError(s)
-        ################################################# OUTPUT
+        ################################################# OUTPUT 
 
         outname = 'TS_out.xyz'
         with open(outname, 'w') as f:        
@@ -515,11 +593,6 @@ class Docker:
 
 
 if __name__ == '__main__':
-
-    try:
-        os.remove('ouroboros_setup.xyz')
-    except:
-        pass
 
     # a = ['Resources/SN2/MeOH_ensemble.xyz', 1]
     # a = ['Resources/dienamine/dienamine_ensemble.xyz', 6]
@@ -541,21 +614,24 @@ if __name__ == '__main__':
     # inp = [d,e]
     # inp = [e,e,e]
 
-    d = ['Resources/DA/diene2.xyz', (0,6)]
-    e = ['Resources/DA/dienophile2.xyz', (3,5)]
-    inp = [d,e]
+    # d = ['Resources/DA/diene2.xyz', (0,6)]
+    # e = ['Resources/DA/dienophile2.xyz', (3,5)]
+    # inp = [d,e]
 
-    # a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
-    # b = ['Resources/acid_ensemble.xyz', (3,25)]
-    # c = ['Resources/maleimide.xyz', (0,5)]
-    # inp = (a,b,c)
+    a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
+    b = ['Resources/acid_ensemble.xyz', (3,25)]
+    c = ['Resources/maleimide.xyz', (0,5)]
+    inp = (a,b,c)
     # inp = (b,b)
 
+    filename = 'test_input.txt'
+
+    inp = parse_input(filename)
+    # TODO catch every possible user error?
 
     objects = [Hypermolecule(m[0], m[1]) for m in inp]
-
-    docker = Docker(objects) # initialize docker with molecule density objects
-    docker.setup(steps=6, optimize=True) # set variables
+    docker = Docker(filename, objects) # initialize docker with molecule density objects
+    docker.setup(steps=3, optimize=False) # set variables
 
     os.chdir('Resources/SN2')
 

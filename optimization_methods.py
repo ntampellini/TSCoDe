@@ -140,14 +140,17 @@ def read_mop_out(filename):
     :params filename: name of MOPAC filename (.out extension)
     :return coords, energy: array of optimized coordinates and absolute energy, in kcal/mol
     '''
-    # symbols = []
     coords = []
     with open('temp.out', 'r') as f:
         while True:
             line = f.readline()
+            if not line:
+                break
             if 'SCF FIELD WAS ACHIEVED' in line:
                     while True:
                         line = f.readline()
+                        if not line:
+                            break
                         if 'FINAL HEAT OF FORMATION' in line:
                             energy = line.split()[5]
                             # in kcal/mol
@@ -162,10 +165,15 @@ def read_mop_out(filename):
                                                float(splitted[4])])
                                             
                                 line = f.readline()
+                                if not line:
+                                    break
                             break
                     break
-
-    return np.array(coords), energy
+    coords = np.array(coords)
+    if coords.shape[0] != 0:
+        return coords, energy
+    else:
+        raise Exception(f'Cannot read file {filename}: maybe badly specified job keyword?')
 
 def mopac_opt(coords, atomnos, constrained_indexes, method='PM7', title='TSCoDe candidate'):
     '''

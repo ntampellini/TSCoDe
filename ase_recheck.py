@@ -34,3 +34,13 @@ os.environ['PATH'].split(';')
 # %%
 import ase
 ase.__version__
+
+# %% PM7
+%%time
+for i in range(len(mol.atomcoords)):
+    optimize(mol.atomcoords[i], mol.atomnos, constraints, graphs, method='PM7')
+# %%
+%%time
+for i in range(len(mol.atomcoords)):
+    optimize(mol.atomcoords[i], mol.atomnos, constraints, graphs, method='RM1')
+
