@@ -1,5 +1,5 @@
 display resetview
-mol new {C:\\Users\\ehrma\\Desktop\\Coding\\TSCoDe\\Resources\\SN2\\TS_out.xyz}
+mol new {C:\\Users\\Nik\\Desktop\\Coding\\TSCoDe\\Resources\\SN2\\TS_out.xyz}
 mol selection all
 mol representation CPK 0.300000 0.100000 30.000000 30.000000
 mol color Name

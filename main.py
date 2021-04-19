@@ -372,15 +372,18 @@ class Docker:
 
                             alignment_rotation = rotation_matrix_from_vectors(pivots[i], end-start)
                             
-                            # step_rotation = rot_mat_from_pointer(alignment_rotation @ pivots[i], angle)
                             step_rotation = rot_mat_from_pointer(end-start, angle)
-                            # center_of_rotation = np.mean(vec_pair, axis=0)
-                            center_of_rotation = alignment_rotation @ pivot_means[i]
+                            # center_of_rotation = alignment_rotation @ pivot_means[i]
+
+                            reactive_coords = self.objects[i].atomcoords[0][self.objects[i].reactive_indexes]
+                            assert reactive_coords.shape[0] == 2
+                            atomic_pivot_mean = np.mean(reactive_coords, axis=0)
+                            center_of_rotation = alignment_rotation @ atomic_pivot_mean
+                            # this option for center_of_rotation keeps the reactive distances constant
+                            # TODO: check if this works
 
                             thread[i].rotation = step_rotation @ alignment_rotation
 
-                            # pos = center_of_rotation - thread[i].rotation @ pivot_means[i]
-                            # thread[i].position = step_rotation @ (pos + center_of_rotation) - center_of_rotation
                             pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pivot_means[i]
                             thread[i].position = center_of_rotation - step_rotation @ center_of_rotation + pos
 
@@ -494,9 +497,10 @@ class Docker:
                     t_end_int = time.time()
                     log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
             
+            t_start_int = time.time()
             self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=1)
             t_end = time.time()
-            log_print(f'similarity final processing (k=1) - {round(t_end-t_end_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+            log_print(f'similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
             self.constrained_indexes = self.constrained_indexes[mask]
 
@@ -561,6 +565,13 @@ class Docker:
                 self.structures = self.structures[mask]
                 self.energies = self.energies[mask]
 
+                _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                from optimization_methods import scramble
+                self.energies = scramble(self.energies, sequence)
+                self.structures = scramble(self.structures, sequence)
+                self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                # sorting structures based on energy
+
                 if np.any(mask == False):
                     log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
@@ -586,7 +597,7 @@ class Docker:
         outname = 'TS_out.xyz'
         with open(outname, 'w') as f:        
             for i, structure in enumerate(self.structures):
-                write_xyz(structure, atomnos, f, title=f'TS candidate {i}')
+                write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Rel. E. = {self.energies[i]} kcal/mol')
         t_end_run = time.time()
         log_print(f'Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
         log.close()
@@ -614,20 +625,22 @@ if __name__ == '__main__':
     # inp = [d,e]
     # inp = [e,e,e]
 
-    # d = ['Resources/DA/diene2.xyz', (0,6)]
-    # e = ['Resources/DA/dienophile2.xyz', (3,5)]
-    # inp = [d,e]
+    d = ['Resources/DA/diene2.xyz', (0,6)]
+    e = ['Resources/DA/dienophile2.xyz', (3,5)]
+    inp = [d,e]
 
-    a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
-    b = ['Resources/acid_ensemble.xyz', (3,25)]
-    c = ['Resources/maleimide.xyz', (0,5)]
-    inp = (a,b,c)
+    # a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
+    # b = ['Resources/acid_ensemble.xyz', (3,25)]
+    # c = ['Resources/maleimide.xyz', (0,5)]
+    # inp = (a,b,c)
     # inp = (b,b)
+
+    ###############################################
 
     filename = 'test_input.txt'
 
     inp = parse_input(filename)
-    # TODO catch every possible user error?
+    # TODO: read steps from input, as well as opt bool
 
     objects = [Hypermolecule(m[0], m[1]) for m in inp]
     docker = Docker(filename, objects) # initialize docker with molecule density objects

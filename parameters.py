@@ -7,7 +7,7 @@ THRESHOLD_KCAL = 1000
 # energy threshold (kcal/mol) for TS retention after constrained optimization
 
 orb_dim_dict = {
-                'H Single Bond' : 1,
+                'H Single Bond' : 0.85,
                 'C Single Bond' : 1,
                 'O Single Bond' : 1,
                 'N Single Bond' : 1,
@@ -27,9 +27,9 @@ orb_dim_dict = {
                 'O Ether' : 1,
                 'S Ether' : 1,
 
-                'O Ketone': 1,
+                'O Ketone': 0.85,
                 'S Ketone': 1,
 
                 'N Imine' : 1,
                 }       
-# Half-lenght of the transition state bonding distance involving that atom
+# Half-lenght of the transition state bonding distance involving a given atom

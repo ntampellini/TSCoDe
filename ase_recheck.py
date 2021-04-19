@@ -33,18 +33,35 @@ graphs = [graphize(coords[0:10], mol.atomnos[0:10]),
 # for i in range(len(mol.atomcoords)):
 #     optimize(mol.atomcoords[i], mol.atomnos, constraints, graphs, method='PM7 THREADS=8')
 
+# %%
+%load_ext cython
 #%%
+%%cython
+from ctypes import c_double
+import numpy as np
+cimport numpy as np
+
+cdef double* c_array(np.ndarray[np.float64_t, mode='c'] array):
+    # cpdef double* carr = array
+    return carr
+# %%cython
 from openbabel import openbabel as ob
+# from openbabel cimport openbabel as ob
+import numpy as np
+# cimport numpy as np
+# from ctypes import c_double
 
-
-def OB_MM_OPT(coords, constrained_indexes, method):
+def OB_MM_OPT(coords, constrained_indexes, method = 'UFF'):
     '''
     return : name of MM-optimized structure
 
     '''
+    # cdef double* carr = coords
+    # carr = c_double * len(coords)
+    # carr(*coords)
 
     mol = ob.OBMol()
-    mol.SetCoordinates(coords)
+    mol.SetCoordinates(c_array(coords))
 
     # Define constraints
 
@@ -66,6 +83,23 @@ def OB_MM_OPT(coords, constrained_indexes, method):
     forcefield.ConjugateGradients(500)
     forcefield.GetCoordinates(mol)
 
-    return mol.coordinates()
+    # cpdef np.ndarray[np.float64_t, ndim=2] opt_coords = mol.GetCoordinates()
 
+    # return opt_coords
+
+# %%
+OB_MM_OPT(coords, constraints)
+# %%
+vec = c_double * 3
+
+x = np.array([[1,3,4],
+              [4,6,2],
+              [5,1,4]])
+l = []
+for v in x:
+    l.append(vec(*v))
+    
+carr = c_double * len(x)
+carr(*l)
+carr
 # %%

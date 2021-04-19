@@ -196,7 +196,7 @@ def mopac_opt(coords, atomnos, constrained_indexes, method='PM7', title='TSCoDe 
             c, d = np.random.choice(free_indexes, 2)
             while c == d:
                 c, d = np.random.choice(free_indexes, 2)
-            # indexes of reference atoms (staring from 1? Not in constrained_indexes though!)
+            # indexes of reference atoms, from unconstraind atoms set
 
             dist = np.linalg.norm(coords[a] - coords[b]) # in Angstrom
             # print(f'DIST - {dist} - between {a} {b}')
@@ -265,10 +265,15 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, method=
     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
     # print('delta_bonds is', list(delta_bonds))
 
-    delta_bonds -= set(((a,b) for a,b in constrained_indexes))
-    delta_bonds -= set(((b,a) for a,b in constrained_indexes))
+    # delta_bonds -= set(((a,b) for a,b in constrained_indexes))
+    # delta_bonds -= set(((b,a) for a,b in constrained_indexes))
+    delta = list(delta_bonds)[:]
+    c_ids = list(constrained_indexes.ravel())
+    for a, b in delta:
+        if a in c_ids or b in c_ids:
+            delta_bonds -= {(a, b)}
 
-    if len(delta_bonds) > 0:
+    if len(delta_bonds) > 1:
         not_scrambled = False
     else:
         not_scrambled = True
