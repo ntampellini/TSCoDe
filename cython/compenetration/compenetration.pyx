@@ -10,21 +10,19 @@ cdef float s
 cdef float norm
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
-cdef float norm_of(np.ndarray[DTYPE_t, ndim=1] v):
+cdef float norm_of(np.ndarray[DTYPE_t, ndim=1, mode='c'] v):
     s = v[0]*v[0] + v[1]*v[1] + v[2]*v[2]
     norm = sqrt(s)
     return norm
 
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
-cpdef int compenetration_check(np.ndarray[DTYPE_t, ndim=2] coords, list ids):
+cpdef int compenetration_check(np.ndarray[DTYPE_t, ndim=2, mode='c'] coords, list ids, float thresh=1.5, int max_clashes=2):
 
-    cdef float thresh = 1.2
     cdef int clashes = 0
-    cdef int max_clashes = 2
     # max_clashes clashes is good, max_clashes + 1 is not
-    cdef np.ndarray[DTYPE_t, ndim=2] m1, m2, m3
-    cdef np.ndarray[DTYPE_t, ndim=1] v1, v2, v3
+    cdef np.ndarray[DTYPE_t, ndim=2, mode='c'] m1, m2, m3
+    cdef np.ndarray[DTYPE_t, ndim=1, mode='c'] v1, v2, v3
     cdef float dist
 
     if len(ids) == 2:

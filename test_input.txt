@@ -1,4 +1,4 @@
-# FIRST LIKE ARE KEYWORDS
+# FIRST LINE ARE KEYWORDS
 
 # Resources/DA/diene2.xyz 0 6
 # Resources/DA/dienophile2.xyz 3 5
@@ -8,7 +8,13 @@
 # Resources/SN2/MeOH_ensemble.xyz 1c 5b
 
 
-Resources/dienamine/dienamine_ensemble.xyz 6c 23a
-Resources/acid_ensemble.xyz 3a 25b
-Resources/maleimide.xyz 0c 5b
+# Resources/dienamine/dienamine_ensemble.xyz 6c 23a
+# Resources/acid_ensemble.xyz 3a 25b
+# Resources/maleimide.xyz 0c 5b
 # Correct pairing for TS
+
+# Resources/SN2/HCOOH.xyz 1a 4
+# Resources/SN2/HCOOH.xyz 1 4a
+
+Resources/maleimide.xyz 0 1
+Resources/maleimide.xyz 0 1

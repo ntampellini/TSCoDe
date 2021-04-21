@@ -228,7 +228,7 @@ def mopac_opt(coords, atomnos, constrained_indexes, method='PM7', title='TSCoDe 
 
     return scramble(opt_coords, inv_order), energy
 
-def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, method='PM7', title='temp', debug=False):
+def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, method='PM7 GEO-OK', title='temp', debug=False):
     '''
     Performs a geometry partial optimization (POPT) with Mopac at $method level, 
     constraining the distance between the specified atom pair. Moreover, performs a check of atomic
@@ -267,13 +267,14 @@ def optimize(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, method=
 
     # delta_bonds -= set(((a,b) for a,b in constrained_indexes))
     # delta_bonds -= set(((b,a) for a,b in constrained_indexes))
-    delta = list(delta_bonds)[:]
-    c_ids = list(constrained_indexes.ravel())
-    for a, b in delta:
-        if a in c_ids or b in c_ids:
-            delta_bonds -= {(a, b)}
 
-    if len(delta_bonds) > 1:
+    # delta = list(delta_bonds)[:]
+    # c_ids = list(constrained_indexes.ravel())
+    # for a, b in delta:
+    #     if a in c_ids or b in c_ids:
+    #         delta_bonds -= {(a, b)}
+
+    if len(delta_bonds) > 2:
         not_scrambled = False
     else:
         not_scrambled = True
