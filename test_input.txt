@@ -1,4 +1,5 @@
-# FIRST LINE ARE KEYWORDS
+# FIRST NON-COMMENT, NON_BLANK LINE ARE KEYWORDS
+# STEPS=7 NOOPT THRESH=1.45 SUPRAFAC
 
 # Resources/DA/diene2.xyz 0 6
 # Resources/DA/dienophile2.xyz 3 5
@@ -16,5 +17,10 @@
 # Resources/SN2/HCOOH.xyz 1a 4
 # Resources/SN2/HCOOH.xyz 1 4a
 
-Resources/maleimide.xyz 0 1
-Resources/maleimide.xyz 0 1
+# Resources/maleimide.xyz 0 1
+# Resources/maleimide.xyz 0 1
+
+STEPS=12
+# Resources/SN2/CH3Br_ensemble.xyz 0
+Resources/SN2/ketone_ensemble.xyz 2
+Resources/dienamine/dienamine_ensemble.xyz 6

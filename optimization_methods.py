@@ -177,6 +177,7 @@ def read_mop_out(filename):
 
 def mopac_opt(coords, atomnos, constrained_indexes, method='PM7', title='TSCoDe candidate'):
     '''
+    TODO: desc
     '''
     order = []
     s = [method + '\n' + title + '\n\n']

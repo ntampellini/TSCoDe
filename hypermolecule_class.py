@@ -315,9 +315,6 @@ class Hypermolecule:
 
         del data
 
-        # if alignment_indexes is None:               # Eventually we should raise an error I think, but we could also warn and leave this
-        #     print(f'UNABLE TO UNDERSTAND REACTIVE ATOMS INDEX(ES): Ensemble for {self.rootname} aligned on all atoms, may generate undesired results.')
-
         outname = kabsch(filename, alignment_indexes)
 
         ccread_object = ccread(outname)
@@ -327,7 +324,7 @@ class Hypermolecule:
 
 
     def _orient_along_x(self, array, vector):
-        # IMPLEMENT DIFFERENT ALIGNMENT ON THE BASE OF SELF.REACTIVE_ATOMS_CLASSES
+        # TODO: check if this is still required
         '''
         :params array:    array of atomic coordinates arrays: len(array) structures with len(array[i]) atoms
         :params vector:   list of shape (1,3) with anchor vector to align to the x axis

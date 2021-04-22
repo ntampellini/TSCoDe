@@ -16,6 +16,7 @@ from linalg_tools import *
 from compenetration import compenetration_check
 from prune import prune_conformers
 import re
+from dataclasses import dataclass
 
 class ZeroCandidatesError(Exception):
     pass
@@ -59,21 +60,44 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
         string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
     output.write(string)
 
+@dataclass
+class Options:
+
+    __keywords__ = ['SUPRAFAC', 'DEEP', 'NOOPT', 'CHECKPOINT', 'STEPS', 'BYPASS', 'THRESH']
+    # list of keyword names to be used in the first line of program input
+
+    rotation_steps = 6
+    pruning_thresh = 0.5
+    optimization = True
+    checkpoint = False
+    bypass = False
+    # Default values, updated if _parse_input
+    # finds keywords and calls _set_parameters
+
+    def __repr__(self):
+        d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
+        return '\n'.join([f'{var} : {d[var]}' for var in d])
+
 class Docker:
     def __init__(self, filename):
+        '''
+        Initialize the Docker object by reading the input filename (.txt).
+        Sets the Option dataclass properties to default and then updates them
+        with the user-requested keywords, if there are any.
 
-        self.rotation_steps = 6
-        self.pruning_thresh = 0.5
-        # Default values, overridden if _parse_input
-        # find keywords and calls _set_parameters
+        '''
 
+        self.options = Options()
         self.objects = [Hypermolecule(name, c_ids) for name, c_ids in self._parse_input(filename)]
         self.ids = [len(mol.atomnos) for mol in self.objects]
         self._read_pairings(filename)
 
     def _parse_input(self, filename):
         '''
-        TODO: desc
+        Reads a textfile and sets the Docker properties for the run.
+        Keywords are read from the first non-comment(#), non-blank line
+        if there are any, and molecules are read afterward.
+
         '''
 
         with open(filename, 'r') as f:
@@ -86,10 +110,9 @@ class Docker:
             assert len(lines) in (2,3,4)
             # (optional) keyword line + 2 or 3 lines for molecules
 
-            keywords = ['SUPRA', 'DEEP', 'NOOPT', 'CHECKPOINT', 'STEPS']
-
-            if any(k in keywords for k in lines[0].split):
-                self._set_parameters(lines[0].split)
+            keywords = [l.split('=')[0] for l in lines[0].split()]
+            if all(k in self.options.__keywords__ for k in keywords):
+                self._set_parameters(lines[0].split())
                 lines = lines[1:]
 
             inp = []
@@ -106,21 +129,42 @@ class Docker:
 
     def _set_parameters(self, keywords_list=[]):
         '''
-        #TODO: desc, complete
+        Set the options dataclass parameters from a list of given keywords. These will be used
+        during the run to vary the search depth and/or output.
         '''
         
-        if 'SUPRA' in keywords_list:
-            pass
-        elif 'DEEP' in keywords_list:
-            self.pruning_thresh = 0.1
-            self.rotation_steps = 12
-        elif 'NOOPT' in keywords_list:
-            pass
-        elif 'CHECKPOINT' in keywords_list:
-            pass
+        if 'SUPRAFAC' in keywords_list:
+            raise NotImplementedError('Oops. SUPRAFAC keyword still not implemented.')
+            # TODO: implement SUPRAFAC keyword
 
+        if 'DEEP' in keywords_list:
+            self.options.pruning_thresh = 0.1
+            self.options.rotation_steps = 12
+
+        if 'STEPS' in [k.split('=')[0] for k in keywords_list]:
+            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('STEPS')]
+            self.options.rotation_steps = int(kw.split('=')[1])
+
+        if 'THRESH' in [k.split('=')[0] for k in keywords_list]:
+            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('THRESH')]
+            self.options.pruning_thresh = float(kw.split('=')[1])
+
+        if 'NOOPT' in keywords_list:
+            self.options.optimization = False
+            
+        if 'CHECKPOINT' in keywords_list:
+            self.options.checkpoint = True
+
+        if 'BYPASS' in keywords_list:
+            self.options.bypass = True
+
+        # print(self.options)
+        # quit()
+        # TODO: print options to log?
+        
     def _read_pairings(self, filename):
         '''
+        TODO desc
         '''
         with open(filename, 'r') as f:
             lines = f.readlines()
@@ -128,6 +172,12 @@ class Docker:
         lines = [line for line in lines if line[0] != '#']
         lines = [line for line in lines if line != '\n']
         
+
+        keywords = [l.split('=')[0] for l in lines[0].split()]
+        if all(k in self.options.__keywords__ for k in keywords):
+            lines = lines[1:]
+        
+
         parsed = []
 
         for i, line in enumerate(lines):
@@ -157,14 +207,12 @@ class Docker:
         log_print(s)
 
     
-    def setup(self, steps=6, optimize=True):
+    def _setup(self):
         '''
         :params steps: int, number of steps for the sampling of rotations. A value of 3 corresponds
                         to three 120° turns for each molecule.
         :params optimize: bool, whether to run the semiempirical optimization calculations
         '''
-        self.rotation_steps = int(steps)
-        self.optimize = optimize
 
         if len(self.objects) in (2,3):
         # Calculating the number of conformation combinations based on embed type
@@ -195,7 +243,7 @@ class Docker:
                     set_pivots(molecule)
 
                 self.embed = 'cyclical'
-                self.candidates = self.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+                self.candidates = self.options.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
                 self.candidates *= np.prod([len(mol.pivots) for mol in self.objects])
                 if len(self.objects) == 3:
                     self.candidates *= 8
@@ -220,7 +268,7 @@ class Docker:
 
             elif all([len(molecule.reactive_atoms_classes) == 1 for molecule in self.objects]) and len(self.objects) == 2:
                 self.embed = 'string'
-                self.candidates = self.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+                self.candidates = self.options.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
                 self.candidates *= 2
                 # The number 2 is the number of different arrangements of two oriented vectors (parallel, antiparallel)
                 # TODO: check this, i think it is wrong
@@ -232,15 +280,15 @@ class Docker:
 
         log_print(f'Setup performed correctly. {self.candidates} candidates will be generated.')
 
-
-    def get_string_constrained_indexes(self):
+    def get_string_constrained_indexes(self, n):
         '''
-        Get constrained indexes referring to the transition states.
+        Get constrained indexes referring to the transition states, repeated n times.
+        :params n: int
         :return: list of lists consisting in atomic pairs to be constrained.
         '''
-        # Two molecules, string algorithm, one constraint for all
-        return [[int(self.objects[0].reactive_indexes[0]),
-                 int(self.objects[1].reactive_indexes[0] + len(self.objects[0].atomcoords[0]))] for _ in range(len(self.structures))]
+        # Two molecules, string algorithm, one constraint for all, repeated n times
+        return np.array([[[int(self.objects[0].reactive_indexes[0]),
+                           int(self.objects[1].reactive_indexes[0] + self.ids[0])]] for _ in range(n)])
 
     def get_cyclical_reactive_indexes(self, n):
         '''
@@ -290,16 +338,14 @@ class Docker:
 
         log_print('Initializing string embed...')
 
-        constrained_indexes = self.get_string_constrained_indexes()
-
         centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
         # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
         
         threads = []
-        for _ in range(len(centers_indexes)*self.rotation_steps):
+        for _ in range(len(centers_indexes)*self.options.rotation_steps):
             threads.append([deepcopy(obj) for obj in self.objects])
 
-        for t, thread in enumerate(threads): # each run is a different "regioisomer", repeated self.rotation_steps times
+        for t, thread in enumerate(threads): # each run is a different "regioisomer", repeated self.options.rotation_steps times
 
             indexes = centers_indexes[t % len(centers_indexes)] # looping over the indexes that define "regiochemistry"
             repeated = True if t // len(centers_indexes) > 0 else False
@@ -322,12 +368,14 @@ class Docker:
 
                     pointer = molecule.rotation @ mol_orb_vers
                     # rotation = (np.random.rand()*2. - 1.) * np.pi    # random angle (radians) between -pi and pi
-                    rotation = t % self.rotation_steps * 360/self.rotation_steps       # sistematic incremental step angle
+                    rotation = t % self.options.rotation_steps * 360/self.options.rotation_steps       # sistematic incremental step angle
                     
                     delta_rot = rot_mat_from_pointer(pointer, rotation)
                     molecule.rotation = delta_rot @ molecule.rotation
 
                     molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
+
+        self.dispositions_constrained_indexes = self.get_string_constrained_indexes(len(threads))
 
         return threads
 
@@ -428,12 +476,12 @@ class Docker:
 
                 if self.pairings == [] or all([pair in ids for pair in self.pairings]):
 
-                    systematic_angles = cartesian_product(*[range(self.rotation_steps) for _ in self.objects]) * 360/self.rotation_steps
+                    systematic_angles = cartesian_product(*[range(self.options.rotation_steps) for _ in self.objects]) * 360/self.options.rotation_steps
 
                     # angle_range = 150
-                    # Angular range to be explored in both directions (degrees). A value of 90 would explore from -90 to +90, always in 2*self.rotation_steps+1 steps
+                    # Angular range to be explored in both directions (degrees). A value of 90 would explore from -90 to +90, always in 2*self.options.rotation_steps+1 steps
                     
-                    # systematic_angles = cartesian_product(*[range(-self.rotation_steps, self.rotation_steps+1) for _ in range(len(self.objects))])*angle_range/self.rotation_steps
+                    # systematic_angles = cartesian_product(*[range(-self.options.rotation_steps, self.options.rotation_steps+1) for _ in range(len(self.objects))])*angle_range/self.options.rotation_steps
                     # TODO: only scan half the circumference, or even less. 2n+1 steps! (?)
 
                     for angles in systematic_angles:
@@ -493,6 +541,8 @@ class Docker:
         '''
         '''
 
+        self._setup()
+
         assert self.candidates < 1e9
         # TODO: perform some action if this number is crazy high
 
@@ -500,7 +550,7 @@ class Docker:
 
         head = '\n'.join([f'{mol.rootname} - Reactive indexes {mol.reactive_indexes}' for mol in self.objects])
         log_print('TSCoDe - input structures/indexes were:\n' + head)
-        log_print(f'rotation_steps was {self.rotation_steps}: {round(360/self.rotation_steps, 2)} degrees turns performed\n')
+        log_print(f'rotation_steps was {self.options.rotation_steps}: {round(360/self.options.rotation_steps, 2)} degrees turns performed\n')
 
         t_start_run = time.time()
 
@@ -510,17 +560,17 @@ class Docker:
             embedded_structures = self.string_embed()
 
 
-        atomnos = np.concatenate([molecule.atomnos for molecule in objects])
+        atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
         # cumulative list of atomic numbers associated with coordinates
 
         try:
             os.remove('TS_out.xyz')
         except:
             pass
+        # TODO: rename output through stamp variable
 
-        # Calculating new coordinates for embedded_structures and storing them in self.structures
 
-        conf_number = [len(molecule.atomcoords) for molecule in objects]
+        conf_number = [len(molecule.atomcoords) for molecule in self.objects]
         conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
         # first index of each vector is the conformer number of the first molecule and so on
 
@@ -543,6 +593,7 @@ class Docker:
                     self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
                     self.constrained_indexes[geometry_number*len(conf_indexes)+i] = self.dispositions_constrained_indexes[geometry_number]
                     count_atoms += n
+        # Calculating new coordinates for embedded_structures and storing them in self.structures
 
         del self.dispositions_constrained_indexes
         # cleaning the old, general data on indexes that ignored conformations
@@ -550,10 +601,7 @@ class Docker:
         t_end = time.time()
         log_print(f'Generated {len(self.structures)} transition state candidates ({round(t_end-t_start_run, 2)} s)')
 
-        self.energies = np.zeros(len(self.structures))
-        #delete this with the bypass statement
-
-        if not bypass:
+        if not self.options.bypass:
             try:
                 ################################################# COMPENETRATION CHECK
                 
@@ -589,13 +637,13 @@ class Docker:
                 for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
                     if 5*k < len(self.structures):
                         t_start_int = time.time()
-                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.pruning_thresh, k=k)
+                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh, k=k)
                         self.constrained_indexes = self.constrained_indexes[mask]
                         t_end_int = time.time()
                         log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
                 
                 t_start_int = time.time()
-                self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.pruning_thresh)
+                self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                 t_end = time.time()
                 log_print(f'similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
@@ -604,6 +652,16 @@ class Docker:
                 if np.any(mask == False):
                     log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
                 
+                ################################################# CHECKPOINT SAVE BEFORE OPTIMIZATION
+
+                if self.options.checkpoint:
+                        outname = f'TSCoDe_checkpoint_{stamp}.xyz'
+                        with open(outname, 'w') as f:        
+                            for i, structure in enumerate(self.structures):
+                                write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Checkpoint before optimization')
+                        t_end_run = time.time()
+                        log_print(f'Checkpoint requested - Wrote {len(self.structures)} TS structures to {outname} file before optimizaiton.')
+
                 ################################################# GEOMETRY OPTIMIZATION
 
                 if len(self.structures) == 0:
@@ -613,7 +671,7 @@ class Docker:
                 self.exit_status = np.zeros(len(self.structures), dtype=bool)
 
                 t_start = time.time()
-                if self.optimize:
+                if self.options.optimization:
                     for i, structure in enumerate(deepcopy(self.structures)):
                         loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
                         try:
@@ -678,7 +736,7 @@ class Docker:
                         raise ZeroCandidatesError()
 
                     t_start = time.time()
-                    self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.pruning_thresh)
+                    self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                     self.energies = self.energies[mask]
                     t_end = time.time()
                     
@@ -689,6 +747,10 @@ class Docker:
                 s = 'Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try enlarging the search space by specifying a larger "steps" value.'
                 log_print(s)
                 raise ZeroCandidatesError(s)
+
+        else:
+            self.energies = np.zeros(len(self.structures))
+
         ################################################# OUTPUT 
 
         outname = 'TS_out.xyz'
@@ -738,8 +800,7 @@ if __name__ == '__main__':
 
 
     docker = Docker(filename) # initialize docker from input
-    docker.setup(steps=5, optimize=True) # set variables
-
+    
     os.chdir('Resources/SN2')
 
     bypass = False
