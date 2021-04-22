@@ -22,7 +22,7 @@ class Single:
     def init(self, mol, i, update=False) -> None:
         '''
         '''
-        symbol = pt[mol.atomnos[i]].symbol
+        self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
 
@@ -34,14 +34,13 @@ class Single:
         if update:
 
             try:
-                key = symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self)
                 orb_dim = orb_dim_dict[key]
             except KeyError:
-                orb_dim = 0.5*np.linalg.norm(self.coord - self.other)
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using half the bonding distance.')
+                orb_dim = np.linalg.norm(self.coord - self.other)
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using the bonding distance ({round(orb_dim, 3)} A).')
 
             self.center = np.array([orb_dim * norm(self.coord - self.other) + self.coord])
-
 
 class Sp2:
     '''
@@ -55,7 +54,7 @@ class Sp2:
     def init(self, mol, i, update=False) -> None:
         '''
         '''
-        symbol = pt[mol.atomnos[i]].symbol
+        self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
 
@@ -74,38 +73,17 @@ class Sp2:
         if update:
 
             try:
-                key = symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self)
                 orb_dim = orb_dim_dict[key]
             except KeyError:
-                orb_dim = np.linalg.norm(self.coord - self.others[0])
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using a full bonding distance.')
+                orb_dim = orb_dim_dict['Fallback']
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
             
             self.center = np.array([self.orb_vec, -self.orb_vec]) * orb_dim      
 
             self.center += self.coord
 
-
-class Sp: # BROKEN for sure, needs to fixed, eventually
-    '''
-    '''
-    def __init__(self):
-        pass
-
-    def __repr__(self):
-        return 'sp'
-
-    def init(self, mol, i, update=False) -> None:
-        '''
-        '''
-        symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
-
-
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[0][i]
-        self.others = mol.atomcoords[0][neighbors_indexes]
-       
+# class Sp: TODO       
 
 class Sp3:
     '''
@@ -120,7 +98,7 @@ class Sp3:
         '''
         '''
 
-        symbol = pt[mol.atomnos[i]].symbol
+        self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
 
@@ -143,11 +121,11 @@ class Sp3:
         if update:
 
             try:
-                key = symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self)
                 orb_dim = orb_dim_dict[key]
             except KeyError:
-                orb_dim = 1
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+                orb_dim = orb_dim_dict['Fallback']
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
             self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
 
@@ -211,7 +189,7 @@ class Ether:
         '''
         '''
 
-        symbol = pt[mol.atomnos[i]].symbol
+        self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
 
@@ -226,11 +204,11 @@ class Ether:
         if update:
 
             try:
-                key = symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self)
                 orb_dim = orb_dim_dict[key]
             except KeyError:
-                orb_dim = 1
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+                orb_dim = orb_dim_dict['Fallback']
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
             self.vectors = orb_dim * np.array([norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
 
@@ -255,7 +233,7 @@ class Ketone:
         '''
         '''
 
-        symbol = pt[mol.atomnos[i]].symbol
+        self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
 
@@ -270,11 +248,11 @@ class Ketone:
         if update:
 
             try:
-                key = symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self)
                 orb_dim = orb_dim_dict[key]
             except KeyError:
-                orb_dim = 1
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+                orb_dim = orb_dim_dict['Fallback']
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
             neighbors_of_neighbor_indexes = list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys())
             neighbors_of_neighbor_indexes.remove(i)
@@ -313,7 +291,7 @@ class Imine:
         '''
         '''
 
-        symbol = pt[mol.atomnos[i]].symbol
+        self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
 
@@ -329,11 +307,11 @@ class Imine:
         if update:
 
             try:
-                key = symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self)
                 orb_dim = orb_dim_dict[key]
             except KeyError:
-                orb_dim = 1
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using 1 A.')
+                orb_dim = orb_dim_dict['Fallback']
+                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
             self.center = np.array([norm(-np.mean(self.vectors, axis=0))*orb_dim])
 

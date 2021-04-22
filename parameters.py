@@ -31,5 +31,7 @@ orb_dim_dict = {
                 'S Ketone': 1,
 
                 'N Imine' : 1,
+
+                'Fallback' : 1
                 }       
 # Half-lenght of the transition state bonding distance involving a given atom

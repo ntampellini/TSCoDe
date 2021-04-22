@@ -103,8 +103,10 @@ def rot_mat_from_pointer(pointer, angle):
     return R.from_quat(quat).as_matrix()
 
 def dihedral(p):
-    """Praxeolitic formula
-    1 sqrt, 1 cross product"""
+    '''
+    Praxeolitic formula: 1 sqrt, 1 cross product
+    
+    '''
     p0 = p[0]
     p1 = p[1]
     p2 = p[2]

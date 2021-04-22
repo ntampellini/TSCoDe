@@ -63,19 +63,57 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
 @dataclass
 class Options:
 
-    __keywords__ = ['SUPRAFAC', 'DEEP', 'NOOPT', 'CHECKPOINT', 'STEPS', 'BYPASS', 'THRESH']
+    __keywords__ = [
+                    'SUPRAFAC',   # Only retain suprafacial configurations in cyclical TSs.
+                                  # Thought for Diels-Alder reactions.
+
+                    'DEEP',       # Performs a deeper search, retaining more starting points
+                                  # for calculations and smaller turning angles.
+
+                    'NOOPT',      # Skip the optimization steps, directly writing structures to file.
+
+                    'CHECKPOINT', # Writes structures to file before the geometry optimization steps.
+
+                    'STEPS',      # Manually specify the number of steps to be taken in scanning 360°
+                                  # rotations. The standard value of 6 will perform six 60° turns.
+                                  # Syntax: SCAN=n, where n is an integer.
+
+                    'BYPASS',     # Debug keyword. Used to skip all pruning steps and directly output
+                                  # all the embedded geometries.
+
+                    'THRESH',     # RMSD threshold (Angstroms) for structure pruning. The smaller, the more
+                                  # retained structures. Default is 0.5 A. Syntax: THRESH=n, where n is a number.
+
+                    'DIST',       # Manually imposed distance between specified atom pairs, in Angstroms.
+                                  # Syntax uses parenthesis and commas: DIST=(a=2.345,b=3.67)
+
+                    'CLASHES',    # Manually specify the max number of clashes and the distance threshold
+                                  # at which two atoms are considered clashing. The more forgiving, the more
+                                  # structures will reach the geometry optimization step. Syntax:
+                                  # CLASHES=(num=3,dist=1.2)
+                    ]
+                    
     # list of keyword names to be used in the first line of program input
 
     rotation_steps = 6
     pruning_thresh = 0.5
+    
+    max_clashes = 3
+    clash_thresh = 1.2
+
     optimization = True
+    suprafacial = False
     checkpoint = False
+
+
+
     bypass = False
     # Default values, updated if _parse_input
-    # finds keywords and calls _set_parameters
+    # finds keywords and calls _set_options
 
     def __repr__(self):
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
+        d.pop('bypass')
         return '\n'.join([f'{var} : {d[var]}' for var in d])
 
 class Docker:
@@ -86,11 +124,20 @@ class Docker:
         with the user-requested keywords, if there are any.
 
         '''
+        s =  '*************************************************************\n'
+        s += '*      TSCODE: Transition State Conformational Docker       *\n'
+        s += '*************************************************************\n'
+        s += '*                 Version 0.00 - Pre-release                *\n'
+        s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
+        s += '*************************************************************\n'
+
+        log_print(s)
 
         self.options = Options()
         self.objects = [Hypermolecule(name, c_ids) for name, c_ids in self._parse_input(filename)]
         self.ids = [len(mol.atomnos) for mol in self.objects]
         self._read_pairings(filename)
+
 
     def _parse_input(self, filename):
         '''
@@ -112,7 +159,7 @@ class Docker:
 
             keywords = [l.split('=')[0] for l in lines[0].split()]
             if all(k in self.options.__keywords__ for k in keywords):
-                self._set_parameters(lines[0].split())
+                self._set_options(lines[0].split())
                 lines = lines[1:]
 
             inp = []
@@ -127,19 +174,22 @@ class Docker:
             print(e)
             raise InputError(f'Error in reading {filename}. Please check your syntax.')
 
-    def _set_parameters(self, keywords_list=[]):
+    def _set_options(self, keywords_list=[]):
         '''
         Set the options dataclass parameters from a list of given keywords. These will be used
         during the run to vary the search depth and/or output.
         '''
         
         if 'SUPRAFAC' in keywords_list:
+            self.suprafacial = True
             raise NotImplementedError('Oops. SUPRAFAC keyword still not implemented.')
             # TODO: implement SUPRAFAC keyword
 
         if 'DEEP' in keywords_list:
             self.options.pruning_thresh = 0.1
             self.options.rotation_steps = 12
+            self.options.max_clashes = 5
+            self.options.clash_thresh = 1
 
         if 'STEPS' in [k.split('=')[0] for k in keywords_list]:
             kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('STEPS')]
@@ -158,13 +208,33 @@ class Docker:
         if 'BYPASS' in keywords_list:
             self.options.bypass = True
 
-        # print(self.options)
-        # quit()
-        # TODO: print options to log?
+        if 'DIST' in [k.split('=')[0] for k in keywords_list]:
+            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('DIST')]
+            orb_string = kw.split('=')[1][1:-1]
+            # orb_string looks like 'a=2.345,b=3.456,c=2.22'
+            raise NotImplementedError('Oops. DIST keyword still not implemented.')
+            self._set_custom_orbs(orb_string)
+            # TODO: write this function
+
+        if 'CLASHES' in [k.split('=')[0] for k in keywords_list]:
+            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('CLASHES')]
+            clashes_string = kw.split('=')[1][1:-1]
+            # clashes_string looks like 'num=3,dist=1.2'
+
+            for piece in clashes_string.split(','):
+                s = piece.split('=')
+                if s[0] == 'num':
+                    self.options.max_clashes = int(s[1])
+                elif s[0] == 'dist':
+                    self.options.clash_thresh = float(s[1])
+                else:
+                    raise SyntaxError((f'Syntax error in CLASHES keyword -> CLASHES=({clashes_string}).' +
+                                        'Correct syntax looks like: CLASHES=(num=3,dist=1.2)'))
         
     def _read_pairings(self, filename):
         '''
-        TODO desc
+        Reads atomic pairings to be respected from the input file, if any are present.
+
         '''
         with open(filename, 'r') as f:
             lines = f.readlines()
@@ -200,13 +270,12 @@ class Docker:
         self.pairings = [sorted(i) for i in pairings]
 
         if self.pairings == []:
-            s = 'No atom pairing imposed. Computing all possible dispositions.'
+            s = '--> No atom pairing imposed. Computing all possible dispositions.'
         else:
             pairings = [line.split()]
-            s = f'Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)'
+            s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
         log_print(s)
 
-    
     def _setup(self):
         '''
         :params steps: int, number of steps for the sampling of rotations. A value of 3 corresponds
@@ -268,17 +337,14 @@ class Docker:
 
             elif all([len(molecule.reactive_atoms_classes) == 1 for molecule in self.objects]) and len(self.objects) == 2:
                 self.embed = 'string'
-                self.candidates = self.options.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
-                self.candidates *= 2
-                # The number 2 is the number of different arrangements of two oriented vectors (parallel, antiparallel)
-                # TODO: check this, i think it is wrong
+                self.candidates = self.options.rotation_steps*np.prod([len(mol.atomcoords) for mol in self.objects])*np.prod([len(mol.centers) for mol in self.objects])
 
             else:
                 raise InputError('Bad input - The only molecular configurations accepted are: 1) two or three molecules with two reactive centers each or 2) two molecules with one reactive center each.')
         else:
             raise InputError('Bad input - too many molecules specified (3 max).')
 
-        log_print(f'Setup performed correctly. {self.candidates} candidates will be generated.')
+        log_print(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
     def get_string_constrained_indexes(self, n):
         '''
@@ -336,7 +402,7 @@ class Docker:
         assert len(self.objects) == 2
         # NOTE THAT THIS APPROACH WILL ONLY WORK FOR TWO MOLECULES, AND A REVISION MUST BE DONE TO GENERALIZE IT (BUT WOULD IT MAKE SENSE?)
 
-        log_print('Initializing string embed...')
+        log_print(f'\n--> Initializing string embed ({self.candidates} candidates)')
 
         centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
         # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
@@ -445,7 +511,7 @@ class Docker:
 
                 return np.vstack((v1,v2,v3))
 
-        log_print('Initializing cyclical embed...')
+        log_print(f'\n--> Initializing cyclical embed ({self.candidates} candidates)')
 
         pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -540,226 +606,245 @@ class Docker:
     def run(self, debug=False):
         '''
         '''
-
-        self._setup()
-
-        assert self.candidates < 1e9
-        # TODO: perform some action if this number is crazy high
-
-        print()
-
-        head = '\n'.join([f'{mol.rootname} - Reactive indexes {mol.reactive_indexes}' for mol in self.objects])
-        log_print('TSCoDe - input structures/indexes were:\n' + head)
-        log_print(f'rotation_steps was {self.options.rotation_steps}: {round(360/self.options.rotation_steps, 2)} degrees turns performed\n')
-
-        t_start_run = time.time()
-
-        if self.embed == 'cyclical':
-            embedded_structures = self.cyclical_embed()
-        else:
-            embedded_structures = self.string_embed()
-
-
-        atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
-        # cumulative list of atomic numbers associated with coordinates
-
         try:
-            os.remove('TS_out.xyz')
-        except:
-            pass
-        # TODO: rename output through stamp variable
+            self._setup()
+
+            assert self.candidates < 1e9, ('ATTENTION! This calculation is probably going to be very big. To ignore this message' +
+                                        ' and proceed, run this python file with the -O flag. Ex: python -O tscode.py input.txt')
+            # TODO: perform some action if this number is crazy high
+            head = ''
+            for i, mol in enumerate(self.objects):
+                s = [atom.symbol+'('+str(atom)+')' for atom in mol.reactive_atoms_classes]
+                t = ', '.join([f'{a}->{b}' for a,b in zip(mol.reactive_indexes, s)])
+                head += f'    {i}. {mol.rootname}: {t}\n'
+            # head = '\n'.join([f'   {i}. {mol.rootname} - {mol.reactive_indexes} - {[atom.symbol+' ('+str(atom)+')' for atom in mol.reactive_atoms_classes]}' for i, mol in enumerate(self.objects)])
+            log_print('--> Input structures, reactive indexes and reactive atoms TSCODE type:\n' + head)
+            log_print(f'--> Calculation options used were:')
+            for line in str(self.options).split('\n'):
+                log_print(f'    - {line}')
+
+            t_start_run = time.time()
+
+            if self.embed == 'cyclical':
+                embedded_structures = self.cyclical_embed()
+            else:
+                embedded_structures = self.string_embed()
 
 
-        conf_number = [len(molecule.atomcoords) for molecule in self.objects]
-        conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
-        # first index of each vector is the conformer number of the first molecule and so on
+            atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
+            # cumulative list of atomic numbers associated with coordinates
 
-        self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
-        n_of_constraints = self.dispositions_constrained_indexes.shape[1]
-        self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2), dtype=int)
-        # we will be getting constrained indexes for each combination of conformations from the general self.disposition_constrained_indexes array
-
-        for geometry_number, geometry in enumerate(embedded_structures):
-
-            for molecule in geometry:
-                calc_positioned_conformers(molecule)
-
-            for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
-                count_atoms = 0
-
-                for molecule_number, conformation in enumerate(conf_index): # (0,0) then (1,0) then (2,0) (first [] of outer for-loop)
-                    coords = geometry[molecule_number].positioned_conformers[conformation]
-                    n = len(geometry[molecule_number].atomnos)
-                    self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
-                    self.constrained_indexes[geometry_number*len(conf_indexes)+i] = self.dispositions_constrained_indexes[geometry_number]
-                    count_atoms += n
-        # Calculating new coordinates for embedded_structures and storing them in self.structures
-
-        del self.dispositions_constrained_indexes
-        # cleaning the old, general data on indexes that ignored conformations
-
-        t_end = time.time()
-        log_print(f'Generated {len(self.structures)} transition state candidates ({round(t_end-t_start_run, 2)} s)')
-
-        if not self.options.bypass:
             try:
-                ################################################# COMPENETRATION CHECK
-                
-                graphs = [mol.graph for mol in self.objects]
-
-                t_start = time.time()
-                mask = np.zeros(len(self.structures), dtype=bool)
-                num = len(self.structures)
-                for s, structure in enumerate(self.structures):
-                    p = True if num > 100 and s % (num // 100) == 0 else False
-                    if p:
-                        loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
-                    # mask[s] = sanity_check(structure, atomnos, self.constrained_indexes[s], graphs, max_new_bonds=3)
-                    mask[s] = compenetration_check(structure, self.ids, max_clashes=3, thresh=1.5)
-
-                loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
-                self.structures = self.structures[mask]
-                self.constrained_indexes = self.constrained_indexes[mask]
-                t_end = time.time()
-
-                if np.any(mask == False):
-                    log_print(f'Discarded {len([b for b in mask if b == False])} candidates for compenetration ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
-
-                ################################################# PRUNING: SIMILARITY
-
-                if len(self.structures) == 0:
-                    raise ZeroCandidatesError()
-
-                t_start = time.time()
-
-                before = len(self.structures)
-                for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
-                    if 5*k < len(self.structures):
-                        t_start_int = time.time()
-                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh, k=k)
-                        self.constrained_indexes = self.constrained_indexes[mask]
-                        t_end_int = time.time()
-                        log_print(f'similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
-                
-                t_start_int = time.time()
-                self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
-                t_end = time.time()
-                log_print(f'similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
-
-                self.constrained_indexes = self.constrained_indexes[mask]
-
-                if np.any(mask == False):
-                    log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                
-                ################################################# CHECKPOINT SAVE BEFORE OPTIMIZATION
-
-                if self.options.checkpoint:
-                        outname = f'TSCoDe_checkpoint_{stamp}.xyz'
-                        with open(outname, 'w') as f:        
-                            for i, structure in enumerate(self.structures):
-                                write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Checkpoint before optimization')
-                        t_end_run = time.time()
-                        log_print(f'Checkpoint requested - Wrote {len(self.structures)} TS structures to {outname} file before optimizaiton.')
-
-                ################################################# GEOMETRY OPTIMIZATION
-
-                if len(self.structures) == 0:
-                    raise ZeroCandidatesError()
-
-                self.energies = np.zeros(len(self.structures))
-                self.exit_status = np.zeros(len(self.structures), dtype=bool)
-
-                t_start = time.time()
-                if self.options.optimization:
-                    for i, structure in enumerate(deepcopy(self.structures)):
-                        loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
-                        try:
-                            t_start_opt = time.time()
-                            # intermediate_geometry, _ = Hookean_optimization(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
-                            # self.structures[i], self.energies[i], self.exit_status[i] = optimize(intermediate_geometry, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
-                            self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure, atomnos, self.constrained_indexes[i], graphs, method='PM7 GEO-OK')
+                os.remove('TS_out.xyz')
+            except:
+                pass
+            # TODO: rename output through stamp variable
 
 
-                            exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'
+            conf_number = [len(molecule.atomcoords) for molecule in self.objects]
+            conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
+            # first index of each vector is the conformer number of the first molecule and so on
 
-                        except ValueError:
-                            # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
-                            # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                            # The easiest solution is to reject the structure and go on.
-                            self.structures[i] = None
-                            self.energies[i] = np.inf
-                            self.exit_status[i] = False
-                            exit_str = 'FAILED TO READ FILE'
+            self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
+            n_of_constraints = self.dispositions_constrained_indexes.shape[1]
+            self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2), dtype=int)
+            # we will be getting constrained indexes for each combination of conformations from the general self.disposition_constrained_indexes array
 
-                        finally:
-                            t_end_opt = time.time()
-                            log_print(f'Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+            for geometry_number, geometry in enumerate(embedded_structures):
 
-                    loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
-                    t_end = time.time()
-                    log_print(f'Mopac PM7 optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                for molecule in geometry:
+                    calc_positioned_conformers(molecule)
 
-                    ################################################# PRUNING: EXIT STATUS
+                for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
+                    count_atoms = 0
 
-                    mask = self.exit_status
+                    for molecule_number, conformation in enumerate(conf_index): # (0,0) then (1,0) then (2,0) (first [] of outer for-loop)
+                        coords = geometry[molecule_number].positioned_conformers[conformation]
+                        n = len(geometry[molecule_number].atomnos)
+                        self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
+                        self.constrained_indexes[geometry_number*len(conf_indexes)+i] = self.dispositions_constrained_indexes[geometry_number]
+                        count_atoms += n
+            # Calculating new coordinates for embedded_structures and storing them in self.structures
+
+            del self.dispositions_constrained_indexes
+            # cleaning the old, general data on indexes that ignored conformations
+
+            t_end = time.time()
+            log_print(f'Generated {len(self.structures)} transition state candidates ({round(t_end-t_start_run, 2)} s)\n')
+
+            if not self.options.bypass:
+                try:
+                    ################################################# COMPENETRATION CHECK
+                    
+                    log_print('--> Checking structures for compenetrations')
+
+                    graphs = [mol.graph for mol in self.objects]
+
+                    t_start = time.time()
+                    mask = np.zeros(len(self.structures), dtype=bool)
+                    num = len(self.structures)
+                    for s, structure in enumerate(self.structures):
+                        p = True if num > 100 and s % (num // 100) == 0 else False
+                        if p:
+                            loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
+                        mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
+
+                    loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
                     self.structures = self.structures[mask]
-                    self.energies = self.energies[mask]
+                    self.constrained_indexes = self.constrained_indexes[mask]
+                    t_end = time.time()
+
+                    if np.any(mask == False):
+                        log_print(f'Discarded {len([b for b in mask if b == False])} candidates for compenetration ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                    log_print()
+                    # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
+
+                    ################################################# PRUNING: SIMILARITY
+
+                    if len(self.structures) == 0:
+                        raise ZeroCandidatesError()
+
+                    log_print('--> Similarity Processing')
+                    t_start = time.time()
+
+                    before = len(self.structures)
+                    for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
+                        if 5*k < len(self.structures):
+                            t_start_int = time.time()
+                            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh, k=k)
+                            self.constrained_indexes = self.constrained_indexes[mask]
+                            t_end_int = time.time()
+                            log_print(f'    - similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+                    
+                    t_start_int = time.time()
+                    self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                    t_end = time.time()
+                    log_print(f'   - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+
                     self.constrained_indexes = self.constrained_indexes[mask]
 
                     if np.any(mask == False):
-                        log_print(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
+                        log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                    log_print()
 
-                    ################################################# PRUNING: ENERGY
-                
-                    if len(self.structures) == 0:
-                        raise ZeroCandidatesError()
+                    ################################################# CHECKPOINT SAVE BEFORE OPTIMIZATION
 
-                    self.energies = self.energies - np.min(self.energies)
-                    mask = self.energies < THRESHOLD_KCAL
-                    self.structures = self.structures[mask]
-                    self.energies = self.energies[mask]
+                    if self.options.checkpoint:
+                            outname = f'TSCoDe_checkpoint_{stamp}.xyz'
+                            with open(outname, 'w') as f:        
+                                for i, structure in enumerate(self.structures):
+                                    write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Checkpoint before optimization')
+                            t_end_run = time.time()
+                            log_print(f'--> Checkpoint requested - Wrote {len(self.structures)} TS structures to {outname} file before optimizaiton.\n')
 
-                    _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-                    from optimization_methods import scramble
-                    self.energies = scramble(self.energies, sequence)
-                    self.structures = scramble(self.structures, sequence)
-                    self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-                    # sorting structures based on energy
-
-                    if np.any(mask == False):
-                        log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
-
-                    ################################################# PRUNING: SIMILARITY (AGAIN)
+                    ################################################# GEOMETRY OPTIMIZATION
 
                     if len(self.structures) == 0:
                         raise ZeroCandidatesError()
+
+                    self.energies = np.zeros(len(self.structures))
+                    self.exit_status = np.zeros(len(self.structures), dtype=bool)
+
+                    log_print('--> Structure optimization (PM7 level)')
 
                     t_start = time.time()
-                    self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
-                    self.energies = self.energies[mask]
-                    t_end = time.time()
+                    if self.options.optimization:
+                        for i, structure in enumerate(deepcopy(self.structures)):
+                            loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
+                            try:
+                                t_start_opt = time.time()
+                                # intermediate_geometry, _ = Hookean_optimization(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
+                                # self.structures[i], self.energies[i], self.exit_status[i] = optimize(intermediate_geometry, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
+                                self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure, atomnos, self.constrained_indexes[i], graphs, method='PM7 GEO-OK')
+
+
+                                exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'
+
+                            except ValueError:
+                                # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                                # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                                # The easiest solution is to reject the structure and go on.
+                                self.structures[i] = None
+                                self.energies[i] = np.inf
+                                self.exit_status[i] = False
+                                exit_str = 'FAILED TO READ FILE'
+
+                            finally:
+                                t_end_opt = time.time()
+                                log_print(f'    - Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+
+                        loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
+                        t_end = time.time()
+                        log_print(f'Mopac PM7 optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+
+                        ################################################# PRUNING: EXIT STATUS
+
+                        mask = self.exit_status
+                        self.structures = self.structures[mask]
+                        self.energies = self.energies[mask]
+                        self.constrained_indexes = self.constrained_indexes[mask]
+
+                        if np.any(mask == False):
+                            log_print(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
+                        
+                        ################################################# PRUNING: ENERGY
                     
-                    if np.any(mask == False):
-                        log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        if len(self.structures) == 0:
+                            raise ZeroCandidatesError()
 
-            except ZeroCandidatesError:
-                s = 'Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try enlarging the search space by specifying a larger "steps" value.'
-                log_print(s)
-                raise ZeroCandidatesError(s)
+                        self.energies = self.energies - np.min(self.energies)
+                        mask = self.energies < THRESHOLD_KCAL
+                        self.structures = self.structures[mask]
+                        self.energies = self.energies[mask]
 
-        else:
-            self.energies = np.zeros(len(self.structures))
+                        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                        from optimization_methods import scramble
+                        self.energies = scramble(self.energies, sequence)
+                        self.structures = scramble(self.structures, sequence)
+                        self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                        # sorting structures based on energy
 
-        ################################################# OUTPUT 
+                        if np.any(mask == False):
+                            log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
-        outname = 'TS_out.xyz'
-        with open(outname, 'w') as f:        
-            for i, structure in enumerate(self.structures):
-                write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Rel. E. = {self.energies[i]} kcal/mol')
-        t_end_run = time.time()
-        log_print(f'Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
-        log.close()
+                        ################################################# PRUNING: SIMILARITY (AGAIN)
+
+                        if len(self.structures) == 0:
+                            raise ZeroCandidatesError()
+
+                        t_start = time.time()
+                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                        self.energies = self.energies[mask]
+                        t_end = time.time()
+                        
+                        if np.any(mask == False):
+                            log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        log_print()
+
+                except ZeroCandidatesError:
+                    s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
+                         '    - Enlarging the search space by specifying a larger "steps" value with the keyword STEPS=n\n' +
+                         '    - Imposing less strict rejection criteria with the DEEP keyword.\n' +
+                         '    - Praying the mighty lord and re-run the program. Afterall, the code is not 100% deterministic. You might get lucky.')
+                    log_print(s)
+                    raise ZeroCandidatesError(s)
+
+            else:
+                self.energies = np.zeros(len(self.structures))
+
+            ################################################# OUTPUT 
+
+            outname = 'TS_out.xyz'
+            with open(outname, 'w') as f:        
+                for i, structure in enumerate(self.structures):
+                    write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Rel. E. = {self.energies[i]} kcal/mol')
+            t_end_run = time.time()
+            log_print(f'--> Output: Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
+            log.close()
+
+        except KeyboardInterrupt:
+            print('KeyboardInterrupt requested by user. Quitting.')
+            quit()
 
 
 if __name__ == '__main__':
@@ -784,9 +869,9 @@ if __name__ == '__main__':
     # inp = [d,e]
     # inp = [e,e,e]
 
-    d = ['Resources/DA/diene2.xyz', (0,6)]
-    e = ['Resources/DA/dienophile2.xyz', (3,5)]
-    inp = [d,e]
+    # d = ['Resources/DA/diene2.xyz', (0,6)]
+    # e = ['Resources/DA/dienophile2.xyz', (3,5)]
+    # inp = [d,e]
 
     # a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
     # b = ['Resources/acid_ensemble.xyz', (3,25)]
@@ -794,10 +879,16 @@ if __name__ == '__main__':
     # inp = (a,b,c)
     # inp = (b,b)
 
+    # filename = 'test_input.txt'
+
     ###############################################
 
-    filename = 'test_input.txt'
+    import sys
+    if len(sys.argv) != 2:
+        print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
+        quit()
 
+    filename = sys.argv[1]
 
     docker = Docker(filename) # initialize docker from input
     

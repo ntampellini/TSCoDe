@@ -30,5 +30,6 @@
  'orb_vec': array(3,) - versor specifying the orientation of orbitals. Used to build alignment_matrix.
  'others': array(N,3) - vectors specifying absolute postition of linked neighbors. For 'Single Bond' class, array(3,)
  'vectors': array(N,3) - specifying vectors connecting reactive atom to linked neighbors
+ 'symbol' : string, expressing the reactive atom symbol
 
  Calling str(self) will return its type. ['Single Bond', 'sp2', 'sp3', ...]
