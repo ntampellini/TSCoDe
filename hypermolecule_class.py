@@ -81,7 +81,7 @@ class Hypermolecule:
     def __repr__(self):
         return self.rootname + f' {[str(atom) for atom in self.reactive_atoms_classes]}, ID = {id(self)}'
 
-    def __init__(self, filename, reactive_atoms=None, debug=False, T=298.15):
+    def __init__(self, filename, reactive_atoms, debug=False, T=298.15):
         '''
         Initializing class properties: reading conformational ensemble file, aligning
         conformers to first and centering them in origin.
@@ -90,12 +90,17 @@ class Hypermolecule:
         :params reactive_atoms:     Index of atoms that will link during the desired reaction.
                                     May be either int or list of int.
         '''
+
+        if not os.path.isfile(filename):
+            raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
+                                'If this looks like a keyword, it is probably faulted by a syntax error.'))
+
         self.rootname = filename.split('.')[0]
         self.name = filename
         self.T = T
         self.debug = debug
 
-        if reactive_atoms is None:
+        if reactive_atoms == ():
             reactive_atoms = self._set_reactive_atoms(filename)
 
         ccread_object = ccread(filename)
@@ -122,26 +127,33 @@ class Hypermolecule:
         # show_graph(self)
         self._inspect_reactive_atoms() # sets reactive atoms properties to rotate the ensemble correctly afterwards
 
+        self.atomcoords = self._align_ensemble(filename, self.reactive_indexes)
+
         reactive_vector = []
         for structure in self.atomcoords:
             for index in self.reactive_indexes:
                 reactive_vector.append(structure[index])
         reactive_vector = np.mean(np.array(reactive_vector), axis=0)
 
-        self.atomcoords = np.array([self._orient_along_x(structure, reactive_vector) for structure in self.atomcoords])
-        self.atomcoords = self._align_ensemble(filename, self.reactive_indexes)
+        # if not np.all(reactive_vector == 0.):
+        #     self.atomcoords = np.array([self._orient_along_x(structure, reactive_vector) for structure in self.atomcoords])
         # After reading aligned conformers, they are stored as self.atomcoords after being translated to origin and aligned the reactive atom(s) to x axis.
 
-        for reactive_atom, index in zip(self.reactive_atoms_classes, self.reactive_indexes):
-                       
+        for reactive_atom, index in zip(self.reactive_atoms_classes, self.reactive_indexes):      
             reactive_atom.init(self, index, update=True)
             # update properties into reactive_atom class
+        self._update_orbs()
+        # Building orbitals and updating their positions in the Hypermolecule class
 
-        self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atom positions
+        self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atomic positions
         if self.debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
 
         # self._compute_hypermolecule()
 
+    def _update_orbs(self):
+        '''
+        Update molecule orbitals from the reactive_atom subclasses
+        '''
         self.centers = np.concatenate([r_atom.center for r_atom in self.reactive_atoms_classes])
         self.orb_vers = np.concatenate([norm(r_atom.center - r_atom.coord) for r_atom in self.reactive_atoms_classes])
 
@@ -392,30 +404,36 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     test = {
 
-        # 1 : ('Resources/indole/indole_ensemble.xyz', 6),
-        # 2 : ('Resources/SN2/amine_ensemble.xyz', 10),
-        # 3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
-        # 4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
-        # 5 : ('Resources/SN2/flex_ensemble.xyz', None),
+        1 : ('Resources/indole/indole_ensemble.xyz', 6),
+        2 : ('Resources/SN2/amine_ensemble.xyz', 10),
+        3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
+        4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
+        5 : ('Resources/SN2/flex_ensemble.xyz', None),
 
-        # 6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
-        # 7 : ('Resources/SN2/CH3Br_ensemble.xyz', 0),
-        # 8 : ('Resources/bulk/tax.xyz', None),
-        # 9 : ('Resources/DA/diene.xyz', (2,7)),
-        # 10 : ('Resources/DA/dienophile.xyz', (3,5)),
-        # 11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5)),
-        # 12 : ('Resources/SN2/ketone_ensemble.xyz', 5),
-        # 13 : ('Resources/NOH.xyz', (0,1)),
+        6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
+        7 : ('Resources/SN2/CH3Br_ensemble.xyz', (0,)),
+        8 : ('Resources/bulk/tax.xyz', None),
+        9 : ('Resources/DA/diene.xyz', (2,7)),
+        10 : ('Resources/DA/dienophile.xyz', (3,5)),
+        11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5)),
+        12 : ('Resources/SN2/ketone_ensemble.xyz', 5),
+        13 : ('Resources/NOH.xyz', (0,1)),
 
         14 : ('Resources/acid_ensemble.xyz', (3,25)),
         15 : ('Resources/dienamine/dienamine_ensemble.xyz', (6,23)),
-        16 : ('Resources/maleimide.xyz', (0,5))
+        16 : ('Resources/maleimide.xyz', (0,5)),
+        17 : ('Resources/SN2/C2H4.xyz', (0,3))
 
 
             }
 
-    for i in (14, 15, 16):
+    for i in (17,):
         t = Hypermolecule(test[i][0], test[i][1])
+
+        t.reactive_atoms_classes[0].init(t, t.reactive_indexes[0], update=True, orb_dim=1)
+        t.reactive_atoms_classes[1].init(t, t.reactive_indexes[1], update=True, orb_dim=1.5)
+        t._update_orbs()
+
         t._compute_hypermolecule()
         t.write_hypermolecule()
 
@@ -498,6 +516,3 @@ if __name__ == '__main__':
     # print(en)
 
 
-    # TO DO:
-
-    # Probably a better idea for getting connectivity matrix is by using ase.geometry get_bonds() method. Low priority.

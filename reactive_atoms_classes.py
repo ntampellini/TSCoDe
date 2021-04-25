@@ -19,7 +19,7 @@ class Single:
     def __repr__(self):
         return 'Single Bond'
 
-    def init(self, mol, i, update=False) -> None:
+    def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
         self.symbol = pt[mol.atomnos[i]].symbol
@@ -32,13 +32,13 @@ class Single:
         self.other = mol.atomcoords[0][neighbors_indexes][0]
 
         if update:
-
-            try:
-                key = self.symbol + ' ' + str(self)
-                orb_dim = orb_dim_dict[key]
-            except KeyError:
-                orb_dim = np.linalg.norm(self.coord - self.other)
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using the bonding distance ({round(orb_dim, 3)} A).')
+            if orb_dim is None:
+                try:
+                    key = self.symbol + ' ' + str(self)
+                    orb_dim = orb_dim_dict[key]
+                except KeyError:
+                    orb_dim = np.linalg.norm(self.coord - self.other)
+                    print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using the bonding distance ({round(orb_dim, 3)} A).')
 
             self.center = np.array([orb_dim * norm(self.coord - self.other) + self.coord])
 
@@ -51,7 +51,7 @@ class Sp2:
     def __repr__(self):
         return 'sp2'
 
-    def init(self, mol, i, update=False) -> None:
+    def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
         self.symbol = pt[mol.atomnos[i]].symbol
@@ -71,13 +71,13 @@ class Sp2:
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), self.orb_vec)
 
         if update:
-
-            try:
-                key = self.symbol + ' ' + str(self)
-                orb_dim = orb_dim_dict[key]
-            except KeyError:
-                orb_dim = orb_dim_dict['Fallback']
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
+            if orb_dim is None:
+                try:
+                    key = self.symbol + ' ' + str(self)
+                    orb_dim = orb_dim_dict[key]
+                except KeyError:
+                    orb_dim = orb_dim_dict['Fallback']
+                    print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
             
             self.center = np.array([self.orb_vec, -self.orb_vec]) * orb_dim      
 
@@ -94,7 +94,7 @@ class Sp3:
     def __repr__(self):
         return 'sp3'
 
-    def init(self, mol, i, update=False) -> None:
+    def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
 
@@ -119,13 +119,13 @@ class Sp3:
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), self.orb_vec)
 
         if update:
-
-            try:
-                key = self.symbol + ' ' + str(self)
-                orb_dim = orb_dim_dict[key]
-            except KeyError:
-                orb_dim = orb_dim_dict['Fallback']
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
+            if orb_dim is None:
+                try:
+                    key = self.symbol + ' ' + str(self)
+                    orb_dim = orb_dim_dict[key]
+                except KeyError:
+                    orb_dim = orb_dim_dict['Fallback']
+                    print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
             self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
 
@@ -185,7 +185,7 @@ class Ether:
     def __repr__(self):
         return 'Ether'
 
-    def init(self, mol, i, update=False) -> None:
+    def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
 
@@ -202,13 +202,13 @@ class Ether:
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.vectors, axis=0))
 
         if update:
-
-            try:
-                key = self.symbol + ' ' + str(self)
-                orb_dim = orb_dim_dict[key]
-            except KeyError:
-                orb_dim = orb_dim_dict['Fallback']
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
+            if orb_dim is None:
+                try:
+                    key = self.symbol + ' ' + str(self)
+                    orb_dim = orb_dim_dict[key]
+                except KeyError:
+                    orb_dim = orb_dim_dict['Fallback']
+                    print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
             self.vectors = orb_dim * np.array([norm(v) for v in self.vectors]) # making both vectors a fixed, defined length
 
@@ -229,7 +229,7 @@ class Ketone:
     def __repr__(self):
         return 'Ketone'
 
-    def init(self, mol, i, update=False) -> None:
+    def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
 
@@ -246,13 +246,13 @@ class Ketone:
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -self.vector)
 
         if update:
-
-            try:
-                key = self.symbol + ' ' + str(self)
-                orb_dim = orb_dim_dict[key]
-            except KeyError:
-                orb_dim = orb_dim_dict['Fallback']
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
+            if orb_dim is None:
+                try:
+                    key = self.symbol + ' ' + str(self)
+                    orb_dim = orb_dim_dict[key]
+                except KeyError:
+                    orb_dim = orb_dim_dict['Fallback']
+                    print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
             neighbors_of_neighbor_indexes = list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys())
             neighbors_of_neighbor_indexes.remove(i)
@@ -287,7 +287,7 @@ class Imine:
     def __repr__(self):
         return 'Imine'
 
-    def init(self, mol, i, update=False) -> None:
+    def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
 
@@ -305,13 +305,13 @@ class Imine:
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.vectors, axis=0))
 
         if update:
-
-            try:
-                key = self.symbol + ' ' + str(self)
-                orb_dim = orb_dim_dict[key]
-            except KeyError:
-                orb_dim = orb_dim_dict['Fallback']
-                print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
+            if orb_dim is None:
+                try:
+                    key = self.symbol + ' ' + str(self)
+                    orb_dim = orb_dim_dict[key]
+                except KeyError:
+                    orb_dim = orb_dim_dict['Fallback']
+                    print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
             self.center = np.array([norm(-np.mean(self.vectors, axis=0))*orb_dim])
 

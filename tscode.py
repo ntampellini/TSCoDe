@@ -1,6 +1,8 @@
 '''
-TSCoDe - Transition state Seeker from Conformational Density
-
+TSCODE: Transition State Conformational Docker
+Version 0.00 - Pre-release
+Nicolo' Tampellini - nicolo.tampellini@yale.edu
+https://github.com/ntampellini/TSCoDe
 (Work in Progress)
 
 '''
@@ -85,12 +87,16 @@ class Options:
                                   # retained structures. Default is 0.5 A. Syntax: THRESH=n, where n is a number.
 
                     'DIST',       # Manually imposed distance between specified atom pairs, in Angstroms.
-                                  # Syntax uses parenthesis and commas: DIST=(a=2.345,b=3.67)
+                                  # Syntax uses parenthesis and commas: DIST(a=2.345,b=3.67,c=2.1)
 
                     'CLASHES',    # Manually specify the max number of clashes and the distance threshold
                                   # at which two atoms are considered clashing. The more forgiving, the more
                                   # structures will reach the geometry optimization step. Syntax:
-                                  # CLASHES=(num=3,dist=1.2)
+                                  # CLASHES(num=3,dist=1.2)
+                    
+                    'NEWBONDS',   # Manually specify the maximum numeber of "new bonds" that a TS structure
+                                  # can have to be retained and not to be considered scrambled. Default is 2.
+                                  # Syntax: NEWBONDS=2
                     ]
                     
     # list of keyword names to be used in the first line of program input
@@ -101,11 +107,11 @@ class Options:
     max_clashes = 3
     clash_thresh = 1.2
 
+    max_newbonds = 2
+
     optimization = True
     suprafacial = False
     checkpoint = False
-
-
 
     bypass = False
     # Default values, updated if _parse_input
@@ -137,7 +143,7 @@ class Docker:
         self.objects = [Hypermolecule(name, c_ids) for name, c_ids in self._parse_input(filename)]
         self.ids = [len(mol.atomnos) for mol in self.objects]
         self._read_pairings(filename)
-
+        self._set_options(filename)
 
     def _parse_input(self, filename):
         '''
@@ -157,9 +163,8 @@ class Docker:
             assert len(lines) in (2,3,4)
             # (optional) keyword line + 2 or 3 lines for molecules
 
-            keywords = [l.split('=')[0] for l in lines[0].split()]
-            if all(k in self.options.__keywords__ for k in keywords):
-                self._set_options(lines[0].split())
+            keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
+            if any(k in self.options.__keywords__ for k in keywords):
                 lines = lines[1:]
 
             inp = []
@@ -172,65 +177,84 @@ class Docker:
             
         except Exception as e:
             print(e)
-            raise InputError(f'Error in reading {filename}. Please check your syntax.')
+            raise InputError(f'Error in reading molecule input for {filename}. Please check your syntax.')
 
-    def _set_options(self, keywords_list=[]):
+    def _set_options(self, filename):
         '''
         Set the options dataclass parameters from a list of given keywords. These will be used
         during the run to vary the search depth and/or output.
         '''
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+
+        lines = [line for line in lines if line[0] != '#']
+        lines = [line for line in lines if line != '\n']
         
-        if 'SUPRAFAC' in keywords_list:
-            self.suprafacial = True
-            raise NotImplementedError('Oops. SUPRAFAC keyword still not implemented.')
-            # TODO: implement SUPRAFAC keyword
+        try:
+            keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
+            if any(k in self.options.__keywords__ for k in keywords):
 
-        if 'DEEP' in keywords_list:
-            self.options.pruning_thresh = 0.1
-            self.options.rotation_steps = 12
-            self.options.max_clashes = 5
-            self.options.clash_thresh = 1
+                if not all(k in self.options.__keywords__ for k in keywords):
+                    raise SyntaxError(f'One (or more) keywords were not understood. Please check your syntax. ({keywords})')
 
-        if 'STEPS' in [k.split('=')[0] for k in keywords_list]:
-            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('STEPS')]
-            self.options.rotation_steps = int(kw.split('=')[1])
+                keywords_list = lines[0].split()
 
-        if 'THRESH' in [k.split('=')[0] for k in keywords_list]:
-            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('THRESH')]
-            self.options.pruning_thresh = float(kw.split('=')[1])
+                if 'SUPRAFAC' in keywords_list:
+                    self.options.suprafacial = True
 
-        if 'NOOPT' in keywords_list:
-            self.options.optimization = False
-            
-        if 'CHECKPOINT' in keywords_list:
-            self.options.checkpoint = True
+                if 'DEEP' in keywords_list:
+                    self.options.pruning_thresh = 0.2
+                    self.options.rotation_steps = 12
+                    self.options.max_clashes = 5
+                    self.options.clash_thresh = 1
 
-        if 'BYPASS' in keywords_list:
-            self.options.bypass = True
+                if 'STEPS' in [k.split('=')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('STEPS')]
+                    self.options.rotation_steps = int(kw.split('=')[1])
 
-        if 'DIST' in [k.split('=')[0] for k in keywords_list]:
-            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('DIST')]
-            orb_string = kw.split('=')[1][1:-1]
-            # orb_string looks like 'a=2.345,b=3.456,c=2.22'
-            raise NotImplementedError('Oops. DIST keyword still not implemented.')
-            self._set_custom_orbs(orb_string)
-            # TODO: write this function
+                if 'THRESH' in [k.split('=')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('THRESH')]
+                    self.options.pruning_thresh = float(kw.split('=')[1])
 
-        if 'CLASHES' in [k.split('=')[0] for k in keywords_list]:
-            kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('CLASHES')]
-            clashes_string = kw.split('=')[1][1:-1]
-            # clashes_string looks like 'num=3,dist=1.2'
+                if 'NOOPT' in keywords_list:
+                    self.options.optimization = False
+                    
+                if 'CHECKPOINT' in keywords_list:
+                    self.options.checkpoint = True
 
-            for piece in clashes_string.split(','):
-                s = piece.split('=')
-                if s[0] == 'num':
-                    self.options.max_clashes = int(s[1])
-                elif s[0] == 'dist':
-                    self.options.clash_thresh = float(s[1])
-                else:
-                    raise SyntaxError((f'Syntax error in CLASHES keyword -> CLASHES=({clashes_string}).' +
-                                        'Correct syntax looks like: CLASHES=(num=3,dist=1.2)'))
-        
+                if 'BYPASS' in keywords_list:
+                    self.options.bypass = True
+
+                if 'DIST' in [k.split('(')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('DIST')]
+                    orb_string = kw[5:-1]
+                    # orb_string looks like 'a=2.345,b=3.456,c=2.22'
+
+                    self._set_custom_orbs(orb_string)
+
+                if 'CLASHES' in [k.split('(')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('CLASHES')]
+                    clashes_string = kw[8:-1]
+                    # clashes_string looks like 'num=3,dist=1.2'
+
+                    for piece in clashes_string.split(','):
+                        s = piece.split('=')
+                        if s[0] == 'num':
+                            self.options.max_clashes = int(s[1])
+                        elif s[0] == 'dist':
+                            self.options.clash_thresh = float(s[1])
+                        else:
+                            raise SyntaxError((f'Syntax error in CLASHES keyword -> CLASHES({clashes_string}).' +
+                                                'Correct syntax looks like: CLASHES(num=3,dist=1.2)'))
+                
+                if 'NEWBONDS' in [k.split('=')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('NEWBONDS')]
+                    self.options.max_newbonds = int(kw.split('=')[1])
+
+        except Exception as e:
+            print(e)
+            raise InputError(f'Error in reading keywords from {filename}. Please check your syntax.')
+
     def _read_pairings(self, filename):
         '''
         Reads atomic pairings to be respected from the input file, if any are present.
@@ -241,29 +265,44 @@ class Docker:
 
         lines = [line for line in lines if line[0] != '#']
         lines = [line for line in lines if line != '\n']
+        # discard comments and blank lines
         
 
-        keywords = [l.split('=')[0] for l in lines[0].split()]
-        if all(k in self.options.__keywords__ for k in keywords):
+        keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
+        if any(k in self.options.__keywords__ for k in keywords):
             lines = lines[1:]
-        
+        # if we have a keyword line, discard it        
 
         parsed = []
+        self.pairings_dict = {i:[] for i in range(len(self.objects))}
 
         for i, line in enumerate(lines):
+        # i is also molecule index in self.objects
+
             pairings = line.split()[1:]
-            
-            pairings = [[int(i[:-1]), i[-1]] for i in pairings if i.lower().islower()]
+            # remove the molecule name, keep pairs only ['2a','5b']
+
+            pairings = [[int(j[:-1]), j[-1]] for j in pairings if j.lower().islower()]
+
+            for pair in pairings:
+                self.pairings_dict[i].append(pair[:])
+            # appending pairing to dict before
+            # calculating its cumulative index
+
             if i > 0:
                 for z in pairings:
-                    z[0] += sum([j for j in self.ids[:i]])
+                    z[0] += sum(self.ids[:i])
+            # getting the cumulative index rather than the molecule index
 
-            for j in pairings:
-                parsed.append(j)
+            for cumulative_pair in pairings:
+                parsed.append(cumulative_pair)
+        # parsed looks like [[1, 'a'], [9, 'a']] where numbers are
+        # cumulative indexes for TSs
 
         links = {j:[] for j in set([i[1] for i in parsed])}
         for index, tag in parsed:
             links[tag].append(index)
+        # storing couples into a dictionary
 
         pairings = list(links.values())
 
@@ -276,6 +315,80 @@ class Docker:
             s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
         log_print(s)
 
+    def _set_custom_orbs(self, orb_string):
+        '''
+        Update the reactive_atoms classes with the user-specified orbital distances.
+        :param orb_string: string that looks like 'a=2.345,b=3.456,c=2.22'
+
+        '''
+        pairs = [(piece.split('=')[0], float(piece.split('=')[1])) for piece in orb_string.split(',')]
+        # TODO: debug from here
+
+        for letter, dist in pairs:
+            for index in range(len(self.objects)):
+                for pairing in self.pairings_dict[index]:
+
+        # for each pairing specified by the user, check each pairing recorded
+        # in the pairing_dict on that molecule.
+
+                    if pairing[1] == letter:
+                        for reactive_atom, reactive_index in zip(self.objects[index].reactive_atoms_classes, self.objects[index].reactive_indexes):
+                            if reactive_index == pairing[0]:
+                                reactive_atom.init(self.objects[index], reactive_index, update=True, orb_dim=dist/2)
+                                self.objects[index]._update_orbs()
+                                log_print(f'--> Custom distance read: modified orbital of {index+1}. {self.objects[index].name} atom {reactive_index} to {round(dist/2, 3)} A.')
+                    # If the letter matches, look for the correct reactive atom on that molecule. When we find the correct match,
+                    # set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
+                    # user-specified one, as the final atomic distances will be given by two halves of this length.
+            log_print()
+
+    def _set_pivots(self, mol):
+        '''
+        params mol: Hypermolecule class
+        (Cyclical embed) Function that sets the mol.pivots attribute, that is a list
+        containing each vector connecting two orbitals on different atoms
+        '''
+
+        indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes])
+        # indexes of vectors in mol.center. Reactive atoms are necessarily 2 and so for one center on atom 0 and 
+        # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
+
+        mol.pivots = []
+        mol.pivot_means = []
+
+        for i,j in indexes:
+            v1 = mol.reactive_atoms_classes[0].center[i]
+            v2 = mol.reactive_atoms_classes[1].center[j]
+            pivot = v2 - v1
+            mol.pivots.append(pivot)
+            mol.pivot_means.append(np.mean((v1,v2), axis=0))
+
+        mol.pivots = np.array(mol.pivots)
+        mol.pivot_means = np.array(mol.pivot_means)
+
+        if self.options.suprafacial:
+            if len(mol.pivots) == 1:
+            # reactive atoms have one center each, pass
+                pass
+
+            elif len(mol.pivots) == 2:
+            # reactive atoms have one and two centers,
+            # respectively. TODO: Apply bridging carboxylic acid correction?
+                pass
+
+            elif len(mol.pivots) == 4:
+            # reactive atoms have two centers each.
+            # Applying suprafacial correction, only keeping
+            # the shorter two, as they SHOULD be the suprafacial ones
+                norms = np.linalg.norm(mol.pivots, axis=1)
+                for sample in norms:
+                    to_keep = [i for i in norms if sample >= i]
+                    if len(to_keep) == 2:
+                        mask = np.array([i in to_keep for i in norms])
+                        mol.pivots = mol.pivots[mask]
+                        mol.pivot_means = mol.pivot_means[mask]
+                        break
+
     def _setup(self):
         '''
         :params steps: int, number of steps for the sampling of rotations. A value of 3 corresponds
@@ -287,29 +400,8 @@ class Docker:
         # Calculating the number of conformation combinations based on embed type
             if all([len(molecule.reactive_atoms_classes) == 2 for molecule in self.objects]):
 
-                def set_pivots(mol):
-                    '''
-                    params mol: Hypermolecule class
-                    Function sets the mol.pivots attribute, that is a list
-                    containing each vector connecting two orbitals on different atoms
-                    '''
-
-                    indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes])
-                    # indexes of vectors in mol.center. Reactive atoms are necessarily 2 and so for one center on atom 0 and 
-                    # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
-
-                    mol.pivots = []
-                    mol.pivot_means = []
-
-                    for i,j in indexes:
-                        v1 = mol.reactive_atoms_classes[0].center[i]
-                        v2 = mol.reactive_atoms_classes[1].center[j]
-                        pivot = v2 - v1
-                        mol.pivots.append(pivot)
-                        mol.pivot_means.append(np.mean((v1,v2), axis=0))
-
                 for molecule in self.objects:
-                    set_pivots(molecule)
+                    self._set_pivots(molecule)
 
                 self.embed = 'cyclical'
                 self.candidates = self.options.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
@@ -469,7 +561,7 @@ class Docker:
             return sorted(unique_perms)
         # this was actually ready for n-gons implementation, but I think we will never use it with n>3
         
-        def get_directions(norms):
+        def _get_directions(norms):
             '''
             Returns two or three vectors specifying the direction in which each molecule should be aligned
             in the cyclical TS, pointing towards the center of the polygon.
@@ -537,7 +629,7 @@ class Docker:
                 ids = self.get_cyclical_reactive_indexes(v)
                 # get indexes of atoms that face each other
 
-                directions = get_directions(norms)
+                directions = _get_directions(norms)
                 # directions to orient the molecules toward, orthogonal to each vec_pair
 
                 if self.pairings == [] or all([pair in ids for pair in self.pairings]):
@@ -548,7 +640,6 @@ class Docker:
                     # Angular range to be explored in both directions (degrees). A value of 90 would explore from -90 to +90, always in 2*self.options.rotation_steps+1 steps
                     
                     # systematic_angles = cartesian_product(*[range(-self.options.rotation_steps, self.options.rotation_steps+1) for _ in range(len(self.objects))])*angle_range/self.options.rotation_steps
-                    # TODO: only scan half the circumference, or even less. 2n+1 steps! (?)
 
                     for angles in systematic_angles:
 
@@ -559,6 +650,8 @@ class Docker:
                         constrained_indexes.append(ids)
                         # Save indexes to be constrained later in the optimization step
 
+                        orb_log_list = []
+
                         for i, vec_pair in enumerate(vecs):
                         # setting molecular positions and rotations (embedding)
                         # i is the molecule index, vecs is a tuple of start and end positions
@@ -568,31 +661,54 @@ class Docker:
                             angle = angles[i]
 
                             reactive_coords = self.objects[i].atomcoords[0][self.objects[i].reactive_indexes]
+                            # coordinates for the reactive atoms in this run
+
                             atomic_pivot_mean = np.mean(reactive_coords, axis=0)
+                            # mean position of the atoms active in this run 
 
                             mol_direction = pivot_means[i]-atomic_pivot_mean
                             if np.all(mol_direction == 0.):
                                 mol_direction = pivot_means[i]
                                 # log.write(f'mol {i} - improper pivot? Thread {len(threads)-1}\n')
-                            #if molecular direction is too small, take the vector from the molecule center
-                            # to pivot_means[i], so to avoid numeric errors in the next function
+
+                            # Direction in which the molecule should be oriented, based on the meand of reactive
+                            # atom positions and the mean point of the active pivot for the run.
+                            # If this vector is too small and gets rounded to zero (as it can happen for
+                            # "antrafacial" vectors), we fallback to the vector starting from the molecule
+                            # center (mean of atomic positions) and ending in pivot_means[i], so to avoid
+                            # numeric errors in the next function.
                              
-                            pre_alignment_rot = rotation_matrix_from_vectors(mol_direction, directions[i])
-                            # setting a median guess of molecule rotation based on geometry of TS
-
-                            alignment_rotation = rotation_matrix_from_vectors(pre_alignment_rot @ pivots[i], end-start)
+                            alignment_rotation = R.align_vectors((end-start, directions[i]),
+                                                                 (pivots[i], mol_direction))[0].as_matrix()
+                            # this rotation superimposes the molecular orbitals active in this run (pivots[i] goes to
+                            # end-start) and also aligns the molecules so that they face each other (mol_direction
+                            # goes to directions[i])
                             
-                            step_rotation = rot_mat_from_pointer(end-start, angle)
-                            # center_of_rotation = alignment_rotation @ pre_alignment_rot @ pivot_means[i]
+                            axis_of_step_rotation = alignment_rotation @ (reactive_coords[0]-reactive_coords[1])
+                            step_rotation = rot_mat_from_pointer(axis_of_step_rotation, angle)
+                            # this rotation cycles through all different rotation angles for each molecule
 
-                            center_of_rotation = alignment_rotation @ pre_alignment_rot @ atomic_pivot_mean
-                            # this option for center_of_rotation keeps the reactive distances constant
-                            # TODO: whoah! only half to be explored? nope
+                            center_of_rotation = alignment_rotation @ atomic_pivot_mean
+                            # center_of_rotation is the mean point between the reactive atoms so
+                            # as to keep the reactive distances constant
 
-                            thread[i].rotation = step_rotation @ alignment_rotation @ pre_alignment_rot
+                            thread[i].rotation = step_rotation @ alignment_rotation# @ pre_alignment_rot
+                            # overall rotation for the molecule is given by the matrices product
 
-                            pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pre_alignment_rot @ pivot_means[i]
+                            # pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pre_alignment_rot @ pivot_means[i]
+                            pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pivot_means[i]
                             thread[i].position += center_of_rotation - step_rotation @ center_of_rotation + pos
+                            # overall position is given by superimposing mean of active pivot (connecting orbitals)
+                            # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
+
+                            orb_log_list.append(start)
+                            orb_log_list.append(end)
+
+                        with open('orb_log.xyz', 'a') as f:
+                            f.write(str(len(orb_log_list)))
+                            f.write('\norb_debug\n')
+                            for orb in orb_log_list:
+                                f.write('D % .6f % .6f % .6f\n' % (orb[0], orb[1], orb[2]))
 
 
         loadbar(1, 1, prefix=f'Embedding structures ')
@@ -609,15 +725,15 @@ class Docker:
         try:
             self._setup()
 
-            assert self.candidates < 1e9, ('ATTENTION! This calculation is probably going to be very big. To ignore this message' +
-                                        ' and proceed, run this python file with the -O flag. Ex: python -O tscode.py input.txt')
-            # TODO: perform some action if this number is crazy high
+            assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message' +
+                                           ' and proceed, run this python file with the -O flag. Ex: python -O tscode.py input.txt')
+
             head = ''
             for i, mol in enumerate(self.objects):
                 s = [atom.symbol+'('+str(atom)+')' for atom in mol.reactive_atoms_classes]
                 t = ', '.join([f'{a}->{b}' for a,b in zip(mol.reactive_indexes, s)])
-                head += f'    {i}. {mol.rootname}: {t}\n'
-            # head = '\n'.join([f'   {i}. {mol.rootname} - {mol.reactive_indexes} - {[atom.symbol+' ('+str(atom)+')' for atom in mol.reactive_atoms_classes]}' for i, mol in enumerate(self.objects)])
+                head += f'    {i+1}. {mol.name}: {t}\n'
+
             log_print('--> Input structures, reactive indexes and reactive atoms TSCODE type:\n' + head)
             log_print(f'--> Calculation options used were:')
             for line in str(self.options).split('\n'):
@@ -753,9 +869,12 @@ class Docker:
                             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
                             try:
                                 t_start_opt = time.time()
-                                # intermediate_geometry, _ = Hookean_optimization(structure, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
-                                # self.structures[i], self.energies[i], self.exit_status[i] = optimize(intermediate_geometry, atomnos, self.constrained_indexes[i], graphs, calculator='Mopac', method='PM7')
-                                self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure, atomnos, self.constrained_indexes[i], graphs, method='PM7 GEO-OK')
+                                self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure,
+                                                                                                     atomnos,
+                                                                                                     self.constrained_indexes[i],
+                                                                                                     graphs,
+                                                                                                     method='PM7 GEO-OK',
+                                                                                                     max_newbonds=self.options.max_newbonds)
 
 
                                 exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'
@@ -822,17 +941,18 @@ class Docker:
                         log_print()
 
                 except ZeroCandidatesError:
+                    t_end_run = time.time()
                     s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
                          '    - Enlarging the search space by specifying a larger "steps" value with the keyword STEPS=n\n' +
-                         '    - Imposing less strict rejection criteria with the DEEP keyword.\n' +
-                         '    - Praying the mighty lord and re-run the program. Afterall, the code is not 100% deterministic. You might get lucky.')
+                         '    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.\n')
+                    log_print(f'--> Program termination: No candidates found - Total time {round(t_end_run-t_start_run, 2)} s')
                     log_print(s)
                     raise ZeroCandidatesError(s)
 
             else:
                 self.energies = np.zeros(len(self.structures))
 
-            ################################################# OUTPUT 
+            ################################################# XYZ OUTPUT 
 
             outname = 'TS_out.xyz'
             with open(outname, 'w') as f:        
@@ -840,6 +960,23 @@ class Docker:
                     write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Rel. E. = {self.energies[i]} kcal/mol')
             t_end_run = time.time()
             log_print(f'--> Output: Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
+
+            ################################################# VMD OUTPUT
+
+            path = os.path.join(os.getcwd(), 'TS_out.vmd')
+            with open(path, 'w') as f:
+                s = ('display resetview\n' +
+                    'mol new {%s.xyz}\n' % (path.strip('.vmd')) +
+                    'mol selection index %s\n' % (' '.join([str(i) for i in self.constrained_indexes[0].ravel()])) +
+                    'mol representation CPK 0.7 0.5 50 50\n' +
+                    'mol color ColorID 7\n' +
+                    'mol material Transparent\n' +
+                    'mol addrep top')
+                f.write(s)
+
+            log_print(f'--> Output: Wrote VMD TS_out.vmd file')
+            
+            ################################################# END
             log.close()
 
         except KeyboardInterrupt:
@@ -885,20 +1022,24 @@ if __name__ == '__main__':
 
     import sys
     if len(sys.argv) != 2:
-        print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
-        quit()
-
-    filename = sys.argv[1]
+        filename = 'test_input.txt'
+        # print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
+        # quit()
+        
+    # filename = sys.argv[1]
 
     docker = Docker(filename) # initialize docker from input
     
     os.chdir('Resources/SN2')
+    try:
+        os.remove('orb_log.xyz')
+    except:
+        pass
 
     bypass = False
     docker.run(debug=True)
 
     path = os.path.join(os.getcwd(), 'TS_out.vmd')
-    # check_call(f'vmd -e {path}'.split(), stdout=DEVNULL, stderr=STDOUT)
     print('Opening VMD...')
     with suppress_stdout_stderr():
         os.system(f'vmd -e {path}')

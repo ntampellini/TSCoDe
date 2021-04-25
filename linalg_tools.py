@@ -88,7 +88,7 @@ def rot_mat_from_pointer(pointer, angle):
     Returns the rotation matrix that rotates a system around the given pointer
     of angle degrees. The algorithm is based on scipy quaternions.
     :params pointer: a 3D vector
-    :params angle: a int/float, in degrees
+    :params angle: an int/float, in degrees
     :return rotation_matrix: matrix that applied to a point, rotates it along the pointer
     '''
     assert pointer.shape[0] == 3
