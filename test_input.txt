@@ -1,8 +1,12 @@
 # FIRST NON-COMMENT, NON-BLANK LINE ARE KEYWORDS
 # STEPS=7 NOOPT THRESH=1.45 SUPRAFAC
 
-# Resources/DA/diene2.xyz 0 6
-# Resources/DA/dienophile2.xyz 3 5
+Resources/DA/diene2.xyz 0 6
+Resources/DA/dienophile2.xyz 3 5
+
+
+# Resources/DA/diene.xyz 2 7
+# Resources/DA/tropone.xyz 4 5
 
 # DEEP
 # Resources/SN2/MeOH_ensemble.xyz 1a 5c
@@ -23,10 +27,10 @@
 # Resources/maleimide.xyz 0a 1b
 # Resources/maleimide.xyz 0b 1a
 
-CLASHES(num=5,dist=1) SUPRAFAC DIST(a=3.5,b=3.5,c=3.5)
-Resources/SN2/C2H4.xyz 0a 3c
-Resources/SN2/C2H4.xyz 0b 3a
-Resources/SN2/C2H4.xyz 0c 3b
+# CLASHES(num=5,dist=1) SUPRAFAC DIST(a=3.5,b=3.5,c=3.5)
+# Resources/SN2/C2H4.xyz 0a 3c
+# Resources/SN2/C2H4.xyz 0b 3a
+# Resources/SN2/C2H4.xyz 0c 3b
 
 
 # STEPS=12

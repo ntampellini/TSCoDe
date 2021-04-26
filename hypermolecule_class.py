@@ -422,12 +422,13 @@ if __name__ == '__main__':
         14 : ('Resources/acid_ensemble.xyz', (3,25)),
         15 : ('Resources/dienamine/dienamine_ensemble.xyz', (6,23)),
         16 : ('Resources/maleimide.xyz', (0,5)),
-        17 : ('Resources/SN2/C2H4.xyz', (0,3))
+        17 : ('Resources/SN2/C2H4.xyz', (0,3)),
+        18 : ('Resources/SN2/tropone.xyz', ()),
 
 
             }
 
-    for i in (17,):
+    for i in (18,):
         t = Hypermolecule(test[i][0], test[i][1])
 
         t.reactive_atoms_classes[0].init(t, t.reactive_indexes[0], update=True, orb_dim=1)
