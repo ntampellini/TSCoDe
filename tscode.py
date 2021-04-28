@@ -665,8 +665,6 @@ class Docker:
                         constrained_indexes.append(ids)
                         # Save indexes to be constrained later in the optimization step
 
-                        orb_log_list = []
-
                         for i, vec_pair in enumerate(vecs):
                         # setting molecular positions and rotations (embedding)
                         # i is the molecule index, vecs is a tuple of start and end positions
@@ -715,15 +713,6 @@ class Docker:
                             thread[i].position += center_of_rotation - step_rotation @ center_of_rotation + pos
                             # overall position is given by superimposing mean of active pivot (connecting orbitals)
                             # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
-
-                            orb_log_list.append(start)
-                            orb_log_list.append(end)
-
-                        with open('orb_log.xyz', 'a') as f:
-                            f.write(str(len(orb_log_list)))
-                            f.write('\norb_debug\n')
-                            for orb in orb_log_list:
-                                f.write('D % .6f % .6f % .6f\n' % (orb[0], orb[1], orb[2]))
 
 
         loadbar(1, 1, prefix=f'Embedding structures ')
@@ -929,8 +918,7 @@ class Docker:
                         if len(self.structures) == 0:
                             raise ZeroCandidatesError()
 
-                        self.energies = self.energies - np.min(self.energies)
-                        mask = self.energies < THRESHOLD_KCAL
+                        mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
                         self.structures = self.structures[mask]
                         self.energies = self.energies[mask]
 
@@ -944,7 +932,7 @@ class Docker:
                         if np.any(mask == False):
                             log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
-                        ################################################# PRUNING: SIMILARITY (POST POPT)
+                        ################################################# PRUNING: SIMILARITY (POST PARTIAL OPT)
 
                         if len(self.structures) == 0:
                             raise ZeroCandidatesError()
@@ -1003,7 +991,6 @@ class Docker:
 
                             ################################################# DETAILING: TS EXIT STATUS
 
-                            self.energies = self.energies - np.min(self.energies)
                             _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
                             self.energies = scramble(self.energies, sequence)
                             self.structures = scramble(self.structures, sequence)
@@ -1033,13 +1020,26 @@ class Docker:
 
             ################################################# XYZ OUTPUT 
 
+            self.energies = self.energies - np.min(self.energies)
+
             outname = 'TS_out.xyz'
             with open(outname, 'w') as f:        
                 for i, structure in enumerate(self.structures):
-                    kind = 'TS' if self.exit_status[i] else 'NOT TS'
-                    write_xyz(structure, atomnos, f, title=f'Structure {i} - {kind} - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
+                    if self.options.TS_optimization:
+                        kind = 'TS - ' if self.exit_status[i] else 'NOT TS - '
+                    else:
+                        kind = ''
+
+                    write_xyz(structure, atomnos, f, title=f'Structure {i} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
             t_end_run = time.time()
             log_print(f'--> Output: Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
+
+            ################################################# SDF OUTPUT 
+
+            sdf_name = outname.split('.')[0] + '.sdf'
+            check_call(f'obabel {outname} -O {sdf_name}')
 
             ################################################# VMD OUTPUT
 
@@ -1074,13 +1074,10 @@ if __name__ == '__main__':
         
     # filename = sys.argv[1]
 
-    docker = Docker(filename) # initialize docker from input
+    docker = Docker(filename)
+    # initialize docker from input file
     
     os.chdir('Resources/SN2')
-    try:
-        os.remove('orb_log.xyz')
-    except:
-        pass
 
     bypass = False
     docker.run(debug=True)
