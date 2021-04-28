@@ -401,29 +401,31 @@ class Hypermolecule:
 
 
 if __name__ == '__main__':
+    # TESTING PURPOSES
+
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     test = {
 
-        1 : ('Resources/indole/indole_ensemble.xyz', 6),
-        2 : ('Resources/SN2/amine_ensemble.xyz', 10),
-        3 : ('Resources/dienamine/dienamine_ensemble.xyz', 6),
-        4 : ('Resources/SN2/flex_ensemble.xyz', [3, 5]),
-        5 : ('Resources/SN2/flex_ensemble.xyz', None),
+        1 : ('Resources/indole_ensemble.xyz', 6),
+        2 : ('Resources/amine_ensemble.xyz', 10),
+        3 : ('Resources/dienamine_ensemble.xyz', 6),
+        4 : ('Resources/flex_ensemble.xyz', [3, 5]),
+        5 : ('Resources/flex_ensemble.xyz', None),
 
-        6 : ('Resources/SN2/MeOH_ensemble.xyz', 1),
-        7 : ('Resources/SN2/CH3Br_ensemble.xyz', (0,)),
-        8 : ('Resources/bulk/tax.xyz', None),
-        9 : ('Resources/DA/diene.xyz', (2,7)),
-        10 : ('Resources/DA/dienophile.xyz', (3,5)),
-        11 : ('Resources/SN2/MeOH_ensemble.xyz', (1,5)),
-        12 : ('Resources/SN2/ketone_ensemble.xyz', 5),
+        6 : ('Resources/MeOH_ensemble.xyz', 1),
+        7 : ('Resources/CH3Br_ensemble.xyz', (0,)),
+        8 : ('Resources/tax.xyz', None),
+        9 : ('Resources/diene.xyz', (2,7)),
+        10 : ('Resources/dienophile.xyz', (3,5)),
+        11 : ('Resources/MeOH_ensemble.xyz', (1,5)),
+        12 : ('Resources/ketone_ensemble.xyz', 5),
         13 : ('Resources/NOH.xyz', (0,1)),
 
         14 : ('Resources/acid_ensemble.xyz', (3,25)),
-        15 : ('Resources/dienamine/dienamine_ensemble.xyz', (6,23)),
+        15 : ('Resources/dienamine_ensemble.xyz', (6,23)),
         16 : ('Resources/maleimide.xyz', (0,5)),
-        17 : ('Resources/SN2/C2H4.xyz', (0,3)),
-        18 : ('Resources/SN2/tropone.xyz', ()),
+        17 : ('Resources/C2H4.xyz', (0,3)),
+        18 : ('Resources/tropone.xyz', ()),
 
 
             }
@@ -437,83 +439,4 @@ if __name__ == '__main__':
 
         t._compute_hypermolecule()
         t.write_hypermolecule()
-
-
-    quit()
-
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
-
-    def set_axes_equal(ax: plt.Axes):
-        """Set 3D plot axes to equal scale.
-
-        Make axes of 3D plot have equal scale so that spheres appear as
-        spheres and cubes as cubes.  Required since `ax.axis('equal')`
-        and `ax.set_aspect('equal')` don't work on 3D.
-        """
-        limits = np.array([
-            ax.get_xlim3d(),
-            ax.get_ylim3d(),
-            ax.get_zlim3d(),
-        ])
-        origin = np.mean(limits, axis=1)
-        radius = 0.5 * np.max(np.abs(limits[:, 1] - limits[:, 0]))
-        _set_axes_radius(ax, origin, radius)
-
-    def _set_axes_radius(ax, origin, radius):
-        x, y, z = origin
-        ax.set_xlim3d([x - radius, x + radius])
-        ax.set_ylim3d([y - radius, y + radius])
-        ax.set_zlim3d([z - radius, z + radius])
-
-
-    col = {'H':'lightgrey',
-           'C':'grey',
-           'O':'tab:red',
-           'N':'tab:blue',
-           'S':'gold',
-           'Br':'brown'}
-
-    # for obj in [Hypermolecule(path, indexes) for path, indexes in test.values()]:
-    # # for obj in [Hypermolecule('Resources/acid_ensemble.xyz', (3,25))]:
-    #     labels_dict = {i:pt[n].symbol for i, n in enumerate(obj.atomnos)}
-
-    #     color_list = [col[i] for i in labels_dict.values()]
-    #     pos = nx.spring_layout(obj.graph)
-    #     nx.draw_networkx_nodes(obj.graph, pos=pos, node_size=1000, nodelist=obj.reactive_indexes, node_color='coral', alpha=0.5)
-    #     nx.draw(obj.graph, pos=pos, labels=labels_dict, node_color=color_list)
-    #     plt.show()
-
-    #     fig = plt.figure()
-    #     ax = fig.add_subplot(111, projection='3d')
-    #     x = [v[0] for v in obj.hypermolecule]
-    #     y = [v[1] for v in obj.hypermolecule]
-    #     z = [v[2] for v in obj.hypermolecule]
-
-    #     ax.set_box_aspect([1,1,1])
-    #     plot = ax.scatter(x, y, z, s=100, label=obj.rootname, c=obj.weights, vmin=0, vmax=1, cmap='YlOrRd', alpha=0.5)
-    #     plt.colorbar(plot)
-    #     set_axes_equal(ax)
-    #     plt.tight_layout()
-    #     plt.show()
-
-
-    def show_graph(obj):
-        import matplotlib.pyplot as plt
-        labels_dict = {i:pt[n].symbol for i, n in enumerate(obj.atomnos)}
-
-        color_list = [col[i] for i in labels_dict.values()]
-        pos = nx.spring_layout(obj.graph)
-        nx.draw_networkx_nodes(obj.graph, pos=pos, node_size=1000, nodelist=obj.reactive_indexes, node_color='coral', alpha=0.5)
-        nx.draw(obj.graph, pos=pos, labels=labels_dict, node_color=color_list)
-        plt.show()
-
-    t = Hypermolecule(test[14][0], test[14][1])
-
-    # en = test._get_ensemble_energies('Resources/funky/funky_ensemble.xyz')
-    # en = test._get_ensemble_energies('Resources/SN2/flex_ensemble.xyz')
-    # min_en = min(en)
-    # # print([e - min_en for e in en])
-    # print(en)
-
 
