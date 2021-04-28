@@ -97,6 +97,11 @@ class Options:
                     'NEWBONDS',   # Manually specify the maximum numeber of "new bonds" that a TS structure
                                   # can have to be retained and not to be considered scrambled. Default is 2.
                                   # Syntax: NEWBONDS=2
+
+                    'NOTS',       # Do not perform TS search but just the partial optimization step
+
+                    'LEVEL',      # Manually set the MOPAC theory level to be used, default is PM7.
+                                  # Syntax: LEVEL=PM7
                     ]
                     
     # list of keyword names to be used in the first line of program input
@@ -110,6 +115,8 @@ class Options:
     max_newbonds = 2
 
     optimization = True
+    TS_optimization = True
+    mopac_level = 'PM7'
     suprafacial = False
     checkpoint = False
 
@@ -250,6 +257,14 @@ class Docker:
                 if 'NEWBONDS' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('NEWBONDS')]
                     self.options.max_newbonds = int(kw.split('=')[1])
+
+                if 'NOTS' in keywords_list:
+                    self.options.TS_optimization = False
+
+                if 'LEVEL' in [k.split('=')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('LEVEL')]
+                    self.options.mopac_level = kw.split('=')[1]
+
 
         except Exception as e:
             print(e)
@@ -835,7 +850,7 @@ class Docker:
                     t_start_int = time.time()
                     self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                     t_end = time.time()
-                    log_print(f'   - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+                    log_print(f'    - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
                     self.constrained_indexes = self.constrained_indexes[mask]
 
@@ -855,25 +870,27 @@ class Docker:
 
                     ################################################# GEOMETRY OPTIMIZATION
 
+
                     if len(self.structures) == 0:
                         raise ZeroCandidatesError()
 
                     self.energies = np.zeros(len(self.structures))
                     self.exit_status = np.zeros(len(self.structures), dtype=bool)
 
-                    log_print('--> Structure optimization (PM7 level)')
-
                     t_start = time.time()
                     if self.options.optimization:
+
+                        log_print(f'--> Structure optimization ({self.options.mopac_level} level)')
+
                         for i, structure in enumerate(deepcopy(self.structures)):
                             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
                             try:
                                 t_start_opt = time.time()
                                 self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure,
                                                                                                      atomnos,
-                                                                                                     self.constrained_indexes[i],
                                                                                                      graphs,
-                                                                                                     method='PM7 GEO-OK',
+                                                                                                     self.constrained_indexes[i],
+                                                                                                     method=f'{self.options.mopac_level} GEO-OK',
                                                                                                      max_newbonds=self.options.max_newbonds)
 
 
@@ -890,11 +907,11 @@ class Docker:
 
                             finally:
                                 t_end_opt = time.time()
-                                log_print(f'    - Mopac PM7 optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                                log_print(f'    - Mopac {self.options.mopac_level} optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
-                        log_print(f'Mopac PM7 optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                        log_print(f'Mopac {self.options.mopac_level} optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
                         ################################################# PRUNING: EXIT STATUS
 
@@ -906,6 +923,7 @@ class Docker:
                         if np.any(mask == False):
                             log_print(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
                         
+
                         ################################################# PRUNING: ENERGY
                     
                         if len(self.structures) == 0:
@@ -926,7 +944,7 @@ class Docker:
                         if np.any(mask == False):
                             log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
-                        ################################################# PRUNING: SIMILARITY (AGAIN)
+                        ################################################# PRUNING: SIMILARITY (POST POPT)
 
                         if len(self.structures) == 0:
                             raise ZeroCandidatesError()
@@ -939,6 +957,67 @@ class Docker:
                         if np.any(mask == False):
                             log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
                         log_print()
+
+                        ################################################# TS SEEKING
+                        
+                        if self.options.TS_optimization:
+
+                            log_print(f'--> Transition state optimization ({self.options.mopac_level} level)')
+
+                            self.exit_status = np.zeros(len(self.structures), dtype=bool)
+
+                            for i, structure in enumerate(deepcopy(self.structures)):
+                                loadbar(i, len(self.structures), prefix=f'Optimizing TS {i+1}/{len(self.structures)} ')
+                                try:
+                                    t_start_opt = time.time()
+                                    new_structure, new_energy, self.exit_status[i] = optimize(structure,
+                                                                                              atomnos,
+                                                                                              graphs,
+                                                                                              method=f'{self.options.mopac_level} TS',
+                                                                                              max_newbonds=self.options.max_newbonds)
+
+                                    if self.exit_status[i]:
+                                        self.structures[i], self.energies[i] = new_structure, new_energy
+                                        exit_str = 'TS FOUND'
+
+                                    else:
+                                        exit_str = 'TS FAILED'
+
+
+                                except ValueError:
+                                    # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                                    # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                                    # The easiest solution is to reject the structure and go on.
+                                    self.structures[i] = None
+                                    self.energies[i] = np.inf
+                                    self.exit_status[i] = False
+                                    exit_str = 'FAILED TO READ FILE'
+
+                                finally:
+                                    t_end_opt = time.time()
+                                    log_print(f'    - Mopac {self.options.mopac_level} TS optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+
+                            loadbar(1, 1, prefix=f'Optimizing TS  {len(self.structures)}/{len(self.structures)} ')
+                            t_end = time.time()
+                            log_print(f'Mopac {self.options.mopac_level} TS optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+
+                            ################################################# DETAILING: TS EXIT STATUS
+
+                            self.energies = self.energies - np.min(self.energies)
+                            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                            self.energies = scramble(self.energies, sequence)
+                            self.structures = scramble(self.structures, sequence)
+                            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                            # sorting structures based on energy
+
+                            mask = self.exit_status
+                            if np.any(mask == True):
+                                log_print(f'Succeeded in refining {len(np.where(mask == True)[0])}/{len(mask)} candidates to {self.options.mopac_level} transition states.')
+                            log_print()
+
+
+
+
 
                 except ZeroCandidatesError:
                     t_end_run = time.time()
@@ -957,7 +1036,8 @@ class Docker:
             outname = 'TS_out.xyz'
             with open(outname, 'w') as f:        
                 for i, structure in enumerate(self.structures):
-                    write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Rel. E. = {self.energies[i]} kcal/mol')
+                    kind = 'TS' if self.exit_status[i] else 'NOT TS'
+                    write_xyz(structure, atomnos, f, title=f'Structure {i} - {kind} - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
             t_end_run = time.time()
             log_print(f'--> Output: Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
 
@@ -985,40 +1065,6 @@ class Docker:
 
 
 if __name__ == '__main__':
-
-    # a = ['Resources/SN2/MeOH_ensemble.xyz', 1]
-    # a = ['Resources/dienamine/dienamine_ensemble.xyz', 6]
-    # a = ['Resources/SN2/amine_ensemble.xyz', 22]
-    # a = ['Resources/indole/indole_ensemble.xyz', 6]
-    ######################################################
-    # b = ['Resources/SN2/CH3Br_ensemble.xyz', 0]
-    # b = ['Resources/SN2/ketone_ensemble.xyz', 2]
-    # inp = [a,b]
-
-    # c = ['Resources/SN2/MeOH_ensemble.xyz', (1,5)]
-    # c = ['Resources/DA/CHCH3.xyz', [0,6]]
-    # c = ['Resources/SN2/BrCl.xyz', [0,1]]
-    # c = ['Resources/NOH.xyz', (0,1)]
-    # inp = [c,c,c]
-
-    # d = ['Resources/DA/diene.xyz', (2,7)]
-    # e = ['Resources/DA/dienophile.xyz', (3,5)]
-    # inp = [d,e]
-    # inp = [e,e,e]
-
-    # d = ['Resources/DA/diene2.xyz', (0,6)]
-    # e = ['Resources/DA/dienophile2.xyz', (3,5)]
-    # inp = [d,e]
-
-    # a = ['Resources/dienamine/dienamine_ensemble.xyz', (6,23)]
-    # b = ['Resources/acid_ensemble.xyz', (3,25)]
-    # c = ['Resources/maleimide.xyz', (0,5)]
-    # inp = (a,b,c)
-    # inp = (b,b)
-
-    # filename = 'test_input.txt'
-
-    ###############################################
 
     import sys
     if len(sys.argv) != 2:
