@@ -29,8 +29,6 @@ class InputError(Exception):
 stamp = time.ctime().replace(' ','_').replace(':','-')
 log = open(f'TSCoDe_log_{stamp}.txt', 'a', buffering=1)
 
-
-
 def log_print(string='', p=True):
     if p:
         print(string)
@@ -47,20 +45,6 @@ def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill=
 
 def calc_positioned_conformers(self):
     self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
-
-def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
-    '''
-    output is of _io.TextIOWrapper type
-
-    '''
-    assert atomnos.shape[0] == coords.shape[0]
-    assert coords.shape[1] == 3
-    string = ''
-    string += str(len(coords))
-    string += f'\n{title}\n'
-    for i, atom in enumerate(coords):
-        string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
-    output.write(string)
 
 @dataclass
 class Options:
@@ -853,7 +837,7 @@ class Docker:
                             outname = f'TSCoDe_checkpoint_{stamp}.xyz'
                             with open(outname, 'w') as f:        
                                 for i, structure in enumerate(self.structures):
-                                    write_xyz(structure, atomnos, f, title=f'TS candidate {i} - Checkpoint before optimization')
+                                    write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - Checkpoint before optimization')
                             t_end_run = time.time()
                             log_print(f'--> Checkpoint requested - Wrote {len(self.structures)} TS structures to {outname} file before optimizaiton.\n')
 
@@ -896,7 +880,7 @@ class Docker:
 
                             finally:
                                 t_end_opt = time.time()
-                                log_print(f'    - Mopac {self.options.mopac_level} optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                                log_print(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
@@ -962,7 +946,8 @@ class Docker:
                                                                                               atomnos,
                                                                                               graphs,
                                                                                               method=f'{self.options.mopac_level} TS',
-                                                                                              max_newbonds=self.options.max_newbonds)
+                                                                                              max_newbonds=self.options.max_newbonds,
+                                                                                              title=f'structure_{i}_TS')
 
                                     if self.exit_status[i]:
                                         self.structures[i], self.energies[i] = new_structure, new_energy
@@ -983,7 +968,7 @@ class Docker:
 
                                 finally:
                                     t_end_opt = time.time()
-                                    log_print(f'    - Mopac {self.options.mopac_level} TS optimization: Structure {i} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                                    log_print(f'    - Mopac {self.options.mopac_level} TS optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
 
                             loadbar(1, 1, prefix=f'Optimizing TS  {len(self.structures)}/{len(self.structures)} ')
                             t_end = time.time()
@@ -1002,10 +987,6 @@ class Docker:
                                 log_print(f'Succeeded in refining {len(np.where(mask == True)[0])}/{len(mask)} candidates to {self.options.mopac_level} transition states.')
                             log_print()
 
-
-
-
-
                 except ZeroCandidatesError:
                     t_end_run = time.time()
                     s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
@@ -1022,7 +1003,7 @@ class Docker:
 
             self.energies = self.energies - np.min(self.energies)
 
-            outname = 'TS_out.xyz'
+            outname = 'TSCoDe_out.xyz'
             with open(outname, 'w') as f:        
                 for i, structure in enumerate(self.structures):
 
@@ -1031,7 +1012,7 @@ class Docker:
                     else:
                         kind = ''
 
-                    write_xyz(structure, atomnos, f, title=f'Structure {i} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+                    write_xyz(structure, atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
             t_end_run = time.time()
             log_print(f'--> Output: Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
@@ -1043,7 +1024,8 @@ class Docker:
 
             ################################################# VMD OUTPUT
 
-            path = os.path.join(os.getcwd(), 'TS_out.vmd')
+            vmd_name = outname.split('.')[0] + '.vmd'
+            path = os.path.join(os.getcwd(), vmd_name)
             with open(path, 'w') as f:
                 s = ('display resetview\n' +
                     'mol new {%s.xyz}\n' % (path.strip('.vmd')) +
@@ -1054,10 +1036,48 @@ class Docker:
                     'mol addrep top')
                 f.write(s)
 
-            log_print(f'--> Output: Wrote VMD TS_out.vmd file')
+            log_print(f'--> Output: Wrote VMD {vmd_name} file\n')
             
-            ################################################# END
+            ################################################# START OF PES EXPLORATION: IRC
+
+            if self.options.TS_optimization:
+
+                log_print(f'--> IRC optimization ({self.options.mopac_level} level)')
+                t_start = time.time()
+
+                for i, structure in enumerate(self.structures):
+
+                    loadbar(i, len(self.structures), prefix=f'Optimizing IRC {i+1}/{len(self.structures)} ')
+
+                    t_start_opt = time.time()
+                    IRC_plus_NEB(structure, atomnos, mopac_method=f'{self.options.mopac_level} LET IRC=1* X-PRIORITY=0.1', orca_method='PM3', title=f'structure_{i}')
+                    t_end_opt = time.time()
+
+                    log_print(f'    - Mopac {self.options.mopac_level} IRC optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+
+                loadbar(1, 1, prefix=f'Optimizing IRC  {len(self.structures)}/{len(self.structures)} ')
+                t_end = time.time()
+                log_print(f'Mopac {self.options.mopac_level} IRC optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
+
+            ################################################# END: CLEAN ALL TEMP FILES AND CLOSE LOG
+
+            for f in os.listdir():
+                if f.startswith('temp'):
+                    os.remove(f)
+
+            t_end_run = time.time()
+            # write total time
+
             log.close()
+
+            #### EXTRA
+            
+            path = os.path.join(os.getcwd(), vmd_name)
+            print('Opening VMD...')
+            with suppress_stdout_stderr():
+                os.system(f'vmd -e {path}')
+
+            ################################################
 
         except KeyboardInterrupt:
             print('KeyboardInterrupt requested by user. Quitting.')
@@ -1077,12 +1097,8 @@ if __name__ == '__main__':
     docker = Docker(filename)
     # initialize docker from input file
     
-    os.chdir('Resources/SN2')
+    os.chdir('Resources/DA')
 
     bypass = False
     docker.run(debug=True)
 
-    path = os.path.join(os.getcwd(), 'TS_out.vmd')
-    print('Opening VMD...')
-    with suppress_stdout_stderr():
-        os.system(f'vmd -e {path}')

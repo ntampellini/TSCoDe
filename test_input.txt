@@ -1,10 +1,11 @@
 # FIRST NON-COMMENT, NON-BLANK LINE ARE KEYWORDS
+
+SUPRAFAC
+Resources/DA/diene2.xyz 0 6
+Resources/DA/dienophile2.xyz 3 5
+
+
 # STEPS=7 NOOPT THRESH=1.45 SUPRAFAC
-
-Resources/diene2.xyz 0 6
-Resources/dienophile2.xyz 3 5
-
-
 # Resources/diene.xyz 2 7
 # Resources/tropone.xyz 4 5
 

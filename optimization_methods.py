@@ -45,6 +45,20 @@ class suppress_stdout_stderr(object):
         for fd in self.null_fds + self.save_fds:
             os.close(fd)
 
+def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
+    '''
+    output is of _io.TextIOWrapper type
+
+    '''
+    assert atomnos.shape[0] == coords.shape[0]
+    assert coords.shape[1] == 3
+    string = ''
+    string += str(len(coords))
+    string += f'\n{title}\n'
+    for i, atom in enumerate(coords):
+        string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
+    output.write(string)
+
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
 
@@ -55,7 +69,7 @@ def read_mop_out(filename):
     :return coords, energy: array of optimized coordinates and absolute energy, in kcal/mol
     '''
     coords = []
-    with open('temp.out', 'r') as f:
+    with open(filename, 'r') as f:
         while True:
             line = f.readline()
 
@@ -98,7 +112,7 @@ def read_mop_out(filename):
     else:
         raise Exception(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
 
-def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='temp'):
+def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='temp', read_output=True):
     '''
     This function writes a MOPAC .mop input, runs it with the subprocess
     module and reads its output. Coordinates used are mixed
@@ -113,6 +127,9 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
     :params title: string, used as a file name and job title for the mopac input file.
     '''
 
+    constrained_indexes_list = constrained_indexes.ravel() if constrained_indexes is not None else []
+    constrained_indexes = constrained_indexes if constrained_indexes is not None else []
+
     order = []
     s = [method + '\n' + title + '\n\n']
     for i, num in enumerate(atomnos):
@@ -120,7 +137,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
             order.append(i)
             s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[num].symbol, coords[i][0], coords[i][1], coords[i][2]))
 
-    free_indexes = list(set(range(len(atomnos))) - set(constrained_indexes.ravel()))
+    free_indexes = list(set(range(len(atomnos))) - set(constrained_indexes_list))
     # print('free indexes are', free_indexes, '\n')
 
     for a, b in constrained_indexes:
@@ -154,9 +171,6 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
     s = ''.join(s)
     with open(f'{title}.mop', 'w') as f:
         f.write(s)
-
-    inv_order = [order.index(i) for i in range(len(order))]
-    # undoing the atomic scramble that was needed by the mopac input requirements
     
     try:
         check_call(f'{MOPAC_COMMAND} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
@@ -164,14 +178,23 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
         print('KeyboardInterrupt requested by user. Quitting.')
         quit()
 
-    opt_coords, energy, success = read_mop_out(f'{title}.out')
+    os.remove(f'{title}.mop')
+    # delete input, we do not need it anymore
 
-    opt_coords = scramble(opt_coords, inv_order) if opt_coords is not None else coords
-    # If opt_coords is None, that is if TS seeking crashed,
-    # sets opt_coords to the old coords. If not, unscrambles
-    # coordinates read from mopac output.
+    if read_output:
 
-    return opt_coords, energy, success
+        inv_order = [order.index(i) for i in range(len(order))]
+        # undoing the atomic scramble that was needed by the mopac input requirements
+
+        opt_coords, energy, success = read_mop_out(f'{title}.out')
+        os.remove(f'{title}.out')
+
+        opt_coords = scramble(opt_coords, inv_order) if opt_coords is not None else coords
+        # If opt_coords is None, that is if TS seeking crashed,
+        # sets opt_coords to the old coords. If not, unscrambles
+        # coordinates read from mopac output.
+
+        return opt_coords, energy, success
 
 def optimize(TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, method='PM7 GEO-OK', max_newbonds=2, title='temp', debug=False):
     '''
@@ -227,3 +250,64 @@ def optimize(TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, me
 
     return opt_coords, energy, success
 
+def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
+    '''
+    output is of _io.TextIOWrapper type
+
+    '''
+    assert atomnos.shape[0] == coords.shape[0]
+    assert coords.shape[1] == 3
+    head += '\n# Orca input from TSCoDe\n\n* xyz 0 1'
+    for i, atom in enumerate(coords):
+        head += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
+    head += '*'
+    output.write(head)
+
+def write_orca_neb(coords1, coords2, atomnos, title='temp', method='PM3'):
+
+    assert coords1.shape == coords2.shape
+    assert atomnos.shape[0] == coords1.shape[0]
+    assert coords1.shape[1] == 3
+
+    with open(f'{title}_start.xyz', 'w') as f:
+        write_xyz(coords1, atomnos, f, title)
+
+    with open(f'{title}_end.xyz', 'w') as f:
+        write_xyz(coords2, atomnos, f, title)
+
+    with open(f'{title}_neb.inp', 'w') as output:
+        head = f'! {method} NEB-TS\n\n'
+        head += f'%neb\nNEB_End_XYZFile "{title}_end.xyz"\nNimages 6\nend\n\n'
+        head += f'# Orca NEB input from TSCoDe\n\n* xyzfile 0 1 {title}_start.xyz'
+        output.write(head)
+
+def IRC_plus_NEB(coords, atomnos, mopac_method='PM3 IRC=1* X-PRIORITY=0.1 RESTART', orca_method='PM3', title='temp'):
+    '''
+    TODO: desc
+    '''
+
+    mopac_opt(coords, atomnos, method=mopac_method, title=title+'_IRC', read_output=False)
+    os.remove(f'{title}_IRC.out')
+    # run mopac IRC calculation
+
+    irc_coords = ccread(f'{title}_IRC.xyz').atomcoords
+    os.remove(f'{title}_IRC.xyz')
+    # read the IRC structures
+
+    reagent, _, r_bool = mopac_opt(irc_coords[0], atomnos, title='reag')
+    product, _, p_bool = mopac_opt(irc_coords[-1], atomnos, title='prod')
+
+    reagent = reagent if r_bool else irc_coords[0]
+    product = product if p_bool else irc_coords[-1]
+    # we use optimized coordinates of IRC endpoints,
+    # but only if their minimization converged
+
+    # with open(f'{title}_reag_prod.xyz', 'w') as f:
+    #     write_xyz(reagent, atomnos, f, f'{title}_reagent')
+    #     write_xyz(product, atomnos, f, f'{title}_product')
+
+    write_orca_neb(reagent, product, atomnos, method=orca_method, title=title)
+    check_call(f'orca {title}_neb.inp'.split(), stdout=DEVNULL, stderr=STDOUT)
+    # Run orca NEB calculation from IRC optimized endpoints
+
+    # read output?
