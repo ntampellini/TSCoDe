@@ -18,7 +18,7 @@ orb_dim_dict = {
 
                 'C sp' : 1,
 
-                'C sp2' : 1,
+                'C sp2' : 1.1,
                 'N sp2' : 1,
 
                 'C sp3' : 1,

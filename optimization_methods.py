@@ -6,13 +6,15 @@ from cclib.io import ccread
 from ase import Atoms
 from ase.visualize import view
 from ase.constraints import FixBondLength, FixBondLengths, Hookean
-# from ase.calculators.mopac import MOPAC
-# from ase.calculators.gaussian import Gaussian, GaussianOptimizer
-# from ase.optimize import BFGS
+from ase.calculators.mopac import MOPAC
+from ase.neb import idpp_interpolate
+from ase.dyneb import DyNEB
+from ase.optimize import BFGS, LBFGS, FIRE
 from hypermolecule_class import pt, graphize
 from parameters import MOPAC_COMMAND
 from linalg_tools import norm, dihedral
 from subprocess import DEVNULL, STDOUT, check_call
+from rmsd import kabsch, centroid
 
 # from functools import lru_cache
 
@@ -250,64 +252,213 @@ def optimize(TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, me
 
     return opt_coords, energy, success
 
-def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
+def dump(filename, images, atomnos):
+    with open(filename, 'w') as f:
+                for i, image in enumerate(images):
+                    coords = image.get_positions()
+                    write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
+
+def ase_neb(reagents, products, ts_guess, atomnos, n_images=2, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS):
     '''
-    output is of _io.TextIOWrapper type
-
+    new images: number of images to be added to each side of TS, leading to reagents or products
     '''
-    assert atomnos.shape[0] == coords.shape[0]
-    assert coords.shape[1] == 3
-    head += '\n# Orca input from TSCoDe\n\n* xyz 0 1'
-    for i, atom in enumerate(coords):
-        head += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
-    head += '*'
-    output.write(head)
+    # Read initial, TS guess and final states:
+    first = Atoms(atomnos, positions=reagents)
+    ts = Atoms(atomnos, positions=ts_guess)
+    last = Atoms(atomnos, positions=products)
 
-def write_orca_neb(coords1, coords2, atomnos, title='temp', method='PM3'):
+    # Make an elastic band before TS and interpolate the images:
+    before_ts =  [first]
+    before_ts += [first.copy() for i in range(n_images)]
+    before_ts += [ts]
+    DyNEB(images=before_ts).interpolate()
 
-    assert coords1.shape == coords2.shape
-    assert atomnos.shape[0] == coords1.shape[0]
-    assert coords1.shape[1] == 3
+    # Make an elastic band after TS and interpolate the images:
+    after_ts =  [ts]
+    after_ts += [last.copy() for i in range(n_images)]
+    after_ts += [last]
+    DyNEB(images=after_ts).interpolate()
 
-    with open(f'{title}_start.xyz', 'w') as f:
-        write_xyz(coords1, atomnos, f, title)
+    # Join the two halves into the whole elastic band
+    images = before_ts + after_ts[1:]
 
-    with open(f'{title}_end.xyz', 'w') as f:
-        write_xyz(coords2, atomnos, f, title)
+    neb = DyNEB(images, fmax=fmax, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
 
-    with open(f'{title}_neb.inp', 'w') as output:
-        head = f'! {method} NEB-TS\n\n'
-        head += f'%neb\nNEB_End_XYZFile "{title}_end.xyz"\nNimages 6\nend\n\n'
-        head += f'# Orca NEB input from TSCoDe\n\n* xyzfile 0 1 {title}_start.xyz'
-        output.write(head)
+    # Interpolate linearly the positions of the middle images:
+    # idpp_interpolate(neb, optimizer=optimizer, fmax=0.01, steps=7000)
 
-def IRC_plus_NEB(coords, atomnos, mopac_method='PM3 IRC=1* X-PRIORITY=0.1 RESTART', orca_method='PM3', title='temp'):
+    dump(f'{title}_MEP_guess.xyz', images, atomnos)
+    
+    # Set calculators for all images
+    for i, image in enumerate(images):
+        image.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop', method=method)
+
+    # Set the optimizer and optimize
+    try:
+        with optimizer(neb, maxstep=0.1) as opt:
+
+        # with suppress_stdout_stderr():
+            opt.run(fmax=fmax, steps=20)
+
+            neb.climb = True
+            opt.run(fmax=fmax, steps=500)
+
+    except Exception as e:
+        print(f'Stopped NEB for {title}:')
+        print(e)
+
+    energies = [image.get_total_energy() for image in images]
+    ts_id = energies.index(max(energies))
+    # print(f'TS structure is number {ts_id}, energy is {max(energies)}')
+
+    os.remove(f'{title}_MEP_guess.xyz')
+    dump(f'{title}_MEP.xyz', images, atomnos)
+    # Save the converged MEP (minimum energy path) to an .xyz file
+
+
+    return images[ts_id].get_positions(), images[ts_id].get_total_energy()
+
+def hyperNEB(coords, atomnos, ids, constrained_indexes, reag_prod_method ='PM7', NEB_method='PM7 GEO-OK', title='temp'):
     '''
-    TODO: desc
+    Turn a geometry close to TS to a proper TS by getting
+    reagents and products and running a climbing image NEB calculation through ASE.
     '''
 
-    mopac_opt(coords, atomnos, method=mopac_method, title=title+'_IRC', read_output=False)
-    os.remove(f'{title}_IRC.out')
-    # run mopac IRC calculation
+    reagents = get_reagent(coords, atomnos, ids, constrained_indexes, method=reag_prod_method)
+    products = get_product(coords, atomnos, ids, constrained_indexes, method=reag_prod_method)
+    # get reagents and products for this reaction
 
-    irc_coords = ccread(f'{title}_IRC.xyz').atomcoords
-    os.remove(f'{title}_IRC.xyz')
-    # read the IRC structures
+    # reagents -= centroid(reagents[constrained_indexes.ravel()])
+    # products -= centroid(products[constrained_indexes.ravel()])
+    # centering both structures on the centroid of reactive atoms
 
-    reagent, _, r_bool = mopac_opt(irc_coords[0], atomnos, title='reag')
-    product, _, p_bool = mopac_opt(irc_coords[-1], atomnos, title='prod')
+    # align the two reagents and products structures to the TS (minimal RMSD)?
 
-    reagent = reagent if r_bool else irc_coords[0]
-    product = product if p_bool else irc_coords[-1]
-    # we use optimized coordinates of IRC endpoints,
-    # but only if their minimization converged
+    ts_coords, ts_energy = ase_neb(reagents, products, coords, atomnos, method=NEB_method, optimizer=LBFGS, title=title)
+    # Use these structures plus the TS guess to run a NEB calculation through ASE
 
-    # with open(f'{title}_reag_prod.xyz', 'w') as f:
-    #     write_xyz(reagent, atomnos, f, f'{title}_reagent')
-    #     write_xyz(product, atomnos, f, f'{title}_product')
+    return ts_coords, ts_energy
 
-    write_orca_neb(reagent, product, atomnos, method=orca_method, title=title)
-    check_call(f'orca {title}_neb.inp'.split(), stdout=DEVNULL, stderr=STDOUT)
-    # Run orca NEB calculation from IRC optimized endpoints
+def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
+    '''
+    TODO:desc
+    TODO: trimolecular TSs
+    '''
 
-    # read output?
+    bond_factor = 1.2
+    # multiple of sum of covalent radii for two atoms.
+    # If two atoms are closer than this times their sum
+    # of c_radii, they are considered to converge to
+    # products when their geometry is optimized. 
+
+    if len(ids) == 2:
+
+        mol1_center = np.mean([coords[a] for a, _ in constrained_indexes], axis=0)
+        mol2_center = np.mean([coords[b] for _, b in constrained_indexes], axis=0)
+        motion = norm(mol2_center - mol1_center)
+        # norm of the motion that, when applied to mol1,
+        # superimposes its reactive centers to the ones of mol2
+
+        threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius + pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
+
+        reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
+        # distances between reactive atoms
+
+        step_size = 0.1
+        while not np.all([reactive_dists[i] < threshold_dists[i] for i in range(len(constrained_indexes))]):
+            # print('Reactive distances are', reactive_dists)
+
+            coords[:ids[0]] += motion*step_size
+
+            coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
+
+            reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
+
+            
+        coords, _, _ = mopac_opt(coords, atomnos, method=method)
+        # finally, when structures are close enough, do a free optimization to get the reaction product
+
+        return coords
+
+    else:
+        raise NotImplementedError()
+
+def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
+    '''
+    TODO:desc
+    TODO: trimolecular TSs
+    '''
+
+    bond_factor = 1.5
+    # multiple of sum of covalent radii for two atoms.
+    # Putting reactive atoms at this times their bonding
+    # distance and performing a constrained optimization
+    # is the way to get a good guess for reagents structure. 
+
+    if len(ids) == 2:
+
+        mol1_center = np.mean([coords[a] for a, _ in constrained_indexes], axis=0)
+        mol2_center = np.mean([coords[b] for _, b in constrained_indexes], axis=0)
+        motion = norm(mol2_center - mol1_center)
+        # norm of the motion that, when applied to mol1,
+        # superimposes its reactive centers to the ones of mol2
+
+        threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius + pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
+
+        reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
+        # distances between reactive atoms
+
+        # step_size = 0.3
+        # while not np.all([reactive_dists[i] > threshold_dists[i] for i in range(len(constrained_indexes))]):
+        #     # print('Reactive distances are', reactive_dists)
+
+        #     coords[:ids[0]] -= motion*step_size
+
+        #     coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
+
+        #     reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
+
+            
+        # coords, _, _ = mopac_opt(coords, atomnos, method=method)
+        # finally, when structures are far enough, do a free optimization to get the reaction product
+
+        coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
+        coords, _, _ = mopac_opt(coords, atomnos, method=method)
+
+
+        return coords
+
+    else:
+        raise NotImplementedError()
+
+
+# def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
+#     '''
+#     output is of _io.TextIOWrapper type
+
+#     '''
+#     assert atomnos.shape[0] == coords.shape[0]
+#     assert coords.shape[1] == 3
+#     head += '\n# Orca input from TSCoDe\n\n* xyz 0 1'
+#     for i, atom in enumerate(coords):
+#         head += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
+#     head += '*'
+#     output.write(head)
+
+# def write_orca_neb(coords1, coords2, atomnos, title='temp', method='PM3'):
+
+#     assert coords1.shape == coords2.shape
+#     assert atomnos.shape[0] == coords1.shape[0]
+#     assert coords1.shape[1] == 3
+
+#     with open(f'{title}_start.xyz', 'w') as f:
+#         write_xyz(coords1, atomnos, f, title)
+
+#     with open(f'{title}_end.xyz', 'w') as f:
+#         write_xyz(coords2, atomnos, f, title)
+
+#     with open(f'{title}_neb.inp', 'w') as output:
+#         head = f'! {method} NEB-TS\n\n'
+#         head += f'%neb\nNEB_End_XYZFile "{title}_end.xyz"\nNimages 6\nend\n\n'
+#         head += f'# Orca NEB input from TSCoDe\n\n* xyzfile 0 1 {title}_start.xyz'
+#         output.write(head)

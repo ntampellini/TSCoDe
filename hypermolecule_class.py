@@ -92,8 +92,12 @@ class Hypermolecule:
         '''
 
         if not os.path.isfile(filename):
-            raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
-                                'If this looks like a keyword, it is probably faulted by a syntax error.'))
+            if filename.endswith('.xyz'):
+                raise SyntaxError((f'Molecule {filename} cannot be read. Please check your syntax.'))
+
+            else:
+                raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
+                                    'If this looks like a keyword, it is probably faulted by a syntax error.'))
 
         self.rootname = filename.split('.')[0]
         self.name = filename

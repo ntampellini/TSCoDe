@@ -26,15 +26,6 @@ class ZeroCandidatesError(Exception):
 class InputError(Exception):
     pass
 
-stamp = time.ctime().replace(' ','_').replace(':','-')
-log = open(f'TSCoDe_log_{stamp}.txt', 'a', buffering=1)
-
-def log_print(string='', p=True):
-    if p:
-        print(string)
-    string += '\n'
-    log.write(string)
-
 def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
 	percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
 	filledLength = int(length * iteration // total)
@@ -121,6 +112,11 @@ class Docker:
         with the user-requested keywords, if there are any.
 
         '''
+
+        stamp = time.ctime().replace(' ','_').replace(':','-')
+        self.logfile = open(f'TSCoDe_log_{stamp}.txt', 'a', buffering=1)
+
+
         s =  '*************************************************************\n'
         s += '*      TSCODE: Transition State Conformational Docker       *\n'
         s += '*************************************************************\n'
@@ -128,13 +124,19 @@ class Docker:
         s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
         s += '*************************************************************\n'
 
-        log_print(s)
+        self.log(s)
 
         self.options = Options()
         self.objects = [Hypermolecule(name, c_ids) for name, c_ids in self._parse_input(filename)]
         self.ids = [len(mol.atomnos) for mol in self.objects]
         self._read_pairings(filename)
         self._set_options(filename)
+
+    def log(self, string='', p=True):
+        if p:
+            print(string)
+        string += '\n'
+        self.logfile.write(string)
 
     def _parse_input(self, filename):
         '''
@@ -312,7 +314,7 @@ class Docker:
         else:
             pairings = [line.split()]
             s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
-        log_print(s)
+        self.log(s)
 
     def _set_custom_orbs(self, orb_string):
         '''
@@ -335,11 +337,11 @@ class Docker:
                             if reactive_index == pairing[0]:
                                 reactive_atom.init(self.objects[index], reactive_index, update=True, orb_dim=dist/2)
                                 self.objects[index]._update_orbs()
-                                log_print(f'--> Custom distance read: modified orbital of {index+1}. {self.objects[index].name} atom {reactive_index} to {round(dist/2, 3)} A.')
+                                self.log(f'--> Custom distance read: modified orbital of {index+1}. {self.objects[index].name} atom {reactive_index} to {round(dist/2, 3)} A.')
                     # If the letter matches, look for the correct reactive atom on that molecule. When we find the correct match,
                     # set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
                     # user-specified one, as the final atomic distances will be given by two halves of this length.
-            log_print()
+            self.log()
 
     def _set_pivots(self, mol):
         '''
@@ -435,7 +437,7 @@ class Docker:
         else:
             raise InputError('Bad input - too many molecules specified (3 max).')
 
-        log_print(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
+        self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
     def get_string_constrained_indexes(self, n):
         '''
@@ -493,7 +495,7 @@ class Docker:
         assert len(self.objects) == 2
         # NOTE THAT THIS APPROACH WILL ONLY WORK FOR TWO MOLECULES, AND A REVISION MUST BE DONE TO GENERALIZE IT (BUT WOULD IT MAKE SENSE?)
 
-        log_print(f'\n--> Initializing string embed ({self.candidates} candidates)')
+        self.log(f'\n--> Initializing string embed ({self.candidates} candidates)')
 
         centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
         # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
@@ -602,7 +604,7 @@ class Docker:
 
                 return np.vstack((v1,v2,v3))
 
-        log_print(f'\n--> Initializing cyclical embed ({self.candidates} candidates)')
+        self.log(f'\n--> Initializing cyclical embed ({self.candidates} candidates)')
 
         pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -722,10 +724,10 @@ class Docker:
                 t = ', '.join([f'{a}->{b}' for a,b in zip(mol.reactive_indexes, s)])
                 head += f'    {i+1}. {mol.name}: {t}\n'
 
-            log_print('--> Input structures, reactive indexes and reactive atoms TSCODE type:\n' + head)
-            log_print(f'--> Calculation options used were:')
+            self.log('--> Input structures, reactive indexes and reactive atoms TSCODE type:\n' + head)
+            self.log(f'--> Calculation options used were:')
             for line in str(self.options).split('\n'):
-                log_print(f'    - {line}')
+                self.log(f'    - {line}')
 
             t_start_run = time.time()
 
@@ -774,13 +776,13 @@ class Docker:
             # cleaning the old, general data on indexes that ignored conformations
 
             t_end = time.time()
-            log_print(f'Generated {len(self.structures)} transition state candidates ({round(t_end-t_start_run, 2)} s)\n')
+            self.log(f'Generated {len(self.structures)} transition state candidates ({round(t_end-t_start_run, 2)} s)\n')
 
             if not self.options.bypass:
                 try:
                     ################################################# COMPENETRATION CHECK
                     
-                    log_print('--> Checking structures for compenetrations')
+                    self.log('--> Checking structures for compenetrations')
 
                     graphs = [mol.graph for mol in self.objects]
 
@@ -799,8 +801,8 @@ class Docker:
                     t_end = time.time()
 
                     if np.any(mask == False):
-                        log_print(f'Discarded {len([b for b in mask if b == False])} candidates for compenetration ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                    log_print()
+                        self.log(f'Discarded {len([b for b in mask if b == False])} candidates for compenetration ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                    self.log()
                     # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
 
                     ################################################# PRUNING: SIMILARITY
@@ -808,7 +810,7 @@ class Docker:
                     if len(self.structures) == 0:
                         raise ZeroCandidatesError()
 
-                    log_print('--> Similarity Processing')
+                    self.log('--> Similarity Processing')
                     t_start = time.time()
 
                     before = len(self.structures)
@@ -818,18 +820,18 @@ class Docker:
                             self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh, k=k)
                             self.constrained_indexes = self.constrained_indexes[mask]
                             t_end_int = time.time()
-                            log_print(f'    - similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+                            self.log(f'    - similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
                     
                     t_start_int = time.time()
                     self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                     t_end = time.time()
-                    log_print(f'    - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+                    self.log(f'    - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
                     self.constrained_indexes = self.constrained_indexes[mask]
 
                     if np.any(mask == False):
-                        log_print(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                    log_print()
+                        self.log(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                    self.log()
 
                     ################################################# CHECKPOINT SAVE BEFORE OPTIMIZATION
 
@@ -839,7 +841,7 @@ class Docker:
                                 for i, structure in enumerate(self.structures):
                                     write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - Checkpoint before optimization')
                             t_end_run = time.time()
-                            log_print(f'--> Checkpoint requested - Wrote {len(self.structures)} TS structures to {outname} file before optimizaiton.\n')
+                            self.log(f'--> Checkpoint requested - Wrote {len(self.structures)} TS structures to {outname} file before optimizaiton.\n')
 
                     ################################################# GEOMETRY OPTIMIZATION
 
@@ -853,7 +855,7 @@ class Docker:
                     t_start = time.time()
                     if self.options.optimization:
 
-                        log_print(f'--> Structure optimization ({self.options.mopac_level} level)')
+                        self.log(f'--> Structure optimization ({self.options.mopac_level} level)')
 
                         for i, structure in enumerate(deepcopy(self.structures)):
                             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
@@ -880,11 +882,11 @@ class Docker:
 
                             finally:
                                 t_end_opt = time.time()
-                                log_print(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                                self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
-                        log_print(f'Mopac {self.options.mopac_level} optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                        self.log(f'Mopac {self.options.mopac_level} optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
                         ################################################# PRUNING: EXIT STATUS
 
@@ -894,7 +896,7 @@ class Docker:
                         self.constrained_indexes = self.constrained_indexes[mask]
 
                         if np.any(mask == False):
-                            log_print(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
+                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
                         
 
                         ################################################# PRUNING: ENERGY
@@ -914,7 +916,7 @@ class Docker:
                         # sorting structures based on energy
 
                         if np.any(mask == False):
-                            log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
+                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
                         ################################################# PRUNING: SIMILARITY (POST PARTIAL OPT)
 
@@ -927,83 +929,83 @@ class Docker:
                         t_end = time.time()
                         
                         if np.any(mask == False):
-                            log_print(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                        log_print()
+                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        self.log()
 
                         ################################################# TS SEEKING
                         
-                        if self.options.TS_optimization:
+                        # if self.options.TS_optimization:
 
-                            log_print(f'--> Transition state optimization ({self.options.mopac_level} level)')
+                        #     self.log(f'--> Transition state optimization ({self.options.mopac_level} level)')
 
-                            self.exit_status = np.zeros(len(self.structures), dtype=bool)
+                        #     self.exit_status = np.zeros(len(self.structures), dtype=bool)
 
-                            for i, structure in enumerate(deepcopy(self.structures)):
-                                loadbar(i, len(self.structures), prefix=f'Optimizing TS {i+1}/{len(self.structures)} ')
-                                try:
-                                    t_start_opt = time.time()
-                                    new_structure, new_energy, self.exit_status[i] = optimize(structure,
-                                                                                              atomnos,
-                                                                                              graphs,
-                                                                                              method=f'{self.options.mopac_level} TS',
-                                                                                              max_newbonds=self.options.max_newbonds,
-                                                                                              title=f'structure_{i}_TS')
+                        #     for i, structure in enumerate(deepcopy(self.structures)):
+                        #         loadbar(i, len(self.structures), prefix=f'Optimizing TS {i+1}/{len(self.structures)} ')
+                        #         try:
+                        #             t_start_opt = time.time()
+                        #             new_structure, new_energy, self.exit_status[i] = optimize(structure,
+                        #                                                                       atomnos,
+                        #                                                                       graphs,
+                        #                                                                       method=f'{self.options.mopac_level} TS',
+                        #                                                                       max_newbonds=self.options.max_newbonds,
+                        #                                                                       title=f'structure_{i}_TS')
 
-                                    if self.exit_status[i]:
-                                        self.structures[i], self.energies[i] = new_structure, new_energy
-                                        exit_str = 'TS FOUND'
+                        #             if self.exit_status[i]:
+                        #                 self.structures[i], self.energies[i] = new_structure, new_energy
+                        #                 exit_str = 'TS FOUND'
 
-                                    else:
-                                        exit_str = 'TS FAILED'
+                        #             else:
+                        #                 exit_str = 'TS FAILED'
 
 
-                                except ValueError:
-                                    # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
-                                    # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                                    # The easiest solution is to reject the structure and go on.
-                                    self.structures[i] = None
-                                    self.energies[i] = np.inf
-                                    self.exit_status[i] = False
-                                    exit_str = 'FAILED TO READ FILE'
+                        #         except ValueError:
+                        #             # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                        #             # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                        #             # The easiest solution is to reject the structure and go on.
+                        #             self.structures[i] = None
+                        #             self.energies[i] = np.inf
+                        #             self.exit_status[i] = False
+                        #             exit_str = 'FAILED TO READ FILE'
 
-                                finally:
-                                    t_end_opt = time.time()
-                                    log_print(f'    - Mopac {self.options.mopac_level} TS optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                        #         finally:
+                        #             t_end_opt = time.time()
+                        #             self.log(f'    - Mopac {self.options.mopac_level} TS optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
 
-                            loadbar(1, 1, prefix=f'Optimizing TS  {len(self.structures)}/{len(self.structures)} ')
-                            t_end = time.time()
-                            log_print(f'Mopac {self.options.mopac_level} TS optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                        #     loadbar(1, 1, prefix=f'Optimizing TS  {len(self.structures)}/{len(self.structures)} ')
+                        #     t_end = time.time()
+                        #     self.log(f'Mopac {self.options.mopac_level} TS optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
-                            ################################################# DETAILING: TS EXIT STATUS
+                        #     ################################################# DETAILING: TS EXIT STATUS
 
-                            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-                            self.energies = scramble(self.energies, sequence)
-                            self.structures = scramble(self.structures, sequence)
-                            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-                            # sorting structures based on energy
+                        #     _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                        #     self.energies = scramble(self.energies, sequence)
+                        #     self.structures = scramble(self.structures, sequence)
+                        #     self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                        #     # sorting structures based on energy
 
-                            mask = self.exit_status
-                            if np.any(mask == True):
-                                log_print(f'Succeeded in refining {len(np.where(mask == True)[0])}/{len(mask)} candidates to {self.options.mopac_level} transition states.')
-                            log_print()
+                        #     mask = self.exit_status
+                        #     if np.any(mask == True):
+                        #         self.log(f'Succeeded in refining {len(np.where(mask == True)[0])}/{len(mask)} candidates to {self.options.mopac_level} transition states.')
+                        #     self.log()
 
                 except ZeroCandidatesError:
                     t_end_run = time.time()
                     s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
                          '    - Enlarging the search space by specifying a larger "steps" value with the keyword STEPS=n\n' +
                          '    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.\n')
-                    log_print(f'--> Program termination: No candidates found - Total time {round(t_end_run-t_start_run, 2)} s')
-                    log_print(s)
+                    self.log(f'--> Program termination: No candidates found - Total time {round(t_end_run-t_start_run, 2)} s')
+                    self.log(s)
                     raise ZeroCandidatesError(s)
 
             else:
                 self.energies = np.zeros(len(self.structures))
 
-            ################################################# XYZ OUTPUT 
+            ################################################# XYZ GUESSES OUTPUT 
 
             self.energies = self.energies - np.min(self.energies)
 
-            outname = 'TSCoDe_out.xyz'
+            outname = 'TSCoDe_TSs_guesses.xyz'
             with open(outname, 'w') as f:        
                 for i, structure in enumerate(self.structures):
 
@@ -1015,12 +1017,87 @@ class Docker:
                     write_xyz(structure, atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
             t_end_run = time.time()
-            log_print(f'--> Output: Wrote {len(self.structures)} TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
+            self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
 
+            ################################################# TS SEEKING: IRC + NEB
+
+            if self.options.optimization and self.options.TS_optimization:
+
+                self.log(f'--> IRC optimization ({self.options.mopac_level} level)')
+                t_start = time.time()
+
+                for i, structure in enumerate(self.structures):
+
+                    loadbar(i, len(self.structures), prefix=f'Performing NEB {i+1}/{len(self.structures)} ')
+
+                    t_start_opt = time.time()
+
+                    self.structures[i], self.energies[i] = hyperNEB(structure,
+                                                                    atomnos,
+                                                                    self.ids,
+                                                                    self.constrained_indexes[i],
+                                                                    reag_prod_method=f'{self.options.mopac_level}',
+                                                                    NEB_method=f'{self.options.mopac_level} GEO-OK',
+                                                                    title=f'structure_{i}')
+
+                    t_end_opt = time.time()
+
+                    self.log(f'    - Mopac {self.options.mopac_level} NEB optimization: Structure {i+1} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+
+                loadbar(1, 1, prefix=f'Performing NEB {len(self.structures)}/{len(self.structures)} ')
+                t_end = time.time()
+                self.log(f'Mopac {self.options.mopac_level} NEB optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
+
+                ################################################# PRUNING: SIMILARITY (POST NEB)
+
+                t_start = time.time()
+                self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                self.energies = self.energies[mask]
+                t_end = time.time()
+                
+                if np.any(mask == False):
+                    self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                self.log()
+
+                ################################################# TS CHECK - FREQUENCY CALCULATION
+
+                self.log(f'--> TS frequency calculation ({self.options.mopac_level} level)')
+                t_start = time.time()
+
+                for i, structure in enumerate(self.structures):
+
+                    loadbar(i, len(self.structures), prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
+
+                    mopac_opt(structure,
+                              atomnos,
+                              method=f'{self.options.mopac_level} FORCE',
+                              title=f'TS_{i}_FREQ',
+                              read_output=False)
+
+                loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
+                t_end = time.time()
+                self.log(f'Mopac {self.options.mopac_level} frequency calculation took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
+
+                ################################################# FINAL XYZ OUTPUT
+
+                self.energies -= np.min(self.energies)
+                _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                self.energies = scramble(self.energies, sequence)
+                self.structures = scramble(self.structures, sequence)
+                self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                # sorting structures based on energy
+
+                outname = 'TSCoDe_NEB_TSs.xyz'
+                with open(outname, 'w') as f:        
+                    for i, structure in enumerate(self.structures):
+                        write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
+                self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
+            
             ################################################# SDF OUTPUT 
 
-            sdf_name = outname.split('.')[0] + '.sdf'
-            check_call(f'obabel {outname} -O {sdf_name}')
+            # sdf_name = outname.split('.')[0] + '.sdf'
+            # check_call(f'obabel {outname} -O {sdf_name}')
 
             ################################################# VMD OUTPUT
 
@@ -1036,39 +1113,35 @@ class Docker:
                     'mol addrep top')
                 f.write(s)
 
-            log_print(f'--> Output: Wrote VMD {vmd_name} file\n')
+            self.log(f'--> Output: Wrote VMD {vmd_name} file\n')
             
-            ################################################# START OF PES EXPLORATION: IRC
-
-            if self.options.TS_optimization:
-
-                log_print(f'--> IRC optimization ({self.options.mopac_level} level)')
-                t_start = time.time()
-
-                for i, structure in enumerate(self.structures):
-
-                    loadbar(i, len(self.structures), prefix=f'Optimizing IRC {i+1}/{len(self.structures)} ')
-
-                    t_start_opt = time.time()
-                    IRC_plus_NEB(structure, atomnos, mopac_method=f'{self.options.mopac_level} LET IRC=1* X-PRIORITY=0.1', orca_method='PM3', title=f'structure_{i}')
-                    t_end_opt = time.time()
-
-                    log_print(f'    - Mopac {self.options.mopac_level} IRC optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
-
-                loadbar(1, 1, prefix=f'Optimizing IRC  {len(self.structures)}/{len(self.structures)} ')
-                t_end = time.time()
-                log_print(f'Mopac {self.options.mopac_level} IRC optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
-
             ################################################# END: CLEAN ALL TEMP FILES AND CLOSE LOG
 
             for f in os.listdir():
                 if f.startswith('temp'):
                     os.remove(f)
+                elif f.endswith('.arc'):
+                    os.remove(f)
+                elif f.endswith('.mop'):
+                    os.remove(f)
 
             t_end_run = time.time()
-            # write total time
+            total_time = t_end_run - t_start_run
 
-            log.close()
+            timestring = ''
+            if total_time > 3600:
+                h = total_time // 3600
+                timestring += f'{int(h)} hours '
+                total_time %= 3600
+            if total_time > 60:
+                m = total_time // 60
+                timestring += f'{int(m)} minutes '
+                total_time %= 60
+            timestring += f'{round(total_time, 3)} seconds '
+
+            self.log(f'--> TSCoDe normal termination: total time {timestring}')
+
+            self.logfile.close()
 
             #### EXTRA
             
@@ -1089,16 +1162,16 @@ if __name__ == '__main__':
     import sys
     if len(sys.argv) != 2:
         filename = 'test_input.txt'
+        os.chdir('Resources/ops')
         # print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
         # quit()
-        
-    # filename = sys.argv[1]
+    
+    else:
+        filename = os.path.realpath(sys.argv[1])
+        os.chdir(os.path.dirname(filename))
 
     docker = Docker(filename)
     # initialize docker from input file
-    
-    os.chdir('Resources/DA')
 
-    bypass = False
     docker.run(debug=True)
 

@@ -1,0 +1,3 @@
+SUPRAFAC
+diene2.xyz 0 6
+tropone.xyz 4 5

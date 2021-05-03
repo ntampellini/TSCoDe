@@ -1,8 +1,8 @@
 # FIRST NON-COMMENT, NON-BLANK LINE ARE KEYWORDS
 
 SUPRAFAC
-Resources/DA/diene2.xyz 0 6
-Resources/DA/dienophile2.xyz 3 5
+# Resources/diene2.xyz 0 6
+# Resources/dienophile2.xyz 3 5
 
 
 # STEPS=7 NOOPT THRESH=1.45 SUPRAFAC
@@ -25,8 +25,8 @@ Resources/DA/dienophile2.xyz 3 5
 # Resources/HCOOH.xyz 1 4a
 
 # SUPRAFAC
-# Resources/maleimide.xyz 0a 1b
-# Resources/maleimide.xyz 0b 1a
+Resources/maleimide.xyz 0a 1b
+Resources/maleimide.xyz 0b 1a
 
 # CLASHES(num=5,dist=1) SUPRAFAC DIST(a=3.5,b=3.5,c=3.5)
 # Resources/C2H4.xyz 0a 3c
@@ -35,7 +35,6 @@ Resources/DA/dienophile2.xyz 3 5
 
 
 # STEPS=12
-# Resources/CH3Br_ensemble.xyz 0a
-# Resources/CH3Br_ensemble.xyz 0a
-# Resources/ketone_ensemble.xyz 2a
+# Resources/ketone_ensemble.xyz 2
+# Resources/MeOH_ensemble.xyz 1
 # Resources/dienamine_ensemble.xyz 6a
