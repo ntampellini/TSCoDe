@@ -47,6 +47,16 @@ class suppress_stdout_stderr(object):
         for fd in self.null_fds + self.save_fds:
             os.close(fd)
 
+import sys
+class HiddenPrints:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
+
 def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
     '''
     output is of _io.TextIOWrapper type
@@ -258,31 +268,10 @@ def dump(filename, images, atomnos):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
 
-def ase_neb(reagents, products, ts_guess, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS):
+def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS):
     '''
-    new images: number of images to be added to each side of TS, leading to reagents or products
+    TODO:desc
     '''
-    # # Read initial, TS guess and final states:
-    # first = Atoms(atomnos, positions=reagents)
-    # ts = Atoms(atomnos, positions=ts_guess)
-    # last = Atoms(atomnos, positions=products)
-
-    # # Make an elastic band before TS and interpolate the images:
-    # before_ts =  [first]
-    # before_ts += [first.copy() for i in range(n_images)]
-    # before_ts += [ts]
-    # DyNEB(images=before_ts).interpolate()
-
-    # # Make an elastic band after TS and interpolate the images:
-    # after_ts =  [ts]
-    # after_ts += [last.copy() for i in range(n_images)]
-    # after_ts += [last]
-    # DyNEB(images=after_ts).interpolate()
-
-    # # Join the two halves into the whole elastic band
-    # images = before_ts + after_ts[1:]
-
-    ##################################################################
 
     first = Atoms(atomnos, positions=reagents)
     last = Atoms(atomnos, positions=products)
@@ -290,8 +279,6 @@ def ase_neb(reagents, products, ts_guess, atomnos, n_images=6, fmax=0.05, method
     images =  [first]
     images += [first.copy() for i in range(n_images)]
     images += [last]
-
-    ##################################################################
 
     neb = DyNEB(images, fmax=fmax, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
     neb.interpolate()
@@ -306,11 +293,12 @@ def ase_neb(reagents, products, ts_guess, atomnos, n_images=6, fmax=0.05, method
     try:
         with optimizer(neb, maxstep=0.1) as opt:
 
-            with suppress_stdout_stderr():
-                opt.run(fmax=fmax, steps=20)
+            # with suppress_stdout_stderr():
+            # with HiddenPrints():
+            opt.run(fmax=fmax, steps=20)
 
-                neb.climb = True
-                opt.run(fmax=fmax, steps=500)
+            neb.climb = True
+            opt.run(fmax=fmax, steps=500)
 
     except Exception as e:
         print(f'Stopped NEB for {title}:')
@@ -351,7 +339,6 @@ def hyperNEB(coords, atomnos, ids, constrained_indexes, reag_prod_method ='PM7',
 def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
     TODO:desc
-    TODO: trimolecular TSs
     '''
 
     bond_factor = 1.2
@@ -359,6 +346,9 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
     # If two atoms are closer than this times their sum
     # of c_radii, they are considered to converge to
     # products when their geometry is optimized. 
+
+    step_size = 0.1
+    # in Angstroms
 
     if len(ids) == 2:
 
@@ -373,7 +363,6 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
         reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
         # distances between reactive atoms
 
-        step_size = 0.1
         while not np.all([reactive_dists[i] < threshold_dists[i] for i in range(len(constrained_indexes))]):
             # print('Reactive distances are', reactive_dists)
 
@@ -382,9 +371,6 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
             coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
 
             reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
-
-        # with open('pre-products.xyz','w') as f:
-        #     write_xyz(coords, atomnos, f)
 
         newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
         # finally, when structures are close enough, do a free optimization to get the reaction product
@@ -399,12 +385,52 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
             return coords
 
     else:
-        raise NotImplementedError()
+    # trimolecular TSs: the approach is to bring the first pair of reactive
+    # atoms closer until optimization bounds the molecules together
+
+        index_to_be_moved = constrained_indexes[0,0]
+        reference = constrained_indexes[0,1]
+        moving_molecule_index = next(i for i,n in enumerate(np.cumsum(ids)) if index_to_be_moved < n)
+        bounds = [0] + [n+1 for n in np.cumsum(ids)]
+        moving_molecule_slice = slice(bounds[moving_molecule_index], bounds[moving_molecule_index+1])
+        threshold_dist = bond_factor*(pt[atomnos[constrained_indexes[0,0]]].covalent_radius +
+                                      pt[atomnos[constrained_indexes[0,1]]].covalent_radius)
+
+        motion = (coords[reference] - coords[index_to_be_moved])
+        # vector from the atom to be moved to the target reactive atom
+
+        while np.linalg.norm(motion) > threshold_dist:
+        # check if the reactive atoms are sufficiently close to converge to products
+
+            for i, atom in enumerate(coords[moving_molecule_slice]):
+                dist = np.linalg.norm(atom - coords[index_to_be_moved])
+                # for any atom in the molecule, distance from the reactive atom
+
+                atom_step = step_size*np.exp(-0.5*dist)
+                coords[moving_molecule_slice][i] += norm(motion)*atom_step
+                # the more they are close, the more they are moved
+
+            # print('Reactive dist -', np.linalg.norm(motion))
+            coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
+            # when all atoms are moved, optimize the geometry with the previous constraints
+
+            motion = (coords[reference] - coords[index_to_be_moved])
+
+        newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
+        # finally, when structures are close enough, do a free optimization to get the reaction product
+
+        new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
+
+        if new_reactive_dist < threshold_dist:
+        # return the freely optimized structure only if the reagents did not repel each other
+        # during the optimization, otherwise return the last coords, where partners were close
+            return newcoords
+        else:
+            return coords
 
 def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
     TODO:desc
-    TODO: trimolecular TSs
     '''
 
     bond_factor = 1.5
@@ -426,28 +452,51 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
         # distances between reactive atoms
 
-        # step_size = 0.3
-        # while not np.all([reactive_dists[i] > threshold_dists[i] for i in range(len(constrained_indexes))]):
-        #     # print('Reactive distances are', reactive_dists)
-
-        #     coords[:ids[0]] -= motion*step_size
-
-        #     coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
-
-        #     reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
-
-            
-        # coords, _, _ = mopac_opt(coords, atomnos, method=method)
-        # finally, when structures are far enough, do a free optimization to get the reaction product
-
         coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
-        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
+        # move reactive atoms away from each other just enough
 
+        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
+        # optimize the structure but keeping the reactive atoms distanced
 
         return coords
 
     else:
-        raise NotImplementedError()
+    # trimolecular TSs: the approach is to bring the first pair of reactive
+    # atoms apart just enough to get a good approximation for reagents
+
+        index_to_be_moved = constrained_indexes[0,0]
+        reference = constrained_indexes[0,1]
+        moving_molecule_index = next(i for i,n in enumerate(np.cumsum(ids)) if index_to_be_moved < n)
+        bounds = [0] + [n+1 for n in np.cumsum(ids)]
+        moving_molecule_slice = slice(bounds[moving_molecule_index], bounds[moving_molecule_index+1])
+        threshold_dist = bond_factor*(pt[atomnos[constrained_indexes[0,0]]].covalent_radius +
+                                      pt[atomnos[constrained_indexes[0,1]]].covalent_radius)
+
+        motion = (coords[reference] - coords[index_to_be_moved])
+        # vector from the atom to be moved to the target reactive atom
+
+        for i, atom in enumerate(coords[moving_molecule_slice]):
+            dist = np.linalg.norm(atom - coords[index_to_be_moved])
+            # for any atom in the molecule, distance from the reactive atom
+
+            coords[moving_molecule_slice][i] -= motion*np.exp(-0.5*dist)
+            # the more they are close, the more they are moved
+
+        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
+        # when all atoms are moved, optimize the geometry with the previous constraints
+
+        newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
+        # finally, when structures are close enough, do a free optimization to get the reaction product
+
+        new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
+
+        if new_reactive_dist > threshold_dist:
+        # return the freely optimized structure only if the reagents did not approached back each other
+        # during the optimization, otherwise return the last coords, where partners were further away
+            return newcoords
+        else:
+            return coords
+
 
 
 # def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
