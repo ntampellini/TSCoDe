@@ -258,34 +258,43 @@ def dump(filename, images, atomnos):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
 
-def ase_neb(reagents, products, ts_guess, atomnos, n_images=2, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS):
+def ase_neb(reagents, products, ts_guess, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS):
     '''
     new images: number of images to be added to each side of TS, leading to reagents or products
     '''
-    # Read initial, TS guess and final states:
+    # # Read initial, TS guess and final states:
+    # first = Atoms(atomnos, positions=reagents)
+    # ts = Atoms(atomnos, positions=ts_guess)
+    # last = Atoms(atomnos, positions=products)
+
+    # # Make an elastic band before TS and interpolate the images:
+    # before_ts =  [first]
+    # before_ts += [first.copy() for i in range(n_images)]
+    # before_ts += [ts]
+    # DyNEB(images=before_ts).interpolate()
+
+    # # Make an elastic band after TS and interpolate the images:
+    # after_ts =  [ts]
+    # after_ts += [last.copy() for i in range(n_images)]
+    # after_ts += [last]
+    # DyNEB(images=after_ts).interpolate()
+
+    # # Join the two halves into the whole elastic band
+    # images = before_ts + after_ts[1:]
+
+    ##################################################################
+
     first = Atoms(atomnos, positions=reagents)
-    ts = Atoms(atomnos, positions=ts_guess)
     last = Atoms(atomnos, positions=products)
 
-    # Make an elastic band before TS and interpolate the images:
-    before_ts =  [first]
-    before_ts += [first.copy() for i in range(n_images)]
-    before_ts += [ts]
-    DyNEB(images=before_ts).interpolate()
+    images =  [first]
+    images += [first.copy() for i in range(n_images)]
+    images += [last]
 
-    # Make an elastic band after TS and interpolate the images:
-    after_ts =  [ts]
-    after_ts += [last.copy() for i in range(n_images)]
-    after_ts += [last]
-    DyNEB(images=after_ts).interpolate()
-
-    # Join the two halves into the whole elastic band
-    images = before_ts + after_ts[1:]
+    ##################################################################
 
     neb = DyNEB(images, fmax=fmax, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
-
-    # Interpolate linearly the positions of the middle images:
-    # idpp_interpolate(neb, optimizer=optimizer, fmax=0.01, steps=7000)
+    neb.interpolate()
 
     dump(f'{title}_MEP_guess.xyz', images, atomnos)
     
@@ -297,11 +306,11 @@ def ase_neb(reagents, products, ts_guess, atomnos, n_images=2, fmax=0.05, method
     try:
         with optimizer(neb, maxstep=0.1) as opt:
 
-        # with suppress_stdout_stderr():
-            opt.run(fmax=fmax, steps=20)
+            with suppress_stdout_stderr():
+                opt.run(fmax=fmax, steps=20)
 
-            neb.climb = True
-            opt.run(fmax=fmax, steps=500)
+                neb.climb = True
+                opt.run(fmax=fmax, steps=500)
 
     except Exception as e:
         print(f'Stopped NEB for {title}:')
@@ -374,11 +383,20 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
 
             reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
 
-            
-        coords, _, _ = mopac_opt(coords, atomnos, method=method)
+        # with open('pre-products.xyz','w') as f:
+        #     write_xyz(coords, atomnos, f)
+
+        newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
         # finally, when structures are close enough, do a free optimization to get the reaction product
 
-        return coords
+        new_reactive_dists = [np.linalg.norm(newcoords[a] - newcoords[b]) for a, b in constrained_indexes]
+
+        if np.all([new_reactive_dists[i] < threshold_dists[i] for i in range(len(constrained_indexes))]):
+        # return the freely optimized structure only if the reagents did not repel each other
+        # during the optimization, otherwise return the last coords, where partners were close
+            return newcoords
+        else:
+            return coords
 
     else:
         raise NotImplementedError()
@@ -423,7 +441,7 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         # finally, when structures are far enough, do a free optimization to get the reaction product
 
         coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
-        coords, _, _ = mopac_opt(coords, atomnos, method=method)
+        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
 
 
         return coords

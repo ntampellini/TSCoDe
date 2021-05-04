@@ -1,6 +1,6 @@
 # FIRST NON-COMMENT, NON-BLANK LINE ARE KEYWORDS
 
-SUPRAFAC
+# SUPRAFAC
 # Resources/diene2.xyz 0 6
 # Resources/dienophile2.xyz 3 5
 
@@ -15,9 +15,9 @@ SUPRAFAC
 # Resources/MeOH_ensemble.xyz 1c 5b
 
 # NOOPT
-# Resources/dienamine_ensemble.xyz 6c 23a
-# Resources/acid_ensemble.xyz 3a 25b
-# Resources/maleimide.xyz 0c 5b
+Resources/dienamine_ensemble.xyz 6c 23a
+Resources/acid_ensemble.xyz 3a 25b
+Resources/maleimide.xyz 0c 5b
 # Correct pairing for TS
 
 # DIST(a=3) NOOPT

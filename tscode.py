@@ -217,6 +217,8 @@ class Docker:
 
                 if 'BYPASS' in keywords_list:
                     self.options.bypass = True
+                    self.options.optimization = False
+                    self.options.TS_optimization = False
 
                 if 'DIST' in [k.split('(')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('DIST')]
@@ -305,9 +307,12 @@ class Docker:
             links[tag].append(index)
         # storing couples into a dictionary
 
-        pairings = list(links.values())
+        pairings = list(links.items())
+        pairings = sorted(pairings, key=lambda x: x[0])
+        # sorting values so that 'a' is the first pairing
 
-        self.pairings = [sorted(i) for i in pairings]
+        self.pairings = [sorted(i[1]) for i in pairings]
+        # getting rid of the letters and sorting the values [34, 3] -> [3, 34]
 
         if self.pairings == []:
             s = '--> No atom pairing imposed. Computing all possible dispositions.'
@@ -323,7 +328,6 @@ class Docker:
 
         '''
         pairs = [(piece.split('=')[0], float(piece.split('=')[1])) for piece in orb_string.split(',')]
-        # TODO: debug from here
 
         for letter, dist in pairs:
             for index in range(len(self.objects)):
@@ -651,6 +655,8 @@ class Docker:
                         constrained_indexes.append(ids)
                         # Save indexes to be constrained later in the optimization step
 
+                        orb_list = []
+
                         for i, vec_pair in enumerate(vecs):
                         # setting molecular positions and rotations (embedding)
                         # i is the molecule index, vecs is a tuple of start and end positions
@@ -700,6 +706,13 @@ class Docker:
                             # overall position is given by superimposing mean of active pivot (connecting orbitals)
                             # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
 
+                            orb_list.append(start)
+                            orb_list.append(end)
+
+                        with open('orbs.xyz', 'a') as f:
+                            an = np.array([3 for _ in range(len(orb_list))])
+                            write_xyz(np.array(orb_list), an, f)
+
 
         loadbar(1, 1, prefix=f'Embedding structures ')
 
@@ -709,7 +722,7 @@ class Docker:
 
 ######################################################################################################### RUN
 
-    def run(self, debug=False):
+    def run(self):
         '''
         '''
         try:
@@ -932,63 +945,6 @@ class Docker:
                             self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
                         self.log()
 
-                        ################################################# TS SEEKING
-                        
-                        # if self.options.TS_optimization:
-
-                        #     self.log(f'--> Transition state optimization ({self.options.mopac_level} level)')
-
-                        #     self.exit_status = np.zeros(len(self.structures), dtype=bool)
-
-                        #     for i, structure in enumerate(deepcopy(self.structures)):
-                        #         loadbar(i, len(self.structures), prefix=f'Optimizing TS {i+1}/{len(self.structures)} ')
-                        #         try:
-                        #             t_start_opt = time.time()
-                        #             new_structure, new_energy, self.exit_status[i] = optimize(structure,
-                        #                                                                       atomnos,
-                        #                                                                       graphs,
-                        #                                                                       method=f'{self.options.mopac_level} TS',
-                        #                                                                       max_newbonds=self.options.max_newbonds,
-                        #                                                                       title=f'structure_{i}_TS')
-
-                        #             if self.exit_status[i]:
-                        #                 self.structures[i], self.energies[i] = new_structure, new_energy
-                        #                 exit_str = 'TS FOUND'
-
-                        #             else:
-                        #                 exit_str = 'TS FAILED'
-
-
-                        #         except ValueError:
-                        #             # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
-                        #             # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                        #             # The easiest solution is to reject the structure and go on.
-                        #             self.structures[i] = None
-                        #             self.energies[i] = np.inf
-                        #             self.exit_status[i] = False
-                        #             exit_str = 'FAILED TO READ FILE'
-
-                        #         finally:
-                        #             t_end_opt = time.time()
-                        #             self.log(f'    - Mopac {self.options.mopac_level} TS optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
-
-                        #     loadbar(1, 1, prefix=f'Optimizing TS  {len(self.structures)}/{len(self.structures)} ')
-                        #     t_end = time.time()
-                        #     self.log(f'Mopac {self.options.mopac_level} TS optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
-
-                        #     ################################################# DETAILING: TS EXIT STATUS
-
-                        #     _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-                        #     self.energies = scramble(self.energies, sequence)
-                        #     self.structures = scramble(self.structures, sequence)
-                        #     self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-                        #     # sorting structures based on energy
-
-                        #     mask = self.exit_status
-                        #     if np.any(mask == True):
-                        #         self.log(f'Succeeded in refining {len(np.where(mask == True)[0])}/{len(mask)} candidates to {self.options.mopac_level} transition states.')
-                        #     self.log()
-
                 except ZeroCandidatesError:
                     t_end_run = time.time()
                     s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
@@ -1022,6 +978,7 @@ class Docker:
             ################################################# TS SEEKING: IRC + NEB
 
             if self.options.optimization and self.options.TS_optimization:
+            
 
                 self.log(f'--> IRC optimization ({self.options.mopac_level} level)')
                 t_start = time.time()
@@ -1161,8 +1118,8 @@ if __name__ == '__main__':
 
     import sys
     if len(sys.argv) != 2:
-        filename = 'test_input.txt'
-        os.chdir('Resources/ops')
+        filename = 'input.txt'
+        os.chdir('Resources/tri')
         # print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
         # quit()
     
@@ -1173,5 +1130,5 @@ if __name__ == '__main__':
     docker = Docker(filename)
     # initialize docker from input file
 
-    docker.run(debug=True)
+    docker.run()
 
