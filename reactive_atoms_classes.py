@@ -2,7 +2,7 @@ import numpy as np
 from parameters import *
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
-# TO DO: change with alignment function from linalg_tools
+# TODO: change with alignment function from linalg_tools
 from linalg_tools import *
 from periodictable import core, covalent_radius
 
@@ -22,6 +22,7 @@ class Single:
     def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
+        self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
@@ -40,7 +41,8 @@ class Single:
                     orb_dim = np.linalg.norm(self.coord - self.other)
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using the bonding distance ({round(orb_dim, 3)} A).')
 
-            self.center = np.array([orb_dim * norm(self.coord - self.other) + self.coord])
+            self.orb_vecs = np.array([norm(self.coord - self.other)])
+            self.center = np.array([orb_dim * self.orb_vecs[0] + self.coord])
 
 class Sp2:
     '''
@@ -49,11 +51,12 @@ class Sp2:
         pass
 
     def __repr__(self):
-        return 'sp2'
+        return f'sp2'
 
     def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
+        self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
@@ -70,6 +73,8 @@ class Sp2:
 
         self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), self.orb_vec)
 
+        self.orb_vecs = np.vstack((self.orb_vec, -self.orb_vec))
+
         if update:
             if orb_dim is None:
                 try:
@@ -79,7 +84,7 @@ class Sp2:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
             
-            self.center = np.array([self.orb_vec, -self.orb_vec]) * orb_dim      
+            self.center = self.orb_vecs * orb_dim      
 
             self.center += self.coord
 
@@ -97,7 +102,7 @@ class Sp3:
     def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
-
+        self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
@@ -115,8 +120,8 @@ class Sp3:
         else: # if we cannot, ask user
             self.leaving_group_coords = self._set_leaving_group(mol.name, neighbors_indexes)
 
-        self.orb_vec = self.coord - self.leaving_group_coords
-        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), self.orb_vec)
+        self.orb_vecs = np.array([self.coord - self.leaving_group_coords])
+        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), self.orb_vecs[0])
 
         if update:
             if orb_dim is None:
@@ -127,7 +132,7 @@ class Sp3:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
-            self.center = np.array([orb_dim * norm(self.orb_vec) + self.coord])
+            self.center = np.array([orb_dim * norm(self.orb_vecs[0]) + self.coord])
 
     def _set_leaving_group(self, filename, neighbors_indexes):
         '''
@@ -188,7 +193,7 @@ class Ether:
     def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
-
+        self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
@@ -199,7 +204,8 @@ class Ether:
         self.others = mol.atomcoords[0][neighbors_indexes]
 
         self.vectors = self.others - self.coord # vectors connecting center to each of the two substituents
-        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.vectors, axis=0))
+        self.orb_vecs = np.array([norm(v) for v in self.vectors])
+        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.orb_vecs, axis=0))
 
         if update:
             if orb_dim is None:
@@ -232,7 +238,7 @@ class Ketone:
     def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
-
+        self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
@@ -261,11 +267,15 @@ class Ketone:
             self.vector = norm(self.vector)*orb_dim
 
             if len(neighbors_of_neighbor_indexes) == 2:
+            # if it is a normal ketone, orbitals must be coplanar with
+            # atoms connecting to ketone C atom
                 a1 = mol.atomcoords[0][neighbors_of_neighbor_indexes[0]]
                 a2 = mol.atomcoords[0][neighbors_of_neighbor_indexes[1]]
                 pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
 
             else:
+            # otherwise, it can be an alkoxide/ketene and they lie
+            # on a random plane. TODO: improve this
                 r = np.random.rand()
                 v0 = self.vector[0]
                 v1 = self.vector[1]
@@ -273,6 +283,9 @@ class Ketone:
                 pivot = np.array([r,r,-r*(v0+v1)/v2])
         
             self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
+
+            self.orb_vecs = np.array([norm(center) for center in self.center])
+            # unit vectors connecting reactive atom coord with orbital centers
 
             self.center += self.coord
             # two vectors defining the position of the two orbital lobes centers
@@ -290,7 +303,7 @@ class Imine:
     def init(self, mol, i, update=False, orb_dim=None) -> None:
         '''
         '''
-
+        self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
         neighbors_indexes.remove(i)
@@ -314,7 +327,7 @@ class Imine:
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
             self.center = np.array([norm(-np.mean(self.vectors, axis=0))*orb_dim])
-
+            self.orb_vecs = np.array([norm(center) for center in self.center])
             self.center += self.coord
             # two vectors defining the position of the two orbital lobes centers
 

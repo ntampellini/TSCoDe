@@ -27,7 +27,7 @@
  'coord': array(3,) - coordinates of the reactive atom in consideration
  'name': str, relative path to file
  'neighbors_symbols': list of str with symbols of neighbor atoms
- 'orb_vec': array(3,) - versor specifying the orientation of orbitals. Used to build alignment_matrix.
+ 'orb_vecs': array(N,3) - versor specifying the orientation of orbitals. Used to build alignment_matrix.
  'others': array(N,3) - vectors specifying absolute postition of linked neighbors. For 'Single Bond' class, array(3,)
  'vectors': array(N,3) - specifying vectors connecting reactive atom to linked neighbors
  'symbol' : string, expressing the reactive atom symbol
