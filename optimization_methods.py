@@ -475,12 +475,15 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         motion = (coords[reference] - coords[index_to_be_moved])
         # vector from the atom to be moved to the target reactive atom
 
+        displacement = norm(motion)*(threshold_dist-np.linalg.norm(motion))
+        # vector to be applied to the reactive atom to push it far just enough
+
         for i, atom in enumerate(coords[moving_molecule_slice]):
             dist = np.linalg.norm(atom - coords[index_to_be_moved])
             # for any atom in the molecule, distance from the reactive atom
 
-            coords[moving_molecule_slice][i] -= motion*np.exp(-0.5*dist)
-            # the more they are close, the more they are moved
+            coords[moving_molecule_slice][i] -= displacement*np.exp(-0.5*dist)
+            # the closer they are to the reactive atom, the further they are moved
 
         coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
         # when all atoms are moved, optimize the geometry with the previous constraints

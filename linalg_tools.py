@@ -15,7 +15,9 @@ def polygonize(lengths):
     :return vertexes_out: list of vectors couples (start, end)
     '''
     assert len(lengths) in (2,3)
-    # lengths = sorted(lengths)
+    assert all([lengths[i] < lengths[i-1] + lengths[i-2] for i in (0,1,2)])
+    # check that we can build a triangle with the specified vectors
+
     arr = np.zeros((len(lengths),2,3))
 
     if len(lengths) == 2:

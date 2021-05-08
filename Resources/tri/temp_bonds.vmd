@@ -1,0 +1,5 @@
+display resetview
+mol new {C:\Users\Nik\Desktop\Coding\TSCoDe\Resources\tri\debug_step.xyz}
+label add Bonds 0/1 0/2
+label add Bonds 0/3 0/5
+label add Bonds 0/4 0/0

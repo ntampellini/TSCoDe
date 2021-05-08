@@ -41,9 +41,10 @@ def ase_view(mol):
     from ase.visualize import view
     from ase import Atoms
     coords = mol.atomcoords[0]
-    coords = np.concatenate((coords, mol.centers))
+    centers = np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])
+    coords = np.concatenate((coords, centers))
     atomnos = mol.atomnos
-    atomnos = np.concatenate((atomnos, [9 for _ in mol.centers]))
+    atomnos = np.concatenate((atomnos, [9 for _ in centers]))
     view(Atoms(atomnos, positions=coords))
 
 class Pivot:
@@ -57,15 +58,6 @@ class Pivot:
 
     def __repr__(self):
         return f'Pivot object - index {self.index}, norm {round(np.linalg.norm(self.pivot), 3)}, meanpoint {self.meanpoint}'
-
-
-
-
-
-
-
-
-
 
 
 @dataclass
@@ -170,6 +162,9 @@ class Docker:
 
         self._read_pairings(filename)
         self._set_options(filename)
+
+        # for mol in self.objects:
+        #     ase_view(mol)
 
     def log(self, string='', p=True):
         if p:
@@ -520,14 +515,6 @@ class Docker:
             return couples
 
         else:
-            # swaps = [(0,0,0),
-            #          (0,0,1),
-            #          (0,1,0),
-            #          (0,1,1),
-            #          (1,0,0),
-            #          (1,1,0),
-            #          (1,0,1),
-            #          (1,1,1)]
 
             swaps = [(1,1,1),
                      (1,1,0),
@@ -537,7 +524,6 @@ class Docker:
                      (0,0,1),
                      (0,1,0),
                      (0,0,0)]
-            # TODO: why?
 
             oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
             couples = [[oriented[0][1], oriented[1][0]], [oriented[1][1], oriented[2][0]], [oriented[2][1], oriented[0][0]]]
@@ -551,7 +537,7 @@ class Docker:
         '''
         assert len(self.objects) == 2
 
-        self.log(f'\n--> Initializing string embed ({self.candidates} candidates)')
+        self.log(f'\n--> Performing string embed ({self.candidates} candidates)')
 
         centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
         # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
@@ -611,7 +597,6 @@ class Docker:
                                     [0,-1,0]])
             else:
 
-                norms = sorted(norms)
                 vertexes = np.zeros((3,2))
 
                 vertexes[1] = np.array([norms[0],0])
@@ -651,7 +636,7 @@ class Docker:
                 # We have a right triangle. To aviod numerical
                 # errors, a small perturbation is made.
                 # This should not happen, but just in case...
-                    norms[0] += 1e-10
+                    norms[0] += 1e-5
                     dir1, dir2, dir3 = [t[:-1] for t in _get_directions(norms)]
 
                 angle0_obtuse = (vec_angle(v1-v0, v2-v0) > 90)
@@ -677,8 +662,41 @@ class Docker:
             '''
             assert directions.shape[0] == 3
 
-            mol0, mol1, mol2 = self.objects
+            mols = deepcopy(self.objects)
             p0, p1, p2 = [end - start for start, end in triangle_vectors]
+            p0_mean, p1_mean, p2_mean = [np.mean((end, start), axis=0) for start, end in triangle_vectors]
+
+            ############### get triangle vertexes
+
+            vertexes = np.zeros((3,2))
+            vertexes[1] = np.array([norms[0],0])
+
+            a = np.power(norms[0], 2)
+            b = np.power(norms[1], 2)
+            c = np.power(norms[2], 2)
+            x = (a-b+c)/(2*a**0.5)
+            y = (c-x**2)**0.5
+
+            vertexes[2] = np.array([x,y])
+            # similar to the code from polygonize, to get the active triangle
+            # but without the orientation specified in the polygonize function
+            
+            a = vertexes[1,0] # first point, x
+            b = vertexes[2,0] # second point, x
+            c = vertexes[2,1] # second point, y
+
+            x = a/2
+            y = (b**2 + c**2 - a*b)/(2*c)
+            cc = np.array([x,y])
+            # 2D coordinates of the triangle circocenter
+
+            v0, v1, v2 = vertexes
+
+            v0 = np.concatenate((v0, [0]))
+            v1 = np.concatenate((v1, [0]))
+            v2 = np.concatenate((v2, [0]))
+
+            ############### set up mols -> pos + rot
 
             alignment_rotation = np.zeros((3,3,3))
             for i in (0,1,2):
@@ -689,14 +707,10 @@ class Docker:
                 if np.all(mol_direction == 0.):
                     mol_direction = pivots[i].meanpoint
 
-                alignment_rotation[i] = R.align_vectors((end-start, directions[i]), (pivots[i].pivot, mol_direction))[0].as_matrix()
-
-                directions[i] = alignment_rotation[i] @ directions[i]
-
-            d0, d1, d2 = directions
-            # This for loop rotates the directions obtained from the get_directions method just
-            # as molecules would in the later embedding step. In this way, we know where molecules
-            # will be facing and we can work out iteratively where they should face.
+                mols[i].rotation = R.align_vectors((end-start, directions[i]), (pivots[i].pivot, mol_direction))[0].as_matrix()
+                mols[i].position = np.mean(triangle_vectors[i], axis=0) - mols[i].rotation @ pivots[i].meanpoint
+ 
+            ############### set up pairings between reactive atoms
 
             pairings = [[None, None] for _ in constrained_indexes]
             for i, c in enumerate(constrained_indexes):
@@ -719,85 +733,58 @@ class Docker:
                 exec(f'r{mol_index}{partner_index} = {reactive_index}', globals())
             # r01 is the reactive_index of molecule 0 that faces molecule 1 and so on
 
-            swap_list = [(1,1,1),
-                         (1,1,0),
-                         (1,0,1),
-                         (1,0,0),
-                         (0,1,1),
-                         (0,0,1),
-                         (0,1,0),
-                         (0,0,0)]
+            ############### calculate reactive atoms positions
 
-            swaps = swap_list[v]
-            i01, i02 = pivots[0].index if not swaps[0] else reversed(pivots[0].index)
-            i10, i12 = pivots[1].index if not swaps[1] else reversed(pivots[1].index)
-            i20, i21 = pivots[2].index if not swaps[2] else reversed(pivots[2].index)
-            # i01 is the index of orb_vecs to be used in this run for the reactive
-            # atom of molecule 0 that faces molecule 1. This atom of molecule 0
-            # has its non-cumulative index equal to r01.
+            mol0, mol1, mol2 = mols
 
-            maxcycles = 100
+            a01 = mol0.rotation @ mol0.atomcoords[0,r01] + mol0.position
+            a02 = mol0.rotation @ mol0.atomcoords[0,r02] + mol0.position
 
-            for iteration in range(maxcycles):
-                ######################################### ADJUSTING 0
+            a10 = mol1.rotation @ mol1.atomcoords[0,r10] + mol1.position
+            a12 = mol1.rotation @ mol1.atomcoords[0,r12] + mol1.position
 
-                # ref0 = alignment_rotation[0] @ -np.mean((mol1.reactive_atoms_classes_dict[r10].orb_vecs[i10],
-                #                                          mol2.reactive_atoms_classes_dict[r20].orb_vecs[i20]), axis=0)
-                ref0 = alignment_rotation[0] @ -mol1.reactive_atoms_classes_dict[r10].orb_vecs[i10]
-                # where mol0 should face is the opposite of the mean of the other two
-                # molecules reactive centers orb_vecs, rotated accordingly
-                            
-                rot0 = R.align_vectors((p0, ref0),
-                                       (p0, d0  ))[0].as_matrix()
-                # rotation that aligns d0 to ref0, rotating on the p0 pivot
+            a20 = mol2.rotation @ mol2.atomcoords[0,r20] + mol2.position
+            a21 = mol2.rotation @ mol2.atomcoords[0,r21] + mol2.position
 
-                d0 = rot0 @ d0
-                # updating the direction of mol0
+            ############### explore all angles combinations
 
-                ######################################### ADJUSTING 1
+            steps = 6
+            angle_range = 30
+            angles_list = cartesian_product(*[range(steps+1) for _ in range(3)]) * 2*angle_range/steps - angle_range
+
+            candidates = []
+            for angles in angles_list:
+
+                rot0 = rot_mat_from_pointer(p0, angles[0])
+                new_a01 = rot0 @ a01
+                new_a02 = rot0 @ a02
+                d0 = p0_mean - np.mean((new_a01, new_a02), axis=0)
+
+                rot1 = rot_mat_from_pointer(p1, angles[1])
+                new_a10 = rot1 @ a10
+                new_a12 = rot1 @ a12
+                d1 = p1_mean - np.mean((new_a10, new_a12), axis=0)
+
+                rot2 = rot_mat_from_pointer(p2, angles[2])
+                new_a20 = rot2 @ a20
+                new_a21 = rot2 @ a21
+                d2 = p2_mean - np.mean((new_a20, new_a21), axis=0)
+
+                cost = 0
+                cost += vec_angle(v0 - new_a02, new_a20 - v0)
+                cost += vec_angle(v1 - new_a01, new_a10 - v1)
+                cost += vec_angle(v2 - new_a21, new_a12 - v2)
+                        
+                candidates.append((cost, angles, (d0, d1, d2)))
+
+            ############### choose the one with the best alignment
+
+            best = sorted(candidates, key=lambda x: x[0])[0]
+            
+            return np.array(best[2])
+
                 
-                # ref1 = alignment_rotation[1] @ -np.mean((mol0.reactive_atoms_classes_dict[r01].orb_vecs[i01],
-                #                                          mol2.reactive_atoms_classes_dict[r21].orb_vecs[i21]), axis=0)
-                ref1 = alignment_rotation[1] @ -mol2.reactive_atoms_classes_dict[r21].orb_vecs[i21]
-                # where mol1 should face is the opposite of the mean of the other two
-                # molecules reactive centers orb_vecs, rotated accordingly
-                            
-                rot1 = R.align_vectors((p1, ref1),
-                                       (p1, d1  ))[0].as_matrix()
-                # rotation that aligns d1 to ref1, rotating on the p1 pivot
-
-                d1 = rot1 @ d1
-                # updating the direction of mol1
-
-                ######################################### ADJUSTING 2
-
-                # ref2 = alignment_rotation[2] @ -np.mean((mol0.reactive_atoms_classes_dict[r02].orb_vecs[i02],
-                #                                          mol1.reactive_atoms_classes_dict[r12].orb_vecs[i12]), axis=0)
-                ref2 = alignment_rotation[2] @ -mol0.reactive_atoms_classes_dict[r02].orb_vecs[i02]
-                # where mol2 should face is the opposite of the mean of the other two
-                # molecules reactive centers orb_vecs, rotated accordingly
-                            
-                rot2 = R.align_vectors((p2, ref2),
-                                       (p2, d2  ))[0].as_matrix()
-                # rotation that aligns d2 to ref2, rotating on the p2 pivot
-
-                d2 = rot2 @ d2
-                # updating the direction of mol2
-
-                ######################################### CHECKING CONVERGENCE
-
-                print(iteration, [round(i, 2) for i in (vec_angle(d0, ref0),
-                                                        vec_angle(d1, ref1),
-                                                        vec_angle(d2, ref2))])
-
-                if np.max((vec_angle(d0, ref0),
-                           vec_angle(d1, ref1),
-                           vec_angle(d2, ref2))) < 10:
-                    break
-                
-            return -np.vstack((d0, d1, d2))
-
-        self.log(f'\n--> Initializing cyclical embed ({self.candidates} candidates)')
+        self.log(f'\n--> Performing cyclical embed ({self.candidates} candidates)')
 
         pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -817,10 +804,21 @@ class Docker:
             norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
             # getting the pivots norms to feed into the polygonize function
 
+            try:
+                polygon_vectors = polygonize(norms)
+            except AssertionError:
+                # Raised if we cannot build a triangle with the given norms.
+                # Skip this triangle and go on.
+
+                # TODO - should we try to reduce the longest side if we are close to doing it?
+                delta = max([norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)])
+                self.log('Rejected triangle, delta was ' + str(delta), p=False)
+                continue
+
             directions = _get_directions(norms)
             # directions to orient the molecules toward, orthogonal to each vec_pair
 
-            for v, vecs in enumerate(polygonize(norms)):
+            for v, vecs in enumerate(polygon_vectors):
             # getting vertexes to embed molecules with and iterating over start/end points
 
                 ids = self.get_cyclical_reactive_indexes(v)
@@ -828,18 +826,22 @@ class Docker:
 
                 if self.pairings == [] or all([pair in ids for pair in self.pairings]):
 
-                    # if len(self.objects) == 3:
-                    #     directions = _adjust_directions(self, directions, ids, vecs, v, pivots)
+                    if len(self.objects) == 3:
+
+                        directions = _adjust_directions(self, directions, ids, vecs, v, pivots)
                         # For trimolecular TSs, the alignment direction previously get is 
                         # just a general first approximation that needs to be corrected
-                        # for the specific case through an iterative algorithm.
+                        # for the specific case through another algorithm.
 
-                    systematic_angles = cartesian_product(*[range(self.options.rotation_steps) for _ in self.objects]) * 360/self.options.rotation_steps
+                        steps = self.options.rotation_steps + 1
+                        angle_range = 45
+                        systematic_angles = cartesian_product(*[range(steps) for _ in self.objects]) * 2*angle_range/steps - angle_range
+                        # trimoleculare TSs are rotated through the range -angle_range/+angle_range
+                        # in n+1 rotation steps, where n is the specified value for self.options.rotation_steps.
 
-                    # angle_range = 150
-                    # Angular range to be explored in both directions (degrees). A value of 90 would explore from -90 to +90, always in 2*self.options.rotation_steps+1 steps
-                    
-                    # systematic_angles = cartesian_product(*[range(-self.options.rotation_steps, self.options.rotation_steps+1) for _ in range(len(self.objects))])*angle_range/self.options.rotation_steps
+                    else:
+                        systematic_angles = cartesian_product(*[range(self.options.rotation_steps) for _ in self.objects]) * 360/self.options.rotation_steps
+                        # bimolecular TSs are rotated through the full 360°
 
                     for angles in systematic_angles:
 
@@ -850,7 +852,7 @@ class Docker:
                         constrained_indexes.append(ids)
                         # Save indexes to be constrained later in the optimization step
 
-                        orb_list = []
+                        # orb_list = []
 
                         for i, vec_pair in enumerate(vecs):
                         # setting molecular positions and rotations (embedding)
@@ -859,7 +861,6 @@ class Docker:
 
                             start, end = vec_pair
                             angle = angles[i]
-                            angle = 0
 
                             reactive_coords = self.objects[i].atomcoords[0][self.objects[i].reactive_indexes]
                             # coordinates for the reactive atoms in this run
@@ -896,29 +897,31 @@ class Docker:
                             thread[i].rotation = step_rotation @ alignment_rotation# @ pre_alignment_rot
                             # overall rotation for the molecule is given by the matrices product
 
-                            # pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pre_alignment_rot @ pivot_means[i]
                             pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pivots[i].meanpoint
                             thread[i].position += center_of_rotation - step_rotation @ center_of_rotation + pos
                             # overall position is given by superimposing mean of active pivot (connecting orbitals)
                             # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
 
-                            orb_list.append(start)
-                            orb_list.append(end)
+                            # orb_list.append(start)
+                            # orb_list.append(end)
 
                         ################# DEBUGGING OUTPUT
 
-                        with open('orbs.xyz', 'a') as f:
-                            an = np.array([3 for _ in range(len(orb_list))])
-                            write_xyz(np.array(orb_list), an, f)
+                        # with open('orbs.xyz', 'a') as f:
+                        #     an = np.array([3 for _ in range(len(orb_list))])
+                        #     write_xyz(np.array(orb_list), an, f)
 
-                        totalcoords = np.concatenate([[mol.rotation @ v + mol.position for v in mol.atomcoords[0]] for mol in thread])
-                        totalatomnos = np.concatenate([mol.atomnos for mol in thread])
+                        # totalcoords = np.concatenate([[mol.rotation @ v + mol.position for v in mol.atomcoords[0]] for mol in thread])
+                        # totalatomnos = np.concatenate([mol.atomnos for mol in thread])
+                        # total_reactive_indexes = np.array(ids).ravel()
 
-                        with open('debug_step.xyz', 'w') as f:
-                            write_xyz(totalcoords, totalatomnos, f)
+                        # with open('debug_step.xyz', 'w') as f:
+                        #     write_xyz(totalcoords, totalatomnos, f)
+                        #     # write_xyz(totalcoords[total_reactive_indexes], totalatomnos[total_reactive_indexes], f)
 
-                        os.system('vmd debug_step.xyz')
-                        quit()
+                        # # os.system('vmd debug_step.xyz')
+                        # os.system(r'vmd -e C:\Users\Nik\Desktop\Coding\TSCoDe\Resources\tri\temp_bonds.vmd')
+                        # quit()
 
 
         loadbar(1, 1, prefix=f'Embedding structures ')
@@ -953,6 +956,12 @@ class Docker:
 
             if self.embed == 'cyclical':
                 embedded_structures = self.cyclical_embed()
+                if embedded_structures == []:
+                    s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
+                         '    This is probably because one molecule has two reactive centers at a great distance,\n' +
+                         '    preventing the other two molecules from forming a closed, cyclical structure.')
+                    self.log(s, p=False)
+                    raise ZeroCandidatesError(s)
             else:
                 embedded_structures = self.string_embed()
 
