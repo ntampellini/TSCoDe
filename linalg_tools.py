@@ -140,7 +140,7 @@ def dihedral(p):
 def vec_angle(v1, v2):
     v1_u = norm(v1)
     v2_u = norm(v2)
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * 180 / np.pi
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))*180/np.pi
 
-def dist(a,b):
-    return np.linalg.norm(a-b)
+def point_angle(p1, p2, p3):
+    return np.arccos(np.clip(norm(p1 - p2) @ norm(p3 - p2), -1.0, 1.0))*180/np.pi

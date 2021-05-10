@@ -49,7 +49,9 @@ def ase_view(mol):
 
 class Pivot:
     def __init__(self, v1, v2, index1, index2):
-        self.pivot = v1 - v2
+        self.start = v1
+        self.end = v2
+        self.pivot = v2 - v1
         self.meanpoint = np.mean((v1, v2), axis=0)
         self.index = (index1, index2)
         # the pivot starts from the index1-th
@@ -100,12 +102,15 @@ class Options:
 
                     'LEVEL',      # Manually set the MOPAC theory level to be used, default is PM7.
                                   # Syntax: LEVEL=PM7
+
+                    'RIGID',      # For trimolecular TSs, do not bend structures to better build TSs
                     ]
                     
     # list of keyword names to be used in the first line of program input
 
     rotation_steps = 6
     pruning_thresh = 0.5
+    rigid = False
     
     max_clashes = 3
     clash_thresh = 1.2
@@ -286,6 +291,12 @@ class Docker:
                 if 'LEVEL' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('LEVEL')]
                     self.options.mopac_level = kw.split('=')[1]
+
+                if 'RIGID' in keywords_list:
+                    if len(self.objects) == 3:
+                        self.options.rigid = True
+                    else:
+                        raise SyntaxError('RIGID keyword is only used for trimolecular transition states.')
 
 
         except Exception as e:
@@ -795,25 +806,45 @@ class Docker:
 
             loadbar(p, len(pivots_indexes), prefix=f'Embedding structures ')
             
+            thread_objects = deepcopy(self.objects)
+            # Objects to be used to embed structures. Modified later if necessary.
+
             pivots = [self.objects[m].pivots[pi[m]] for m in range(len(self.objects))]
             # getting the active pivot for each molecule for this run
             
-            # pivot_means = [self.objects[m].pivot_means[[np.all(r) for r in self.objects[m].pivots == pivots[m]].index(True)] for m in range(len(pivots))]
-            # getting the mean point of each pivot active in this run
-
             norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
             # getting the pivots norms to feed into the polygonize function
 
             try:
                 polygon_vectors = polygonize(norms)
+
             except AssertionError:
                 # Raised if we cannot build a triangle with the given norms.
-                # Skip this triangle and go on.
+                # Try to bend the structure if it was close or just skip this triangle and go on.
 
-                # TODO - should we try to reduce the longest side if we are close to doing it?
-                delta = max([norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)])
-                self.log('Rejected triangle, delta was ' + str(delta), p=False)
-                continue
+                deltas = [norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)]
+                delta = max(deltas)
+                rel_delta = max([deltas[i]/norms[i] for i in range(3)])
+                s = 'Rejected triangle, delta was %s, %s of side length' % (round(delta, 3), str(round(100*rel_delta, 3)) + ' %')
+                self.log(s, p=False)
+
+                if rel_delta < 0.1 and not self.options.rigid:
+                # correct the molecule structure with the longest
+                # side if the distances are at most 10% off.
+
+                    index = deltas.index(max(deltas))
+                    mol = thread_objects[index]
+                    pivot = pivots[index]
+
+                    # bent_mol = self.bend_molecule(mol, pivot, threshold=0.8*max(norms))
+                    bent_mol = mopac_bend(mol, pivot, threshold=0.8*max(norms), method=self.options.mopac_level)
+                    # ase_view(bent_mol)
+
+                    # thread_objects[index] = bent_mol
+                    quit()
+
+                else:
+                    continue
 
             directions = _get_directions(norms)
             # directions to orient the molecules toward, orthogonal to each vec_pair
@@ -845,7 +876,7 @@ class Docker:
 
                     for angles in systematic_angles:
 
-                        threads.append([deepcopy(obj) for obj in self.objects])
+                        threads.append([deepcopy(obj) for obj in thread_objects])
                         thread = threads[-1]
                         # generating the thread we are going to modify and setting the thread pointer
 
@@ -862,7 +893,7 @@ class Docker:
                             start, end = vec_pair
                             angle = angles[i]
 
-                            reactive_coords = self.objects[i].atomcoords[0][self.objects[i].reactive_indexes]
+                            reactive_coords = thread_objects[i].atomcoords[0][thread_objects[i].reactive_indexes]
                             # coordinates for the reactive atoms in this run
 
                             atomic_pivot_mean = np.mean(reactive_coords, axis=0)
@@ -929,6 +960,56 @@ class Docker:
         self.dispositions_constrained_indexes = np.array(constrained_indexes)
 
         return threads
+
+    def bend_molecule(self, mol, pivot, threshold):
+        '''
+        '''
+        def f(x, k):
+            x_c = np.clip(x, 0, 5)
+            return k*0.1*np.exp(0.5*x_c)
+
+        ase_view(mol)
+        temp = deepcopy(mol)
+
+        for step in range(20):
+        # 20 subsequent steps of bending the molecule a little
+
+            orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in temp.reactive_atoms_classes_dict.items()}
+            reactive_coords = temp.atomcoords[0][temp.reactive_indexes]
+            direction = pivot.meanpoint - np.mean(reactive_coords, axis=0)
+            rotation_pointer = np.cross(pivot.pivot, direction)
+
+            for c, conformer in enumerate(temp.atomcoords):
+                for a, atom in enumerate(conformer):
+                    dist = (atom - pivot.meanpoint) @ pivot.pivot / np.linalg.norm(pivot.pivot)
+                    # distance of atom from rotation center, along the pivot coordinate
+                    angle = f(dist, 5)
+                    if dist > 0:
+                        mat = rot_mat_from_pointer(rotation_pointer, angle)
+                    else:
+                        mat = rot_mat_from_pointer(rotation_pointer, -angle)
+
+                    # temp.atomcoords[c,a] = mat @ (atom - pivot.meanpoint) + pivot.meanpoint
+                    temp.atomcoords[c,a] = mat @ (atom - np.mean(reactive_coords, axis=0)) + np.mean(reactive_coords, axis=0)
+            
+            #update orbitals and pivots
+            for index, atom in temp.reactive_atoms_classes_dict.items():
+                atom.init(temp, index, update=True, orb_dim=orb_memo[index])
+            self._set_pivots(temp)
+
+            # if we have reached the target pivot length stop, otherwise do another iteration
+            for temp_pivot in temp.pivots:
+                if temp_pivot.index == pivot.index:
+                    if np.linalg.norm(temp_pivot.pivot) < threshold:
+                        print(f'END @ {5*(step+1)} degrees: {round(100*np.linalg.norm(temp_pivot.pivot)/threshold, 3)} % of thr')
+                        return temp
+                    else:
+                        print(f'{5*(step+1)} degrees: {round(100*np.linalg.norm(temp_pivot.pivot)/threshold, 3)} % of thr')
+                        # if step // 3 == 0:
+                        #     ase_view(temp)
+        ase_view(temp)
+        raise Exception('Molecule bend not successful')
+
 
 ######################################################################################################### RUN
 

@@ -12,7 +12,7 @@ from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS, FIRE
 from hypermolecule_class import pt, graphize
 from parameters import MOPAC_COMMAND
-from linalg_tools import norm, dihedral
+from linalg_tools import *
 from subprocess import DEVNULL, STDOUT, check_call
 from rmsd import kabsch, centroid
 
@@ -500,6 +500,133 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         else:
             return coords
 
+def mopac_bend(mol, pivot, threshold, method='PM7', title='temp_scan'):
+    '''
+    This function writes a MOPAC .mop input, runs it with the subprocess
+    module and reads its output. Coordinates used are mixed
+    (cartesian and internal) to be able to constrain/sacn the reactive atoms
+    distances specified in constrained_indexes.
+
+    :params mol: Hypermolecule Object
+    :params method: string, specifiyng the first line of keywords for the MOPAC input file.
+    :params title: string, used as a file name and job title for the mopac input file.
+    '''
+    # TODO:conformations!
+    conf = 0
+    coords = mol.atomcoords[conf]
+
+    stepsize = 0.05
+    steps = (np.linalg.norm(pivot.pivot)-threshold)//stepsize
+
+    order = []
+    s = [method + f' STEP=-{stepsize} POINT={int(steps)}\n' + title + '\n\n']
+    for i, num in enumerate(mol.atomnos):
+        s.append(' {}  {: .6f} +1 {: .6f} +1 {: .6f} +1\n'.format(pt[num].symbol, *coords[i]))
+
+    id_start, id_end = pivot.index
+
+    r_atom_start = list(mol.reactive_atoms_classes_dict.values())[0]
+    orb_start = r_atom_start.center[id_start]
+
+    r_atom_end = list(mol.reactive_atoms_classes_dict.values())[1]
+    orb_end = r_atom_end.center[id_end]
+
+    ###################################################################
+
+    c1, d1 = np.random.choice(len(coords), 2)
+    while r_atom_start.index == c1 or r_atom_start.index == d1 or c1 == d1:
+        c1, d1 = np.random.choice(len(coords), 2)
+    # indexes of reference atoms
+
+    dist1 = np.linalg.norm(orb_start - r_atom_start.coord) # in Angstrom
+
+    angle1 = point_angle(orb_start,
+                         r_atom_start.coord,
+                         coords[c1])
+
+    d_angle1 = dihedral([orb_start,
+                         r_atom_start.coord,
+                         coords[c1],
+                         coords[d1]])
+    d_angle1 += 360 if d_angle1 < 0 else 0
+
+
+    s.append(' XX {: .6f}  0 {: .6f} +1 {: .6f} +1 {} {} {}\n'.format(dist1, angle1, d_angle1 ,r_atom_start.index, c1, d1))
+
+    ###################################################################
+
+    c2, d2 = np.random.choice(len(coords), 2)
+    while r_atom_end.index == c2 or r_atom_end.index == d2 or c2 == d2:
+        c2, d2 = np.random.choice(len(coords), 2)
+    # indexes of reference atoms
+
+    dist2 = np.linalg.norm(orb_end - r_atom_end.coord) # in Angstrom
+
+    angle2 = point_angle(orb_end,
+                         r_atom_end.coord,
+                         coords[c2])
+
+    d_angle2 = dihedral([orb_end,
+                         r_atom_end.coord,
+                         coords[c2],
+                         coords[d2]])
+    d_angle2 += 360 if d_angle2 < 0 else 0
+
+
+    s.append(' XX {: .6f}  0 {: .6f} +1 {: .6f} +1 {} {} {}\n'.format(dist2, angle2, d_angle2 ,r_atom_end.index, c2, d2))
+    
+    ###################################################################
+    
+    len_s = len(s)
+
+    c3, d3 = np.random.choice(len(coords), 2)
+    while c3 == len_s-2 or d3 == len_s-2 or c3 == d3:
+        c3, d3 = np.random.choice(len(coords), 2)
+    # indexes of reference atoms
+
+    dist3 = np.linalg.norm(orb_start - orb_end) # in Angstrom
+
+    angle3 = point_angle(orb_start,
+                        orb_end,
+                        coords[c3])
+
+    d_angle3 = dihedral([orb_start,
+                         orb_end,
+                         coords[c3],
+                         coords[d3]])
+    d_angle3 += 360 if d_angle3 < 0 else 0
+
+    s.append(' XX {: .6f} -1 {: .6f} +1 {: .6f} +1 {} {} {}\n'.format(dist3, angle3, d_angle3 , len_s-2, c3, d3))
+    
+    ###################################################################
+
+    s = ''.join(s)
+    with open(f'{title}.mop', 'w') as f:
+        f.write(s)
+    
+    # try:
+    #     check_call(f'{MOPAC_COMMAND} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
+    # except KeyboardInterrupt:
+    #     print('KeyboardInterrupt requested by user. Quitting.')
+    #     quit()
+
+    # os.remove(f'{title}.mop')
+    # # delete input, we do not need it anymore
+
+    # if read_output:
+
+    #     inv_order = [order.index(i) for i in range(len(order))]
+    #     # undoing the atomic scramble that was needed by the mopac input requirements
+
+    #     opt_coords, energy, success = read_mop_out(f'{title}.out')
+    #     os.remove(f'{title}.out')
+
+    #     opt_coords = scramble(opt_coords, inv_order) if opt_coords is not None else coords
+    #     # If opt_coords is None, that is if TS seeking crashed,
+    #     # sets opt_coords to the old coords. If not, unscrambles
+    #     # coordinates read from mopac output.
+
+    #     return opt_coords, energy, success
 
 
 # def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
