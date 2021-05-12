@@ -1,22 +1,14 @@
-import os, time
+import os
 import numpy as np
-import networkx as nx
-from spyrmsd.rmsd import rmsd
-from cclib.io import ccread
 from ase import Atoms
-from ase.visualize import view
-from ase.constraints import FixBondLength, FixBondLengths, Hookean
+from ase.constraints import Hookean
 from ase.calculators.mopac import MOPAC
-from ase.neb import idpp_interpolate
 from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS, FIRE
 from hypermolecule_class import pt, graphize
 from parameters import MOPAC_COMMAND
 from linalg_tools import *
 from subprocess import DEVNULL, STDOUT, check_call
-from rmsd import kabsch, centroid
-
-# from functools import lru_cache
 
 class suppress_stdout_stderr(object):
     '''
@@ -48,6 +40,7 @@ class suppress_stdout_stderr(object):
             os.close(fd)
 
 import sys
+# TODO: test hiddenprints
 class HiddenPrints:
     def __enter__(self):
         self._original_stdout = sys.stdout
@@ -627,6 +620,32 @@ def mopac_bend(mol, pivot, threshold, method='PM7', title='temp_scan'):
     #     # coordinates read from mopac output.
 
     #     return opt_coords, energy, success
+
+def ase_bend(mol, pivot, threshold, method='PM7', title='temp'):
+    '''
+    '''
+    conf = 0
+    coords = mol.atomcoords[conf]
+
+    orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict.items()}
+
+    atoms = Atoms(mol.atomnos, positions=coords, calculator=MOPAC(label=title, command=f'{MOPAC_COMMAND} {title}.mop', method=method))
+
+    i1, i2 = mol.reactive_indexes
+    threshold = threshold*np.linalg.norm(coords[i1]-coords[i2])
+    c = Hookean(a1=int(i1), a2=int(i2), rt=threshold, k=10)
+    atoms.set_constraint(c)
+
+    opt = BFGS(atoms, maxstep=0.1)
+    opt.run(fmax=0.5, steps=100)
+
+    mol.atomcoords[conf] = atoms.get_positions()
+
+    #update orbitals and pivots
+    for index, atom in mol.reactive_atoms_classes_dict.items():
+        atom.init(mol, index, update=True, orb_dim=orb_memo[index])
+
+    return mol
 
 
 # def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):

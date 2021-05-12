@@ -141,8 +141,8 @@ class Docker:
 
         '''
 
-        stamp = time.ctime().replace(' ','_').replace(':','-')
-        self.logfile = open(f'TSCoDe_log_{stamp}.txt', 'a', buffering=1)
+        self.stamp = time.ctime().replace(' ','_').replace(':','-')
+        self.logfile = open(f'TSCoDe_log_{self.stamp}.txt', 'a', buffering=1)
 
 
         s =  '*************************************************************\n'
@@ -527,14 +527,14 @@ class Docker:
 
         else:
 
-            swaps = [(1,1,1),
-                     (1,1,0),
-                     (1,0,1),
-                     (1,0,0),
-                     (0,1,1),
+            swaps = [(0,0,0),
                      (0,0,1),
                      (0,1,0),
-                     (0,0,0)]
+                     (0,1,1),
+                     (1,0,0),
+                     (1,1,0),
+                     (1,0,1),
+                     (1,1,1)]
 
             oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
             couples = [[oriented[0][1], oriented[1][0]], [oriented[1][1], oriented[2][0]], [oriented[2][1], oriented[0][0]]]
@@ -809,7 +809,7 @@ class Docker:
             thread_objects = deepcopy(self.objects)
             # Objects to be used to embed structures. Modified later if necessary.
 
-            pivots = [self.objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+            pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
             # getting the active pivot for each molecule for this run
             
             norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
@@ -825,8 +825,8 @@ class Docker:
                 deltas = [norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)]
                 delta = max(deltas)
                 rel_delta = max([deltas[i]/norms[i] for i in range(3)])
-                s = 'Rejected triangle, delta was %s, %s of side length' % (round(delta, 3), str(round(100*rel_delta, 3)) + ' %')
-                self.log(s, p=False)
+                # s = 'Rejected triangle, delta was %s, %s of side length' % (round(delta, 3), str(round(100*rel_delta, 3)) + ' %')
+                # self.log(s, p=False)
 
                 if rel_delta < 0.1 and not self.options.rigid:
                 # correct the molecule structure with the longest
@@ -836,12 +836,31 @@ class Docker:
                     mol = thread_objects[index]
                     pivot = pivots[index]
 
-                    # bent_mol = self.bend_molecule(mol, pivot, threshold=0.8*max(norms))
-                    bent_mol = mopac_bend(mol, pivot, threshold=0.8*max(norms), method=self.options.mopac_level)
+                    bent_mol = self.bend_molecule(mol, pivot, threshold=0.9)
+                    # bent_mol = mopac_bend(mol, pivot, threshold=0.8*max(norms), method=self.options.mopac_level)
                     # ase_view(bent_mol)
 
-                    # thread_objects[index] = bent_mol
-                    quit()
+                    bent_mol = ase_bend(bent_mol, pivot, threshold=0.9, method=self.options.mopac_level)
+                    self._set_pivots(bent_mol)
+                    # ase_view(bent_mol)
+
+                    # for p in bent_mol.pivots:
+                    #     if p.index == pivot.index:
+                    #         new_pivot = p
+                    # now = np.linalg.norm(new_pivot.pivot)
+                    # maxval = norms[index-1] + norms[index-2]
+                    # input(f'Side was {round(norms[index], 3)} A, now it is {round(now, 3)}, {round(now/maxval, 3)} % of maximum value')
+
+                    thread_objects[index] = bent_mol
+
+                    pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+                    # updating the active pivot for each molecule for this run
+                    
+                    norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
+                    # updating the pivots norms to feed into the polygonize function
+
+                    polygon_vectors = polygonize(norms)
+                    # repeating the failed polygon creation
 
                 else:
                     continue
@@ -968,11 +987,11 @@ class Docker:
             x_c = np.clip(x, 0, 5)
             return k*0.1*np.exp(0.5*x_c)
 
-        ase_view(mol)
         temp = deepcopy(mol)
+        threshold = threshold*np.linalg.norm(pivot.pivot)
 
-        for step in range(20):
-        # 20 subsequent steps of bending the molecule a little
+        for step in range(5):
+        # 5 subsequent steps of bending the molecule a little (~5 degrees)
 
             orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in temp.reactive_atoms_classes_dict.items()}
             reactive_coords = temp.atomcoords[0][temp.reactive_indexes]
@@ -1001,14 +1020,8 @@ class Docker:
             for temp_pivot in temp.pivots:
                 if temp_pivot.index == pivot.index:
                     if np.linalg.norm(temp_pivot.pivot) < threshold:
-                        print(f'END @ {5*(step+1)} degrees: {round(100*np.linalg.norm(temp_pivot.pivot)/threshold, 3)} % of thr')
                         return temp
-                    else:
-                        print(f'{5*(step+1)} degrees: {round(100*np.linalg.norm(temp_pivot.pivot)/threshold, 3)} % of thr')
-                        # if step // 3 == 0:
-                        #     ase_view(temp)
-        ase_view(temp)
-        raise Exception('Molecule bend not successful')
+        return temp
 
 
 ######################################################################################################### RUN
@@ -1146,7 +1159,7 @@ class Docker:
                     ################################################# CHECKPOINT SAVE BEFORE OPTIMIZATION
 
                     if self.options.checkpoint:
-                            outname = f'TSCoDe_checkpoint_{stamp}.xyz'
+                            outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
                             with open(outname, 'w') as f:        
                                 for i, structure in enumerate(self.structures):
                                     write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - Checkpoint before optimization')
