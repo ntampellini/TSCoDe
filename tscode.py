@@ -169,7 +169,7 @@ class Docker:
         self._set_options(filename)
 
         # for mol in self.objects:
-        #     ase_view(mol)
+            # ase_view(mol)
 
     def log(self, string='', p=True):
         if p:
@@ -306,7 +306,7 @@ class Docker:
     def _read_pairings(self, filename):
         '''
         Reads atomic pairings to be respected from the input file, if any are present.
-
+        This parsing function is ugly, I know.
         '''
         with open(filename, 'r') as f:
             lines = f.readlines()
@@ -322,6 +322,7 @@ class Docker:
         # if we have a keyword line, discard it        
 
         parsed = []
+        unlabeled_list = []
         self.pairings_dict = {i:[] for i in range(len(self.objects))}
 
         for i, line in enumerate(lines):
@@ -330,7 +331,11 @@ class Docker:
             pairings = line.split()[1:]
             # remove the molecule name, keep pairs only ['2a','5b']
 
+            unlabeled = [int(j) for j in pairings if not j.lower().islower()]
+            # numbers without letters are stored here
+
             pairings = [[int(j[:-1]), j[-1]] for j in pairings if j.lower().islower()]
+            # number with letters associated are stored here
 
             for pair in pairings:
                 self.pairings_dict[i].append(pair[:])
@@ -340,6 +345,11 @@ class Docker:
             if i > 0:
                 for z in pairings:
                     z[0] += sum(self.ids[:i])
+
+                if unlabeled != []:
+                    for z in unlabeled:
+                        z += sum(self.ids[:i])
+                    unlabeled_list.append(z)
             # getting the cumulative index rather than the molecule index
 
             for cumulative_pair in pairings:
@@ -356,15 +366,25 @@ class Docker:
         pairings = sorted(pairings, key=lambda x: x[0])
         # sorting values so that 'a' is the first pairing
 
+        self.pairings_table = {i[0]:sorted(i[1]) for i in pairings}
+        # {'a':[3,45]}
+
         self.pairings = [sorted(i[1]) for i in pairings]
         # getting rid of the letters and sorting the values [34, 3] -> [3, 34]
 
         if self.pairings == []:
             s = '--> No atom pairing imposed. Computing all possible dispositions.'
         else:
-            pairings = [line.split()]
             s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
         self.log(s)
+
+        if len(lines) == 3:
+        # adding third pairing if we have three molecules and user specified two pairings
+        # (used to adjust distances for trimolecular TSs)
+            if len(unlabeled_list) == 2:
+                third_constraint = list(sorted(unlabeled_list))
+                self.pairings.append(third_constraint)
+                self.pairings_table['c'] = third_constraint
 
     def _set_custom_orbs(self, orb_string):
         '''
@@ -372,9 +392,10 @@ class Docker:
         :param orb_string: string that looks like 'a=2.345,b=3.456,c=2.22'
 
         '''
-        pairs = [(piece.split('=')[0], float(piece.split('=')[1])) for piece in orb_string.split(',')]
+        self.pairings_dists = [(piece.split('=')[0], float(piece.split('=')[1])) for piece in orb_string.split(',')]
+        self.pairings_dists = sorted(self.pairings_dists, key=lambda x: x[0])
 
-        for letter, dist in pairs:
+        for letter, dist in self.pairings_dists:
             for index in range(len(self.objects)):
                 for pairing in self.pairings_dict[index]:
 
@@ -418,17 +439,18 @@ class Docker:
             symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict.values()]
             if 'H' in symbols:
                 if 'O' in symbols or 'S' in symbols:
-                    class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict.values()]
-                    if 'Single Bond' in class_types and 'Ketone' in class_types:
-                    # if we have a bridging acid, remove the longest of the two pivots,
-                    # as it would lead to weird structures
-                        norms = np.linalg.norm([p.pivot for p in mol.pivots], axis=1)
-                        for sample in norms:
-                            to_keep = [i for i in norms if sample >= i]
-                            if len(to_keep) == 1:
-                                mask = np.array([i in to_keep for i in norms])
-                                mol.pivots = mol.pivots[mask]
-                                break
+                    if max([np.linalg.norm(p.pivot) for p in mol.pivots]) < 4.5:
+                        class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict.values()]
+                        if 'Single Bond' in class_types and 'Ketone' in class_types:
+                        # if we have a bridging acid, remove the longest of the two pivots,
+                        # as it would lead to weird structures
+                            norms = np.linalg.norm([p.pivot for p in mol.pivots], axis=1)
+                            for sample in norms:
+                                to_keep = [i for i in norms if sample >= i]
+                                if len(to_keep) == 1:
+                                    mask = np.array([i in to_keep for i in norms])
+                                    mol.pivots = mol.pivots[mask]
+                                    break
 
         if self.options.suprafacial:
             if len(mol.pivots) == 4:
@@ -458,16 +480,17 @@ class Docker:
                     self._set_pivots(molecule)
 
                 self.embed = 'cyclical'
-                self.candidates = self.options.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
-                self.candidates *= np.prod([len(mol.pivots) for mol in self.objects])
                 if len(self.objects) == 3:
-                    self.candidates *= 8
+                    self.candidates = 8*(self.options.rotation_steps+1)**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+
                 else:
-                    self.candidates *= 2
+                    self.candidates = 2*self.options.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
                 # The number 8 is the number of different triangles originated from three oriented vectors,
                 # while 2 is the disposition of two vectors (parallel, antiparallel). This ends here if
                 # no parings are to be respected. If there are any, each one reduces the number of
                 # candidates to be computed, and we divide self.candidates number in the next section.
+
+                self.candidates *= np.prod([len(mol.pivots) for mol in self.objects])
 
                 if self.pairings != []:
                     if len(self.objects) == 2:
@@ -594,7 +617,7 @@ class Docker:
     def cyclical_embed(self):
         '''
         return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
-        into self.structures. Algorithm used is the "cyclical" algorithm (see docs).
+                        into self.structures. Algorithm used is the "cyclical" algorithm (see docs).
         '''
       
         def _get_directions(norms):
@@ -837,10 +860,9 @@ class Docker:
                     pivot = pivots[index]
 
                     bent_mol = self.bend_molecule(mol, pivot, threshold=0.9)
-                    # bent_mol = mopac_bend(mol, pivot, threshold=0.8*max(norms), method=self.options.mopac_level)
                     # ase_view(bent_mol)
 
-                    bent_mol = ase_bend(bent_mol, pivot, threshold=0.9, method=self.options.mopac_level)
+                    bent_mol = ase_bend(bent_mol, threshold=0.9, method=self.options.mopac_level)
                     self._set_pivots(bent_mol)
                     # ase_view(bent_mol)
 
@@ -972,6 +994,7 @@ class Docker:
                         # # os.system('vmd debug_step.xyz')
                         # os.system(r'vmd -e C:\Users\Nik\Desktop\Coding\TSCoDe\Resources\tri\temp_bonds.vmd')
                         # quit()
+                        # TODO - clean
 
 
         loadbar(1, 1, prefix=f'Embedding structures ')
@@ -1023,6 +1046,31 @@ class Docker:
                         return temp
         return temp
 
+    def _set_default_distances(self):
+        '''
+        Called before trimolecular TS refinement if user did not specify all
+        (or any) of bonding distances with the DIST keyword.
+        '''
+        if not hasattr(self, 'pairings_dists'):
+            self.pairings_dists = []
+
+        r_atoms = np.array([list(mol.reactive_atoms_classes_dict.values()) for mol in self.objects]).ravel()
+
+        for letter, indexes in self.pairings_table.items():
+            index1, index2 = indexes
+            for r_atom in r_atoms:
+                if index1 == r_atom.cumnum:
+                    r_atom1 = r_atom
+                if index2 == r_atom.cumnum:
+                    r_atom2 = r_atom
+
+            if letter not in [letter for letter, _ in self.pairings_dists]:
+
+                dist1 = np.linalg.norm(r_atom1.center[0] - r_atom1.coord)
+                dist2 = np.linalg.norm(r_atom2.center[0] - r_atom2.coord)
+
+                self.pairings_dists.append((letter, dist1+dist2))
+
 
 ######################################################################################################### RUN
 
@@ -1062,13 +1110,6 @@ class Docker:
 
             atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
             # cumulative list of atomic numbers associated with coordinates
-
-            try:
-                os.remove('TS_out.xyz')
-            except:
-                pass
-            # TODO: rename output through stamp variable
-
 
             conf_number = [len(molecule.atomcoords) for molecule in self.objects]
             conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
@@ -1217,6 +1258,7 @@ class Docker:
                         self.structures = self.structures[mask]
                         self.energies = self.energies[mask]
                         self.constrained_indexes = self.constrained_indexes[mask]
+                        self.exit_status = self.exit_status[mask]
 
                         if np.any(mask == False):
                             self.log(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
@@ -1230,6 +1272,7 @@ class Docker:
                         mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
                         self.structures = self.structures[mask]
                         self.energies = self.energies[mask]
+                        self.exit_status = self.exit_status[mask]
 
                         _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
                         from optimization_methods import scramble
@@ -1249,11 +1292,83 @@ class Docker:
                         t_start = time.time()
                         self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                         self.energies = self.energies[mask]
+                        self.exit_status = self.exit_status[mask]
                         t_end = time.time()
                         
                         if np.any(mask == False):
                             self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
                         self.log()
+
+                        ################################################# REFINING: BONDING DISTANCES
+
+                        if len(self.objects) == 3:
+
+                            self.log(f'--> Refining bonding distances for trimolecular TSs ({self.options.mopac_level} level)')
+
+                            if not hasattr(self, 'pairings_dists') or len(self.pairings) > len(self.pairings_dists):
+                            # if user did not specify all (or any) of the distances
+                            # between imposed pairings, default values will be used
+                                self._set_default_distances()
+
+                            for i, structure in enumerate(deepcopy(self.structures)):
+                                loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                                try:
+                                    t_start_opt = time.time()
+                                    new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self, structure, atomnos, graphs)
+
+                                    if self.exit_status[i]:
+                                        self.structures[i] = new_structure
+                                        self.energies[i] = new_energy
+                                        exit_str = 'REFINED'
+                                    else:
+                                        exit_str = 'SCRAMBLED'
+                                                                                                                                            
+                                except ValueError as e:
+                                    # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                                    # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                                    # The easiest solution is to reject the structure and go on. TODO-check
+                                    self.log(e)
+                                    self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
+
+                                finally:
+                                    t_end_opt = time.time()
+                                    self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                            
+                            loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                            t_end = time.time()
+                            self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                            self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{len(self.exit_status)} structures. Non-refined ones will not be discarded.')
+
+                            ################################################# PRUNING: ENERGY, AFTER REFINEMENT
+                        
+                            mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
+                            self.structures = self.structures[mask]
+                            self.energies = self.energies[mask]
+
+                            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                            from optimization_methods import scramble
+                            self.energies = scramble(self.energies, sequence)
+                            self.structures = scramble(self.structures, sequence)
+                            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                            # sorting structures based on energy
+
+                            if np.any(mask == False):
+                                self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
+
+                            ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
+
+                            if len(self.structures) == 0:
+                                raise ZeroCandidatesError()
+
+                            t_start = time.time()
+                            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                            self.energies = self.energies[mask]
+                            t_end = time.time()
+                            
+                            if np.any(mask == False):
+                                self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                            self.log()
+
 
                 except ZeroCandidatesError:
                     t_end_run = time.time()
@@ -1275,8 +1390,8 @@ class Docker:
             with open(outname, 'w') as f:        
                 for i, structure in enumerate(self.structures):
 
-                    if self.options.TS_optimization:
-                        kind = 'TS - ' if self.exit_status[i] else 'NOT TS - '
+                    if len(self.objects) == 3:
+                        kind = 'REFINED - ' if self.exit_status[i] else 'NOT REFINED - '
                     else:
                         kind = ''
 
@@ -1290,7 +1405,7 @@ class Docker:
             if self.options.optimization and self.options.TS_optimization:
             
 
-                self.log(f'--> IRC optimization ({self.options.mopac_level} level)')
+                self.log(f'--> HyperNEB optimization ({self.options.mopac_level} level)')
                 t_start = time.time()
 
                 for i, structure in enumerate(self.structures):
@@ -1305,7 +1420,7 @@ class Docker:
                                                                     self.constrained_indexes[i],
                                                                     reag_prod_method=f'{self.options.mopac_level}',
                                                                     NEB_method=f'{self.options.mopac_level} GEO-OK',
-                                                                    title=f'structure_{i}')
+                                                                    title=f'structure_{i+1}')
 
                     t_end_opt = time.time()
 
@@ -1338,7 +1453,7 @@ class Docker:
                     mopac_opt(structure,
                               atomnos,
                               method=f'{self.options.mopac_level} FORCE',
-                              title=f'TS_{i}_FREQ',
+                              title=f'TS_{i+1}_FREQ',
                               read_output=False)
 
                 loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')

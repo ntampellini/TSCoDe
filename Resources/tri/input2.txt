@@ -1,4 +1,9 @@
-BYPASS 
+# DIST(a=2.01,b=2.02,c=2.03) NOTS
+# HCOOH.xyz 4a 1b
+# HCOOH.xyz 4c 1a
+# HCOOH.xyz 4b 1c
+
+NOTS DIST(a=1.55)
 HCOOH.xyz 4a 1b
-HCOOH.xyz 4c 1a
-HCOOH.xyz 4b 1c
+HCOOH.xyz 4 1a
+HCOOH.xyz 4b 1

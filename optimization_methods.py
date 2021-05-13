@@ -50,6 +50,39 @@ class HiddenPrints:
         sys.stdout.close()
         sys.stdout = self._original_stdout
 
+class Spring:
+    '''
+    ASE Custom Constraint Class
+    Adds an harmonic force between a pair of atoms.
+    Spring constant is very high to achieve tight convergence,
+    but force is dampened so as not to ruin structure.
+    '''
+    def __init__(self, i1, i2, d_eq, k=1000):
+        self.i1, self.i2 = i1, i2
+        self.d_eq = d_eq
+        self.k = k
+
+    def adjust_positions(self, atoms, newpositions):
+        pass
+
+    def adjust_forces(self, atoms, forces):
+
+        direction = atoms.positions[self.i2] - atoms.positions[self.i1]
+        # vector connecting atom1 to atom2
+
+        spring_force = self.k * (np.linalg.norm(direction) - self.d_eq)
+        # absolute spring force (float)
+
+        spring_force = min(spring_force, 100)
+        # force is clipped at 100 eV/A
+
+        forces[self.i1] += (norm(direction) * spring_force)
+        forces[self.i2] -= (norm(direction) * spring_force)
+        # applying harmonic force to each atom, directed toward the other one
+
+    def __repr__(self):
+        return f'Spring - ids:{self.i1}/{self.i2} - d_eq:{self.d_eq}, k:{self.k}'
+
 def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
     '''
     output is of _io.TextIOWrapper type
@@ -222,6 +255,21 @@ def optimize(TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, me
     if constrained_indexes is None:
         constrained_indexes = np.array(())
 
+    opt_coords, energy, success = mopac_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, title=title)
+
+    if success:
+        success = scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=max_newbonds)
+
+    return opt_coords, energy, success
+
+def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=2) -> bool:
+    '''
+    Check if a transition state structure has scrambled during some optimization
+    steps. If more than a given number of bonds changed (formed or broke) the
+    structure is considered scrambled, and the method returns False.
+    '''
+    assert len(TS_structure) == sum([len(graph.nodes) for graph in mols_graphs])
+
     bonds = []
     for i, graph in enumerate(mols_graphs):
 
@@ -235,31 +283,46 @@ def optimize(TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, me
     bonds = set(bonds)
     # creating bond set containing all bonds present in the desired transition state
 
-    opt_coords, energy, success = mopac_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, title=title)
-
-    new_bonds = {(a, b) for a, b in list(graphize(opt_coords, TS_atomnos).edges) if a != b}
+    new_bonds = {(a, b) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
-    # print('delta_bonds is', list(delta_bonds))
-
-    # delta_bonds -= set(((a,b) for a,b in constrained_indexes))
-    # delta_bonds -= set(((b,a) for a,b in constrained_indexes))
-
-    # delta = list(delta_bonds)[:]
-    # c_ids = list(constrained_indexes.ravel())
-    # for a, b in delta:
-    #     if a in c_ids or b in c_ids:
-    #         delta_bonds -= {(a, b)}
 
     if len(delta_bonds) > max_newbonds:
-        success = False
-
-    return opt_coords, energy, success
+        return False
+    else:
+        return True
 
 def dump(filename, images, atomnos):
     with open(filename, 'w') as f:
                 for i, image in enumerate(images):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
+
+def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max_newbonds=2):
+    '''
+    TODO - desc
+    '''
+    atoms = Atoms(atomnos, positions=structure)
+    atoms.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1 temp.cmderr', method=method)
+    
+    springs = []
+    for i, dist in enumerate([dist for _, dist in self.pairings_dists]):
+        i1, i2 = self.pairings[i]
+        springs.append(Spring(i1, i2, dist, k=100))
+
+    atoms.set_constraint(springs)
+
+    with LBFGS(atoms, maxstep=0.1, logfile=None) as opt:
+
+        try:
+            opt.run(fmax=0.05, steps=100)
+
+        except Exception as e:
+            print(e)
+            quit()
+
+    success = scramble_check(structure, atomnos, mols_graphs, max_newbonds=max_newbonds)
+
+    return atoms.get_positions(), atoms.get_total_energy(), success
 
 def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS):
     '''
@@ -493,135 +556,7 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         else:
             return coords
 
-def mopac_bend(mol, pivot, threshold, method='PM7', title='temp_scan'):
-    '''
-    This function writes a MOPAC .mop input, runs it with the subprocess
-    module and reads its output. Coordinates used are mixed
-    (cartesian and internal) to be able to constrain/sacn the reactive atoms
-    distances specified in constrained_indexes.
-
-    :params mol: Hypermolecule Object
-    :params method: string, specifiyng the first line of keywords for the MOPAC input file.
-    :params title: string, used as a file name and job title for the mopac input file.
-    '''
-    # TODO:conformations!
-    conf = 0
-    coords = mol.atomcoords[conf]
-
-    stepsize = 0.05
-    steps = (np.linalg.norm(pivot.pivot)-threshold)//stepsize
-
-    order = []
-    s = [method + f' STEP=-{stepsize} POINT={int(steps)}\n' + title + '\n\n']
-    for i, num in enumerate(mol.atomnos):
-        s.append(' {}  {: .6f} +1 {: .6f} +1 {: .6f} +1\n'.format(pt[num].symbol, *coords[i]))
-
-    id_start, id_end = pivot.index
-
-    r_atom_start = list(mol.reactive_atoms_classes_dict.values())[0]
-    orb_start = r_atom_start.center[id_start]
-
-    r_atom_end = list(mol.reactive_atoms_classes_dict.values())[1]
-    orb_end = r_atom_end.center[id_end]
-
-    ###################################################################
-
-    c1, d1 = np.random.choice(len(coords), 2)
-    while r_atom_start.index == c1 or r_atom_start.index == d1 or c1 == d1:
-        c1, d1 = np.random.choice(len(coords), 2)
-    # indexes of reference atoms
-
-    dist1 = np.linalg.norm(orb_start - r_atom_start.coord) # in Angstrom
-
-    angle1 = point_angle(orb_start,
-                         r_atom_start.coord,
-                         coords[c1])
-
-    d_angle1 = dihedral([orb_start,
-                         r_atom_start.coord,
-                         coords[c1],
-                         coords[d1]])
-    d_angle1 += 360 if d_angle1 < 0 else 0
-
-
-    s.append(' XX {: .6f}  0 {: .6f} +1 {: .6f} +1 {} {} {}\n'.format(dist1, angle1, d_angle1 ,r_atom_start.index, c1, d1))
-
-    ###################################################################
-
-    c2, d2 = np.random.choice(len(coords), 2)
-    while r_atom_end.index == c2 or r_atom_end.index == d2 or c2 == d2:
-        c2, d2 = np.random.choice(len(coords), 2)
-    # indexes of reference atoms
-
-    dist2 = np.linalg.norm(orb_end - r_atom_end.coord) # in Angstrom
-
-    angle2 = point_angle(orb_end,
-                         r_atom_end.coord,
-                         coords[c2])
-
-    d_angle2 = dihedral([orb_end,
-                         r_atom_end.coord,
-                         coords[c2],
-                         coords[d2]])
-    d_angle2 += 360 if d_angle2 < 0 else 0
-
-
-    s.append(' XX {: .6f}  0 {: .6f} +1 {: .6f} +1 {} {} {}\n'.format(dist2, angle2, d_angle2 ,r_atom_end.index, c2, d2))
-    
-    ###################################################################
-    
-    len_s = len(s)
-
-    c3, d3 = np.random.choice(len(coords), 2)
-    while c3 == len_s-2 or d3 == len_s-2 or c3 == d3:
-        c3, d3 = np.random.choice(len(coords), 2)
-    # indexes of reference atoms
-
-    dist3 = np.linalg.norm(orb_start - orb_end) # in Angstrom
-
-    angle3 = point_angle(orb_start,
-                        orb_end,
-                        coords[c3])
-
-    d_angle3 = dihedral([orb_start,
-                         orb_end,
-                         coords[c3],
-                         coords[d3]])
-    d_angle3 += 360 if d_angle3 < 0 else 0
-
-    s.append(' XX {: .6f} -1 {: .6f} +1 {: .6f} +1 {} {} {}\n'.format(dist3, angle3, d_angle3 , len_s-2, c3, d3))
-    
-    ###################################################################
-
-    s = ''.join(s)
-    with open(f'{title}.mop', 'w') as f:
-        f.write(s)
-    
-    # try:
-    #     check_call(f'{MOPAC_COMMAND} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
-    # except KeyboardInterrupt:
-    #     print('KeyboardInterrupt requested by user. Quitting.')
-    #     quit()
-
-    # os.remove(f'{title}.mop')
-    # # delete input, we do not need it anymore
-
-    # if read_output:
-
-    #     inv_order = [order.index(i) for i in range(len(order))]
-    #     # undoing the atomic scramble that was needed by the mopac input requirements
-
-    #     opt_coords, energy, success = read_mop_out(f'{title}.out')
-    #     os.remove(f'{title}.out')
-
-    #     opt_coords = scramble(opt_coords, inv_order) if opt_coords is not None else coords
-    #     # If opt_coords is None, that is if TS seeking crashed,
-    #     # sets opt_coords to the old coords. If not, unscrambles
-    #     # coordinates read from mopac output.
-
-    #     return opt_coords, energy, success
-
-def ase_bend(mol, pivot, threshold, method='PM7', title='temp'):
+def ase_bend(mol, threshold, method='PM7', title='temp'):
     '''
     '''
     conf = 0
@@ -636,8 +571,10 @@ def ase_bend(mol, pivot, threshold, method='PM7', title='temp'):
     c = Hookean(a1=int(i1), a2=int(i2), rt=threshold, k=10)
     atoms.set_constraint(c)
 
-    opt = BFGS(atoms, maxstep=0.1)
-    opt.run(fmax=0.5, steps=100)
+    opt = BFGS(atoms, maxstep=0.1, logfile=None)
+
+    with suppress_stdout_stderr():
+        opt.run(fmax=0.5, steps=100)
 
     mol.atomcoords[conf] = atoms.get_positions()
 

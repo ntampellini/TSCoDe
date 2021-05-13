@@ -1,0 +1,91 @@
+*************************************************************
+*      TSCODE: Transition State Conformational Docker       *
+*************************************************************
+*                 Version 0.00 - Pre-release                *
+*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *
+*************************************************************
+
+--> Atom pairings imposed are 3: [[0, 43], [5, 36], [33, 60]] (Cumulative index numbering)
+
+--> Custom distance read: modified orbital of 1. maleimide.xyz atom 0 to 1.067 A.
+--> Custom distance read: modified orbital of 3. dienamine.xyz atom 6 to 1.067 A.
+
+--> Custom distance read: modified orbital of 1. maleimide.xyz atom 5 to 0.774 A.
+--> Custom distance read: modified orbital of 2. HCOOH.xyz atom 4 to 0.774 A.
+
+--> Custom distance read: modified orbital of 2. HCOOH.xyz atom 1 to 0.951 A.
+--> Custom distance read: modified orbital of 3. dienamine.xyz atom 23 to 0.951 A.
+
+--> Setup performed correctly. 2744 candidates will be generated.
+
+--> Input structures, reactive indexes and reactive atoms TSCODE type:
+    1. maleimide.xyz: 0->C(sp2), 5->O(Ketone)
+    2. HCOOH.xyz: 4->H(Single Bond), 1->O(Ketone)
+    3. dienamine.xyz: 6->C(sp2), 23->H(Single Bond)
+
+--> Calculation options used were:
+    - TS_optimization : False
+    - checkpoint : False
+    - clash_thresh : 1.2
+    - max_clashes : 3
+    - max_newbonds : 2
+    - mopac_level : PM7
+    - optimization : True
+    - pruning_thresh : 0.5
+    - rigid : False
+    - rotation_steps : 6
+    - suprafacial : False
+
+--> Performing cyclical embed (2744 candidates)
+Generated 2744 transition state candidates (18.79 s)
+
+--> Checking structures for compenetrations
+Discarded 2040 candidates for compenetration (704 left, 4.79 s)
+
+--> Similarity Processing
+    - similarity pre-processing   (k=100) - 0.31 s - kept 580/704
+    - similarity pre-processing   (k=50) - 0.39 s - kept 403/580
+    - similarity pre-processing   (k=20) - 0.44 s - kept 230/403
+    - similarity pre-processing   (k=10) - 0.27 s - kept 120/230
+    - similarity pre-processing   (k=5) - 0.16 s - kept 74/120
+    - similarity pre-processing   (k=2) - 0.14 s - kept 35/74
+    - similarity final processing (k=1) - 0.06 s - kept 20/35
+Discarded 684 candidates for similarity (20 left, 1.76 s)
+
+--> Structure optimization (PM7 level)
+    - Mopac PM7 optimization: Structure 1 SCRAMBLED - took 12.06 s
+    - Mopac PM7 optimization: Structure 2 CONVERGED - took 14.89 s
+    - Mopac PM7 optimization: Structure 3 SCRAMBLED - took 12.71 s
+    - Mopac PM7 optimization: Structure 4 SCRAMBLED - took 19.76 s
+    - Mopac PM7 optimization: Structure 5 SCRAMBLED - took 20.79 s
+    - Mopac PM7 optimization: Structure 6 CONVERGED - took 16.24 s
+    - Mopac PM7 optimization: Structure 7 CONVERGED - took 28.45 s
+    - Mopac PM7 optimization: Structure 8 SCRAMBLED - took 32.2 s
+    - Mopac PM7 optimization: Structure 9 SCRAMBLED - took 29.57 s
+    - Mopac PM7 optimization: Structure 10 SCRAMBLED - took 14.1 s
+    - Mopac PM7 optimization: Structure 11 CONVERGED - took 20.6 s
+    - Mopac PM7 optimization: Structure 12 SCRAMBLED - took 18.7 s
+    - Mopac PM7 optimization: Structure 13 CONVERGED - took 18.89 s
+    - Mopac PM7 optimization: Structure 14 SCRAMBLED - took 33.32 s
+    - Mopac PM7 optimization: Structure 15 CONVERGED - took 16.08 s
+    - Mopac PM7 optimization: Structure 16 SCRAMBLED - took 22.0 s
+    - Mopac PM7 optimization: Structure 17 SCRAMBLED - took 26.96 s
+    - Mopac PM7 optimization: Structure 18 SCRAMBLED - took 25.9 s
+    - Mopac PM7 optimization: Structure 19 SCRAMBLED - took 27.27 s
+    - Mopac PM7 optimization: Structure 20 SCRAMBLED - took 16.3 s
+Mopac PM7 optimization took 426.8 s (21.34 s per structure)
+Discarded 14 candidates because optimizations failed or scrambled some atoms (6 left)
+Discarded 2 candidates for similarity (4 left, 0.0 s)
+
+--> Refining bonding distances for trimolecular TSs (PM7 level)
+    - Mopac PM7 refinement: Structure 1 REFINED - took 3.43 s
+    - Mopac PM7 refinement: Structure 2 REFINED - took 6.28 s
+    - Mopac PM7 refinement: Structure 3 REFINED - took 5.15 s
+    - Mopac PM7 refinement: Structure 4 REFINED - took 8.54 s
+Mopac PM7 refinement took 23.41 s (5.85 s per structure)
+Successfully refined 9/20 structures. Non-refined ones will not be discarded.
+
+--> Output: Wrote 4 rough TS structures to TSCoDe_TSs_guesses.xyz file - Total time 475.56 s
+--> Output: Wrote VMD TSCoDe_TSs_guesses.vmd file
+
+--> TSCoDe normal termination: total time 7 minutes 55.561 seconds 
