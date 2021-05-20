@@ -122,6 +122,7 @@ class Options:
     mopac_level = 'PM7'
     suprafacial = False
     checkpoint = False
+    nci = True
 
     bypass = False
     # Default values, updated if _parse_input
@@ -1460,21 +1461,64 @@ class Docker:
                 t_end = time.time()
                 self.log(f'Mopac {self.options.mopac_level} frequency calculation took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
 
-                ################################################# FINAL XYZ OUTPUT
+            ################################################# OPTIONAL: PRINT NON-COVALENT INTERACTION GUESSES
 
-                self.energies -= np.min(self.energies)
-                _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-                self.energies = scramble(self.energies, sequence)
-                self.structures = scramble(self.structures, sequence)
-                self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-                # sorting structures based on energy
+            if self.options.nci:
 
-                outname = 'TSCoDe_NEB_TSs.xyz'
-                with open(outname, 'w') as f:        
-                    for i, structure in enumerate(self.structures):
-                        write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+                self.log('--> Non-covalent interactions spotting')
+                self.nci = []
 
-                self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
+                for i, structure in enumerate(self.structure):
+
+                    print_list, nci = get_nci(structure, atomnos, self.constrained_indexes[i], self.ids)
+                    self.nci.append(nci)
+
+                    if nci != []:
+                        self.log(f'Structure {i+1}: {len(nci)} interactions')
+
+                        for p in print_list:
+                            self.log('    '+p)
+                        self.log()
+                
+                if len([l for l in self.nci if l != []]) == 0:
+                    self.log('No particular NCIs spotted for these structures\n')
+
+                else:
+                    unshared_nci = []
+                    for i, nci_list in enumerate(self.nci):
+                        for nci in nci_list:
+                        # for each interaction of each structure
+
+                            if not nci in [n[0] for n in unshared_nci]:
+                            # if we have not already done it
+
+                                if not all([nci in structure_nci for structure_nci in self.nci]):
+                                # if the interaction is not shared by all structures, take note
+
+                                    shared_by = [i for i, structure_nci in enumerate(self.nci) if nci in structure_nci]
+                                    unshared_nci.append((nci, shared_by))
+
+                    if unshared_nci != []:
+                        self.log(f'--> Differential NCIs found - these might be the source of selectivity:')
+                        for nci, shared_by in unshared_nci:
+                            nci_type, i1, i2 = nci
+                            self.log(f'    {nci_type} between indexes {i1}/{i2} is present in {len(shared_by)}/{len(self.structures)} structures {tuple([i+1 for i in shared_by])}')
+
+            ################################################# FINAL XYZ OUTPUT
+
+            self.energies -= np.min(self.energies)
+            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+            self.energies = scramble(self.energies, sequence)
+            self.structures = scramble(self.structures, sequence)
+            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+            # sorting structures based on energy
+
+            outname = 'TSCoDe_NEB_TSs.xyz'
+            with open(outname, 'w') as f:        
+                for i, structure in enumerate(self.structures):
+                    write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
+            self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
             
             ################################################# SDF OUTPUT 
 
@@ -1492,7 +1536,11 @@ class Docker:
                     'mol representation CPK 0.7 0.5 50 50\n' +
                     'mol color ColorID 7\n' +
                     'mol material Transparent\n' +
-                    'mol addrep top')
+                    'mol addrep top\n')
+
+                for a, b in self.pairings:
+                    s += f'add label Bonds 0/{a} 0/{b}\n'
+
                 f.write(s)
 
             self.log(f'--> Output: Wrote VMD {vmd_name} file\n')

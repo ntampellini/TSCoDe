@@ -1,4 +1,4 @@
-NOTS DIST(a=2.135,b=1.548,c=1.901)
+DIST(a=2.135,b=1.548,c=1.901)
 # dienamine_ensemble.xyz 6a 23c
 # acid_ensemble.xyz 3c 25b
 maleimide.xyz 0a 5b

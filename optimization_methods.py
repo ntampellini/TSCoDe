@@ -9,6 +9,8 @@ from hypermolecule_class import pt, graphize
 from parameters import MOPAC_COMMAND
 from linalg_tools import *
 from subprocess import DEVNULL, STDOUT, check_call
+from parameters import nci_dict
+import itertools as it
 
 class suppress_stdout_stderr(object):
     '''
@@ -302,7 +304,7 @@ def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max
     TODO - desc
     '''
     atoms = Atoms(atomnos, positions=structure)
-    atoms.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1 temp.cmderr', method=method)
+    atoms.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1', method=method)
     
     springs = []
     for i, dist in enumerate([dist for _, dist in self.pairings_dists]):
@@ -324,7 +326,7 @@ def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max
 
     return atoms.get_positions(), atoms.get_total_energy(), success
 
-def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS):
+def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS, logfile=None):
     '''
     TODO:desc
     '''
@@ -343,11 +345,11 @@ def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-
     
     # Set calculators for all images
     for i, image in enumerate(images):
-        image.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop', method=method)
+        image.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1', method=method)
 
     # Set the optimizer and optimize
     try:
-        with optimizer(neb, maxstep=0.1) as opt:
+        with optimizer(neb, maxstep=0.1, logfile=logfile) as opt:
 
             # with suppress_stdout_stderr():
             # with HiddenPrints():
@@ -387,7 +389,7 @@ def hyperNEB(coords, atomnos, ids, constrained_indexes, reag_prod_method ='PM7',
 
     # align the two reagents and products structures to the TS (minimal RMSD)?
 
-    ts_coords, ts_energy = ase_neb(reagents, products, coords, atomnos, method=NEB_method, optimizer=LBFGS, title=title)
+    ts_coords, ts_energy = ase_neb(reagents, products, atomnos, method=NEB_method, optimizer=LBFGS, title=title)
     # Use these structures plus the TS guess to run a NEB calculation through ASE
 
     return ts_coords, ts_energy
@@ -511,7 +513,8 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
         # move reactive atoms away from each other just enough
 
-        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
+        # coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
+        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=[constrained_indexes[0]], method=method)
         # optimize the structure but keeping the reactive atoms distanced
 
         return coords
@@ -583,6 +586,159 @@ def ase_bend(mol, threshold, method='PM7', title='temp'):
         atom.init(mol, index, update=True, orb_dim=orb_memo[index])
 
     return mol
+
+def get_nci(coords, atomnos, constrained_indexes, ids):
+    '''
+    Returns a list of guesses for intermolecular non-covalent
+    interactions between molecular fragments/atoms. Used to get
+    a hint of the most prominent NCIs that drive stereo/regio selectivity.
+    '''
+    nci = []
+    print_list = []
+    cum_ids = np.cumsum(ids)
+    symbols = [pt[i].symbol for i in atomnos]
+    constrained_indexes = constrained_indexes.ravel()
+
+    for i1 in range(len(coords)):
+    # check atomic pairs (O-H, N-H, ...)
+
+            start_of_next_mol = cum_ids[next(i for i,n in enumerate(np.cumsum(ids)) if i1 < n)]
+            # ensures that we are only taking into account intermolecular NCIs
+
+            for i2 in range(len(coords[start_of_next_mol:])):
+                i2 += start_of_next_mol
+
+                if i1 not in constrained_indexes:
+                    if i2 not in constrained_indexes:
+                    # ignore atoms involved in constraints
+
+                        s = ''.join(sorted([symbols[i1], symbols[i2]]))
+                        # print(f'Checking pair {i1}/{i2}')
+
+                        if s in nci_dict:
+                            threshold, nci_type = nci_dict[s]
+                            dist = np.linalg.norm(coords[i1]-coords[i2])
+
+                            if dist < threshold:
+
+                                print_list.append(nci_type + f' ({round(dist, 2)} A, indexes {i1}/{i2})')
+                                # string to be printed in log
+
+                                nci.append((nci_type, i1, i2))
+                                # tuple to be used in identifying the NCI
+
+    # checking group contributions (aromatic rings)
+
+    aromatic_centers = []
+    masks = []
+
+    for mol in range(len(ids)):
+
+        if mol == 0:
+            mol_mask = slice(0, cum_ids[0])
+            filler = 0
+        else:
+            mol_mask = slice(cum_ids[mol-1], cum_ids[mol])
+            filler = cum_ids[mol-1]
+
+        aromatics_indexes = np.array([i+filler for i, s in enumerate(symbols[mol_mask]) if s in ('C','N')])
+
+        if len(aromatics_indexes) > 5:
+        # only check for phenyls in molecules with more than 5 C/N atoms
+
+            masks.append(list(it.combinations(aromatics_indexes, 6)))
+            # all possible combinations of picking 6 C/N/O atoms from this molecule
+
+    masks = np.concatenate(masks)
+
+    for mask in masks:
+
+        phenyl, center = is_phenyl(coords[mask])
+        if phenyl:
+            owner = next(i for i,n in enumerate(np.cumsum(ids)) if np.all(mask < n))
+            # index of the molecule that owns that phenyl ring
+
+            aromatic_centers.append((owner, center))
+
+    # print(f'structure has {len(aromatic_centers)} phenyl rings')
+
+    # checking phenyl-atom pairs
+    for owner, center in aromatic_centers:
+        for i, atom in enumerate(coords):
+
+            if i < cum_ids[0]:
+                atom_owner = 0
+            else:
+                atom_owner = next(i for i,n in enumerate(np.cumsum(ids)) if i < n)
+
+            if atom_owner != owner:
+            # if this atom belongs to a molecule different than the one that owns the phenyl
+
+                s = ''.join(sorted(['Ph', symbols[i]]))
+                if s in nci_dict:
+
+                    threshold, nci_type = nci_dict[s]
+                    dist = np.linalg.norm(center - atom)
+
+                    if dist < threshold:
+
+                        print_list.append(nci_type + f' ({round(dist, 2)} A, atom {i}/ring)')
+                        # string to be printed in log
+
+                        nci.append((nci_type, i, 'ring'))
+                        # tuple to be used in identifying the NCI
+
+    # checking phenyl-phenyl pairs
+    for i, owner_center in enumerate(aromatic_centers):
+        owner1, center1 = owner_center
+        for owner2, center2 in aromatic_centers[i+1:]:
+            if owner1 != owner2:
+            # if this atom belongs to a molecule different than owner
+
+                    threshold, nci_type = nci_dict['PhPh']
+                    dist = np.linalg.norm(center1 - center2)
+
+                    if dist < threshold:
+
+                        print_list.append(nci_type + f' ({round(dist, 2)} A, ring/ring)')
+                        # string to be printed in log
+
+                        nci.append((nci_type, 'ring', 'ring'))
+                        # tuple to be used in identifying the NCI
+
+               
+
+    return nci, print_list
+
+def is_phenyl(coords):
+    '''
+    :params coords: six coordinates of C/N atoms
+    :return tuple: bool indicating if the six atoms look like part of a
+                   phenyl/naphtyl/pyridine system, coordinates for the center of that ring
+
+    NOTE: quinones would show as aromatic: it is okay, since they can do π-stacking as well.
+    '''
+    for i, p in enumerate(coords):
+        mask = np.array([True if j != i else False for j in range(6)], dtype=bool)
+        others = coords[mask]
+        if not max(np.linalg.norm(p-others, axis=1)) < 3:
+            return False, None
+    # if any atomic couple is more than 3 A away from each other, this is not a Ph
+
+    threshold_delta = 1 - np.cos(10 * np.pi/180)
+    flat_delta = 1 - np.abs(np.cos(dihedral(coords[[0,1,2,3]]) * np.pi/180))
+
+    if flat_delta < threshold_delta:
+        flat_delta = 1 - np.abs(np.cos(dihedral(coords[[0,1,2,3]]) * np.pi/180))
+        if flat_delta < threshold_delta:
+            # print('phenyl center at', np.mean(coords, axis=0))
+            return True, np.mean(coords, axis=0)
+    
+    return False, None
+
+
+
+
 
 
 # def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
