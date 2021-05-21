@@ -420,17 +420,32 @@ class Docker:
         (Cyclical embed) Function that sets the mol.pivots attribute, that is a list
         containing each vector connecting two orbitals on different atoms
         '''
-
-        indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict.values()])
-        # indexes of vectors in mol.center. Reactive atoms are necessarily 2 and so for one center on atom 0 and 
-        # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
-
         mol.pivots = []
 
-        for i,j in indexes:
-            v1 = list(mol.reactive_atoms_classes_dict.values())[0].center[i]
-            v2 = list(mol.reactive_atoms_classes_dict.values())[1].center[j]
-            mol.pivots.append(Pivot(v1, v2, i, j))
+        if len(mol.reactive_atoms_classes_dict) == 2:
+        # most molecules: dienes and alkenes for Diels-Alder, conjugated ketones for acid-bridged additions
+
+            indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict.values()])
+            # indexes of vectors in reactive_atom.center. Reactive atoms are 2 and so for one center on atom 0 and 
+            # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
+
+            for i,j in indexes:
+                c1 = list(mol.reactive_atoms_classes_dict.values())[0].center[i]
+                c2 = list(mol.reactive_atoms_classes_dict.values())[1].center[j]
+                mol.pivots.append(Pivot(c1, c2, i, j))
+
+        elif len(mol.reactive_atoms_classes_dict) == 1:
+        # carbenes, oxygen atom in Prilezhaev reaction, SO2 in classic chelotropic reactions
+
+            indexes = cartesian_product(*[range(len(list(mol.reactive_atoms_classes_dict.values())[0].center)) for _ in range(2)])
+            indexes = [i for i in indexes if i[0] != i[1] and (sorted(i) == i).all()]
+            # indexes of vectors in reactive_atom.center. Reactive atoms is just one, that builds pivots with itself. 
+            # pivots with the same index or inverse order are discarded. 2 centers on one atom 2 yield just [[0,1]]
+            
+            for i,j in indexes:
+                c1 = list(mol.reactive_atoms_classes_dict.values())[0].center[i]
+                c2 = list(mol.reactive_atoms_classes_dict.values())[0].center[j]
+                mol.pivots.append(Pivot(c1, c2, i, j))
 
         mol.pivots = np.array(mol.pivots)
 
@@ -468,14 +483,17 @@ class Docker:
 
     def _setup(self):
         '''
-        :params steps: int, number of steps for the sampling of rotations. A value of 3 corresponds
-                        to three 120° turns for each molecule.
-        :params optimize: bool, whether to run the semiempirical optimization calculations
+        TODO
         '''
 
         if len(self.objects) in (2,3):
-        # Calculating the number of conformation combinations based on embed type
-            if all([len(molecule.reactive_atoms_classes_dict) == 2 for molecule in self.objects]):
+        # Setting embed type and calculating the number of conformation combinations based on embed type
+
+            cyclical = all([len(molecule.reactive_atoms_classes_dict) == 2 for molecule in self.objects])
+            chelotropic = sorted([len(molecule.reactive_atoms_classes_dict) for molecule in self.objects]) == [1,2]
+            string = all([len(molecule.reactive_atoms_classes_dict) == 1 for molecule in self.objects]) and len(self.objects) == 2
+
+            if cyclical or chelotropic:
 
                 for molecule in self.objects:
                     self._set_pivots(molecule)
@@ -505,14 +523,17 @@ class Docker:
                 # if the user specified some pairings to be respected, we have less candidates to check
                 self.candidates = int(self.candidates)
 
-            elif all([len(molecule.reactive_atoms_classes_dict) == 1 for molecule in self.objects]) and len(self.objects) == 2:
+            elif string:
                 self.embed = 'string'
                 self.candidates = self.options.rotation_steps*np.prod([len(mol.atomcoords) for mol in self.objects])*np.prod([len(mol.centers) for mol in self.objects])
 
             else:
-                raise InputError('Bad input - The only molecular configurations accepted are: 1) two or three molecules with two reactive centers each or 2) two molecules with one reactive center each.')
+                raise InputError(('Bad input - The only molecular configurations accepted are:\n' + 
+                                  '1) Two or three molecules with two reactive centers each (cyclical embed)\n' + 
+                                  '2) Two molecules with one reactive center each (string embed)\n' +
+                                  '3) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
         else:
-            raise InputError('Bad input - too many molecules specified (3 max).')
+            raise InputError('Bad input - too many or too few molecules specified (2 or 3 are required).')
 
         self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
@@ -532,7 +553,9 @@ class Docker:
         :return: list of index couples, to be constrained during the partial optimization.
         '''
         cumulative_pivots_ids = [[mol.reactive_indexes[0]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)]),
-                                  mol.reactive_indexes[1]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)])] for mol in self.objects]
+                                  mol.reactive_indexes[1]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)])] if len(mol.reactive_indexes) == 2 else [
+                                  mol.reactive_indexes[0]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)]),
+                                  mol.reactive_indexes[0]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)])] for mol in self.objects]
 
         def orient(i,ids,n):
             if swaps[n][i] == True:
@@ -959,7 +982,13 @@ class Docker:
                             # goes to end-start) and also aligns the molecules so that they face each other
                             # (mol_direction goes to directions[i])
                             
-                            axis_of_step_rotation = alignment_rotation @ (reactive_coords[0]-reactive_coords[1])
+                            if len(reactive_coords) == 2:
+                                axis_of_step_rotation = alignment_rotation @ (reactive_coords[0]-reactive_coords[1])
+                            else:
+                                axis_of_step_rotation = alignment_rotation @ pivots[i].pivot
+                            # molecules with two reactive atoms are step-rotated around the line connecting
+                            # the reactive atoms, while single reactive atom mols around their active pivot
+
                             step_rotation = rot_mat_from_pointer(axis_of_step_rotation, angle)
                             # this rotation cycles through all different rotation angles for each molecule
 
@@ -1099,12 +1128,14 @@ class Docker:
 
             if self.embed == 'cyclical':
                 embedded_structures = self.cyclical_embed()
+
                 if embedded_structures == []:
                     s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
                          '    This is probably because one molecule has two reactive centers at a great distance,\n' +
                          '    preventing the other two molecules from forming a closed, cyclical structure.')
                     self.log(s, p=False)
                     raise ZeroCandidatesError(s)
+
             else:
                 embedded_structures = self.string_embed()
 
@@ -1399,7 +1430,7 @@ class Docker:
                     write_xyz(structure, atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
             t_end_run = time.time()
-            self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s')
+            self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s\n')
 
             ################################################# TS SEEKING: IRC + NEB
 
@@ -1461,16 +1492,32 @@ class Docker:
                 t_end = time.time()
                 self.log(f'Mopac {self.options.mopac_level} frequency calculation took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
 
+                ################################################# NEB XYZ OUTPUT
+
+                self.energies -= np.min(self.energies)
+                _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                self.energies = scramble(self.energies, sequence)
+                self.structures = scramble(self.structures, sequence)
+                self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                # sorting structures based on energy
+
+                outname = 'TSCoDe_NEB_TSs.xyz'
+                with open(outname, 'w') as f:        
+                    for i, structure in enumerate(self.structures):
+                        write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
+                self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
+
             ################################################# OPTIONAL: PRINT NON-COVALENT INTERACTION GUESSES
 
-            if self.options.nci:
+            if self.options.nci and self.options.optimization:
 
                 self.log('--> Non-covalent interactions spotting')
                 self.nci = []
 
-                for i, structure in enumerate(self.structure):
+                for i, structure in enumerate(self.structures):
 
-                    print_list, nci = get_nci(structure, atomnos, self.constrained_indexes[i], self.ids)
+                    nci, print_list = get_nci(structure, atomnos, self.constrained_indexes[i], self.ids)
                     self.nci.append(nci)
 
                     if nci != []:
@@ -1503,27 +1550,6 @@ class Docker:
                         for nci, shared_by in unshared_nci:
                             nci_type, i1, i2 = nci
                             self.log(f'    {nci_type} between indexes {i1}/{i2} is present in {len(shared_by)}/{len(self.structures)} structures {tuple([i+1 for i in shared_by])}')
-
-            ################################################# FINAL XYZ OUTPUT
-
-            self.energies -= np.min(self.energies)
-            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-            self.energies = scramble(self.energies, sequence)
-            self.structures = scramble(self.structures, sequence)
-            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-            # sorting structures based on energy
-
-            outname = 'TSCoDe_NEB_TSs.xyz'
-            with open(outname, 'w') as f:        
-                for i, structure in enumerate(self.structures):
-                    write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
-
-            self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
-            
-            ################################################# SDF OUTPUT 
-
-            # sdf_name = outname.split('.')[0] + '.sdf'
-            # check_call(f'obabel {outname} -O {sdf_name}')
 
             ################################################# VMD OUTPUT
 
@@ -1593,7 +1619,8 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         filename = 'input.txt'
         # filename = 'input2.txt'
-        os.chdir('Resources/tri')
+        # os.chdir('Resources/tri')
+        os.chdir('Resources/epox')
         # print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
         # quit()
     

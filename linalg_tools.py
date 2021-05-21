@@ -15,10 +15,6 @@ def polygonize(lengths):
     :return vertexes_out: list of vectors couples (start, end)
     '''
     assert len(lengths) in (2,3)
-    assert all([lengths[i] < lengths[i-1] + lengths[i-2] for i in (0,1,2)]), (
-        f'Impossible to build a triangle with sides {lengths}'
-    )
-    # check that we can build a triangle with the specified vectors
 
     arr = np.zeros((len(lengths),2,3))
 
@@ -32,6 +28,11 @@ def polygonize(lengths):
         vertexes_out[1,1] *= -1
 
     else:
+        
+        assert all([lengths[i] < lengths[i-1] + lengths[i-2] for i in (0,1,2)]), (
+            f'Impossible to build a triangle with sides {lengths}')
+        # check that we can build a triangle with the specified vectors
+
         arr[0,1] = np.array([lengths[0],0,0])
         arr[1,0] = np.array([lengths[0],0,0])
 

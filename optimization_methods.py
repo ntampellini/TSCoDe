@@ -127,7 +127,7 @@ def read_mop_out(filename):
                             break
 
                         if 'FINAL HEAT OF FORMATION' in line:
-                            energy = line.split()[5]
+                            energy = float(line.split()[5])
                             # in kcal/mol
 
                         if 'CARTESIAN COORDINATES' in line:
@@ -180,7 +180,10 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
     free_indexes = list(set(range(len(atomnos))) - set(constrained_indexes_list))
     # print('free indexes are', free_indexes, '\n')
 
-    for a, b in constrained_indexes:
+    if len(constrained_indexes_list) == len(set(constrained_indexes_list)):
+    # block pairs of atoms if no atom is involved in more than one distance constrain
+
+        for a, b in constrained_indexes:
             
             order.append(b)
             order.append(a)
@@ -207,6 +210,67 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
             s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[atomnos[b]].symbol, coords[b][0], coords[b][1], coords[b][2]))
             s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[a]].symbol, dist, angle, d_angle, list_len, free_indexes.index(c)+1, free_indexes.index(d)+1))
             # print(f'Blocked bond between mopac ids {list_len} {list_len+1}\n')
+
+    elif len(set(constrained_indexes_list)) == 3:
+    # three atoms, the central bound to the other two
+    # OTHERS[0]: cartesian
+    # CENTRAL: internal (self, others[0], two random)
+    # OTHERS[1]: internal (self, central, two random)
+        
+        central = max(set(constrained_indexes_list), key=lambda x: list(constrained_indexes_list).count(x))
+        # index of the atom that is constrained to two other
+
+        others = list(set(constrained_indexes_list) - {central})
+
+    # OTHERS[0]
+
+        order.append(others[0])
+        s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[atomnos[others[0]]].symbol, coords[others[0]][0], coords[others[0]][1], coords[others[0]][2]))
+        # first atom is placed in cartesian coordinates, the other two have a distance constraint and are expressed in internal coordinates
+
+    #CENTRAL
+
+        c, d = np.random.choice(free_indexes, 2)
+        while c == d:
+            c, d = np.random.choice(free_indexes, 2)
+        # indexes of reference atoms, from unconstraind atoms set
+
+        dist = np.linalg.norm(coords[central] - coords[others[0]]) # in Angstrom
+
+        angle = np.arccos(norm(coords[central] - coords[others[0]]) @ norm(coords[others[0]] - coords[c]))*180/np.pi # in degrees
+
+        d_angle = dihedral([coords[central],
+                            coords[others[0]],
+                            coords[c],
+                            coords[d])
+        d_angle += 360 if d_angle < 0 else 0
+
+        list_len = len(s)
+        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist, angle, d_angle, list_len, free_indexes.index(c)+1, free_indexes.index(d)+1))
+
+    #OTHERS[1]
+
+        c1, d1 = np.random.choice(free_indexes, 2)
+        while c1 == d1:
+            c1, d1 = np.random.choice(free_indexes, 2)
+        # indexes of reference atoms, from unconstraind atoms set
+
+        dist1 = np.linalg.norm(coords[others[1]] - coords[central]) # in Angstrom
+
+        angle1 = np.arccos(norm(coords[others[1]] - coords[central]) @ norm(coords[others[1]] - coords[c1]))*180/np.pi # in degrees
+
+        d_angle1 = dihedral([coords[others[1]],
+                             coords[central],
+                             coords[c1],
+                             coords[d1])
+        d_angle1 += 360 if d_angle < 0 else 0
+
+        list_len = len(s)
+        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist1, angle1, d_angle1, list_len, free_indexes.index(c1)+1, free_indexes.index(d1)+1))
+
+    else:
+        raise NotImplementedError('The constraints provided for MOPAC optimization are not yet supported')
+
 
     s = ''.join(s)
     with open(f'{title}.mop', 'w') as f:
@@ -649,16 +713,18 @@ def get_nci(coords, atomnos, constrained_indexes, ids):
             masks.append(list(it.combinations(aromatics_indexes, 6)))
             # all possible combinations of picking 6 C/N/O atoms from this molecule
 
-    masks = np.concatenate(masks)
+    if len(masks) > 0:
 
-    for mask in masks:
+        masks = np.concatenate(masks)
 
-        phenyl, center = is_phenyl(coords[mask])
-        if phenyl:
-            owner = next(i for i,n in enumerate(np.cumsum(ids)) if np.all(mask < n))
-            # index of the molecule that owns that phenyl ring
+        for mask in masks:
 
-            aromatic_centers.append((owner, center))
+            phenyl, center = is_phenyl(coords[mask])
+            if phenyl:
+                owner = next(i for i,n in enumerate(np.cumsum(ids)) if np.all(mask < n))
+                # index of the molecule that owns that phenyl ring
+
+                aromatic_centers.append((owner, center))
 
     # print(f'structure has {len(aromatic_centers)} phenyl rings')
 

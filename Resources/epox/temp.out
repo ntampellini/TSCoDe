@@ -1,0 +1,98 @@
+ *******************************************************************************
+ ** Site#: 36969        For non-commercial use only    Version 21.051W 64BITS **
+ *******************************************************************************
+ ** Cite this program as: MOPAC2016, Version: 21.051W, James J. P. Stewart,   **
+ ** Stewart Computational Chemistry, web: HTTP://OpenMOPAC.net. Days left: 276**
+ *******************************************************************************
+ **                                                                           **
+ **                                MOPAC2016                                  **
+ **                                                                           **
+ *******************************************************************************
+
+                              PM7 CALCULATION RESULTS
+
+ *******************************************************************************
+ *  CALCULATION DONE:                                Thu May 20 16:34:26 2021  *
+ *  PM7        - The PM7 Hamiltonian to be used
+ *  GEO-OK     - OVERRIDE INTERATOMIC DISTANCE AND OTHER SAFETY CHECKS
+ *  T=         - A TIME OF 172800.0 SECONDS REQUESTED
+ *  DUMP=N     - RESTART FILE WRITTEN EVERY 7200.0 SECONDS REQUESTED
+ *******************************************************************************
+PM7 GEO-OK
+ temp
+
+  ATOM    CHEMICAL      BOND LENGTH      BOND ANGLE     TWIST ANGLE 
+ NUMBER    SYMBOL       (ANGSTROMS)      (DEGREES)       (DEGREES) 
+   (I)                     NA:I           NB:NA:I       NC:NB:NA:I       NA    NB    NC 
+     1       H         -1.21315019  *   -0.2886296  *    0.4684513  *     0     0     0
+     2       H         -1.21315890  *   -1.9113723  *   -0.4684397  *     0     0     0
+     3       H          1.21315489  *   -0.2886277  *    0.4684397  *     0     0     0
+     4       H          1.21314618  *   -1.9113704  *   -0.4684513  *     0     0     0
+     5       C          0.03434537  *    2.4160940  *    1.4865725  *     0     0     0
+     6       O          0.06840407  *    1.6347895  *    2.4037774  *     0     0     0
+     7       H          0.01853233  *    3.5069861  *    1.5189851  *     0     0     0
+     8       O         -0.00000000  *    2.0255307  *    0.1879890  *     0     0     0
+     9       H          0.00000000  *    0.2280150  *    0.9241761  *     0     0     0
+    10       O         -0.00000000  *    0.6096325  *    0.0000000  *     0     0     0
+    11       C          1.83464404     145.8283829  * -139.4987303  *    10     7     8
+    12       O         -0.00000000  *    0.6096325  *    0.0000000  *     0     0     0
+    13       C          1.83464118     135.5731031  *   20.3502679  *    12     5     3
+ 
+
+
+          CARTESIAN COORDINATES 
+
+    NO.       ATOM           X           Y           Z
+
+     1         H         -1.2132     -0.2886      0.4685
+     2         H         -1.2132     -1.9114     -0.4684
+     3         H          1.2132     -0.2886      0.4684
+     4         H          1.2131     -1.9114     -0.4685
+     5         C          0.0343      2.4161      1.4866
+     6         O          0.0684      1.6348      2.4038
+     7         H          0.0185      3.5070      1.5190
+     8         O         -0.0000      2.0255      0.1880
+     9         H          0.0000      0.2280      0.9242
+    10         O         -0.0000      0.6096      0.0000
+    11         C         -0.6656     -1.1000      0.0000
+    12         O         -0.0000      0.6096      0.0000
+    13         C          0.6656     -1.1000      0.0000
+
+ General Reference for PM7:
+ "Optimization of Parameters for Semiempirical Methods VI: More Modifications to the 
+ NDDO Approximations and Re-optimization of Parameters", J. J. P. Stewart, J. Mol. Mod., 1:32, 19 (2013)
+ https://link.springer.com/article/10.1007/s00894-012-1667-x
+
+           Empirical Formula: C3 H6 O4  =    13 atoms
+
+
+
+      MOLECULAR POINT GROUP   :   Cs  
+
+
+      RHF CALCULATION, NO. OF DOUBLY OCCUPIED LEVELS = 21
+
+
+          ATOMS    12 AND    10 ARE SEPARATED BY 0.0000 ANGSTROMS.
+
+          TO CONTINUE CALCULATION SPECIFY "GEO-OK"
+
+   NOTE THAT THE ATOM NUMBERS CORRESPOND TO THE 'CARTESIAN COORDINATES' ATOM LIST.
+
+          GEOMETRY IN ERROR, FIX FAULT BEFORE CONTINUING. Atoms:    12 and    10
+
+ ******************************************************************************
+ *                                                                            *
+ *     Error and normal termination messages reported in this calculation     *
+ *                                                                            *
+ * ATOMS    12 AND    10 ARE SEPARATED BY 0.0000 ANGSTROMS.                   *
+ * GEOMETRY IN ERROR, FIX FAULT BEFORE CONTINUING. Atoms:    12 and    10     *
+ * JOB ENDED NORMALLY                                                         *
+ *                                                                            *
+ ******************************************************************************
+
+
+
+ TOTAL JOB TIME:             0.01 SECONDS
+
+ == MOPAC DONE ==

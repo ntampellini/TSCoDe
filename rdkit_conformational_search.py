@@ -17,7 +17,7 @@ def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill=
 	if iteration == total:
 		print()
 
-def csearch(filename):
+def csearch(filename, mopac_opt=True):
     '''
     Performs a randomic conformational search and returns the conformational ensemble,
     pruned based on cluster analysis. 10**(number of heavy-atoms rotable bonds) steps.
@@ -60,10 +60,11 @@ def csearch(filename):
         input_file = filename
     else:
         input_file = filename.split('.')[0] + '.sdf'
-        check_call(f'obabel {filename} -o sdf -O {input_file}'.split(), stdout=DEVNULL, stderr=STDOUT)
+        check_call(f'obabel {filename} -o sdf -O {input_file} -b'.split(), stdout=DEVNULL, stderr=STDOUT)
         
     suppl = Chem.ForwardSDMolSupplier(input_file)
     mol = [m for m in suppl][0]
+    assert mol != None, 'Molecule read failed.'
     m = Chem.AddHs(mol)
     old_mol = deepcopy(mol)
        
@@ -196,6 +197,38 @@ def csearch(filename):
         os.remove(input_file)
     os.remove(outname)
 
+    if mopac_opt:
+
+        from cclib.io import ccread
+        from optimization_methods import mopac_opt, scramble, write_xyz
+        import numpy as np
+
+        data = ccread(xyz_outname)
+        new_atomcoords = deepcopy(data.atomcoords)
+        new_energies = [None for _ in range(len(data.atomcoords))]
+
+        for i, coords in enumerate(data.atomcoords):
+            new_coords, new_energy, success = mopac_opt(coords, data.atomnos)
+
+            if success:
+                new_atomcoords[i] = new_coords
+                new_energies[i] = new_energy
+
+        new_energies = np.array(new_energies) - min(new_energies)
+
+        _, sequence = zip(*sorted(zip(new_energies, range(len(new_energies))), key=lambda x: x[0]))
+        new_energies = scramble(new_energies, sequence)
+        new_atomcoords = scramble(new_atomcoords, sequence)
+        # sorting structures based on energy
+
+        mopac_outname = filename.split('.')[0] + '_ensemble_mopac.xyz'
+
+        with open(mopac_outname, 'w') as f:
+            for i in range(len(new_atomcoords)):
+                write_xyz(new_atomcoords[i], data.atomnos, f, title=f'Structure {i+1} - Rel. E. {round(new_energies[i], 3)} kcal/mol')
+
+        return new_atomcoords, new_energies
+
     return ensemble, energies
 
 if __name__ == '__main__':
@@ -213,7 +246,9 @@ if __name__ == '__main__':
     # ensemble, energies = csearch('SN2/MeOH.mol')
     # ensemble, energies = csearch('SN2/flex.mol')
     # ensemble, energies = csearch('bulk/tax.xyz')
-    ensemble, energies = csearch('acid.sdf')
+    # ensemble, energies = csearch('knoevenagel/imine.xyz')
+    # ensemble, energies = csearch('knoevenagel/oxindole.xyz')
+    ensemble, energies = csearch('knoevenagel/DNBA.xyz')
 
     t_end = time.time()
     print(f'Took {round(t_end - t_start, 3)} s')

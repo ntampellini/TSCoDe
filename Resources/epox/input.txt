@@ -1,0 +1,3 @@
+NOTS
+C2H4.xyz 0 1
+HCOOOH.xyz 4

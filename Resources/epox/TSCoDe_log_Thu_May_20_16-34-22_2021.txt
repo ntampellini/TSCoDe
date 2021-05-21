@@ -1,0 +1,103 @@
+*************************************************************
+*      TSCODE: Transition State Conformational Docker       *
+*************************************************************
+*                 Version 0.00 - Pre-release                *
+*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *
+*************************************************************
+
+--> No atom pairing imposed. Computing all possible dispositions.
+--> Setup performed correctly. 288 candidates will be generated.
+
+--> Input structures, reactive indexes and reactive atoms TSCODE type:
+    1. C2H4.xyz: 0->C(sp2), 1->C(sp2)
+    2. HCOOOH.xyz: 4->O(Ether)
+
+--> Calculation options used were:
+    - TS_optimization : False
+    - checkpoint : False
+    - clash_thresh : 1.2
+    - max_clashes : 3
+    - max_newbonds : 2
+    - mopac_level : PM7
+    - nci : True
+    - optimization : True
+    - pruning_thresh : 0.5
+    - rigid : False
+    - rotation_steps : 6
+    - suprafacial : False
+
+--> Performing cyclical embed (288 candidates)
+Generated 288 transition state candidates (0.55 s)
+
+--> Checking structures for compenetrations
+Discarded 168 candidates for compenetration (120 left, 0.08 s)
+
+--> Similarity Processing
+    - similarity pre-processing   (k=20) - 0.06 s - kept 118/120
+    - similarity pre-processing   (k=10) - 0.1 s - kept 107/118
+    - similarity pre-processing   (k=5) - 0.17 s - kept 95/107
+    - similarity pre-processing   (k=2) - 0.3 s - kept 71/95
+    - similarity final processing (k=1) - 0.34 s - kept 53/71
+Discarded 67 candidates for similarity (53 left, 0.97 s)
+
+--> Structure optimization (PM7 level)
+    - Mopac PM7 optimization: Structure 1 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 2 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 3 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 4 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 5 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 6 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 7 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 8 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 9 FAILED TO READ FILE - took 0.03 s
+    - Mopac PM7 optimization: Structure 10 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 11 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 12 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 13 FAILED TO READ FILE - took 0.08 s
+    - Mopac PM7 optimization: Structure 14 FAILED TO READ FILE - took 0.03 s
+    - Mopac PM7 optimization: Structure 15 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 16 FAILED TO READ FILE - took 0.03 s
+    - Mopac PM7 optimization: Structure 17 FAILED TO READ FILE - took 0.03 s
+    - Mopac PM7 optimization: Structure 18 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 19 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 20 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 21 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 22 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 23 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 24 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 25 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 26 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 27 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 28 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 29 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 30 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 31 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 32 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 33 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 34 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 35 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 36 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 37 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 38 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 39 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 40 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 41 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 42 FAILED TO READ FILE - took 0.06 s
+    - Mopac PM7 optimization: Structure 43 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 44 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 45 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 46 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 47 FAILED TO READ FILE - took 0.05 s
+    - Mopac PM7 optimization: Structure 48 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 49 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 50 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 51 FAILED TO READ FILE - took 0.03 s
+    - Mopac PM7 optimization: Structure 52 FAILED TO READ FILE - took 0.04 s
+    - Mopac PM7 optimization: Structure 53 FAILED TO READ FILE - took 0.03 s
+Mopac PM7 optimization took 2.16 s (0.04 s per structure)
+Discarded 53 candidates because optimizations failed or scrambled some atoms (0 left)
+--> Program termination: No candidates found - Total time 3.76 s
+Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:
+    - Enlarging the search space by specifying a larger "steps" value with the keyword STEPS=n
+    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.
+
