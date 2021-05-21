@@ -102,6 +102,12 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
 
+class MopacReadError(Exception):
+    '''
+    Thrown when reading MOPAC output files fails for some reason.
+    '''
+    pass
+
 def read_mop_out(filename):
     '''
     Reads a MOPAC output looking for optimized coordinates and energy.
@@ -150,7 +156,7 @@ def read_mop_out(filename):
         success = True
         return coords, energy, success
     else:
-        raise Exception(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
+        raise MopacReadError(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
 
 def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='temp', read_output=True):
     '''
@@ -230,6 +236,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
 
     #CENTRAL
 
+        order.append(central)
         c, d = np.random.choice(free_indexes, 2)
         while c == d:
             c, d = np.random.choice(free_indexes, 2)
@@ -242,14 +249,15 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
         d_angle = dihedral([coords[central],
                             coords[others[0]],
                             coords[c],
-                            coords[d])
+                            coords[d]])
         d_angle += 360 if d_angle < 0 else 0
 
         list_len = len(s)
-        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist, angle, d_angle, list_len, free_indexes.index(c)+1, free_indexes.index(d)+1))
+        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist, angle, d_angle, list_len-1, free_indexes.index(c)+1, free_indexes.index(d)+1))
 
     #OTHERS[1]
 
+        order.append(others[1])
         c1, d1 = np.random.choice(free_indexes, 2)
         while c1 == d1:
             c1, d1 = np.random.choice(free_indexes, 2)
@@ -262,11 +270,11 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
         d_angle1 = dihedral([coords[others[1]],
                              coords[central],
                              coords[c1],
-                             coords[d1])
+                             coords[d1]])
         d_angle1 += 360 if d_angle < 0 else 0
 
         list_len = len(s)
-        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist1, angle1, d_angle1, list_len, free_indexes.index(c1)+1, free_indexes.index(d1)+1))
+        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[others[1]]].symbol, dist1, angle1, d_angle1, list_len-1, free_indexes.index(c1)+1, free_indexes.index(d1)+1))
 
     else:
         raise NotImplementedError('The constraints provided for MOPAC optimization are not yet supported')

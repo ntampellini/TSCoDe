@@ -104,6 +104,9 @@ class Options:
                                   # Syntax: LEVEL=PM7
 
                     'RIGID',      # For trimolecular TSs, do not bend structures to better build TSs
+
+                    'NONCI',      # Avoid estimating and printing non-covalent interactions
+
                     ]
                     
     # list of keyword names to be used in the first line of program input
@@ -298,6 +301,9 @@ class Docker:
                         self.options.rigid = True
                     else:
                         raise SyntaxError('RIGID keyword is only used for trimolecular transition states.')
+
+                if 'NONCI' in keywords_list:
+                    self.options.nci = False
 
 
         except Exception as e:
@@ -1078,7 +1084,7 @@ class Docker:
 
     def _set_default_distances(self):
         '''
-        Called before trimolecular TS refinement if user did not specify all
+        Called before TS refinement if user did not specify all
         (or any) of bonding distances with the DIST keyword.
         '''
         if not hasattr(self, 'pairings_dists'):
@@ -1261,24 +1267,26 @@ class Docker:
                                                                                                      atomnos,
                                                                                                      graphs,
                                                                                                      self.constrained_indexes[i],
-                                                                                                     method=f'{self.options.mopac_level} GEO-OK',
+                                                                                                     method=f'{self.options.mopac_level} GEO-OK CYCLES=500',
                                                                                                      max_newbonds=self.options.max_newbonds)
 
 
                                 exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'
 
-                            except ValueError:
+                            except MopacReadError:
                                 # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
                                 # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                                # The easiest solution is to reject the structure and go on.
+                                # The easiest solution is to reject the structure and go on. TODO - not true anymore
                                 self.structures[i] = None
                                 self.energies[i] = np.inf
                                 self.exit_status[i] = False
                                 exit_str = 'FAILED TO READ FILE'
 
-                            finally:
-                                t_end_opt = time.time()
-                                self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                            except Exception as e:
+                                raise e
+
+                            t_end_opt = time.time()
+                            self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
@@ -1333,73 +1341,71 @@ class Docker:
 
                         ################################################# REFINING: BONDING DISTANCES
 
-                        if len(self.objects) == 3:
+                        self.log(f'--> Refining bonding distances for TSs ({self.options.mopac_level} level)')
 
-                            self.log(f'--> Refining bonding distances for trimolecular TSs ({self.options.mopac_level} level)')
+                        if not hasattr(self, 'pairings_dists') or len(self.pairings) > len(self.pairings_dists):
+                        # if user did not specify all (or any) of the distances
+                        # between imposed pairings, default values will be used
+                            self._set_default_distances()
 
-                            if not hasattr(self, 'pairings_dists') or len(self.pairings) > len(self.pairings_dists):
-                            # if user did not specify all (or any) of the distances
-                            # between imposed pairings, default values will be used
-                                self._set_default_distances()
+                        for i, structure in enumerate(deepcopy(self.structures)):
+                            loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                            try:
+                                t_start_opt = time.time()
+                                new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self, structure, atomnos, graphs)
 
-                            for i, structure in enumerate(deepcopy(self.structures)):
-                                loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-                                try:
-                                    t_start_opt = time.time()
-                                    new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self, structure, atomnos, graphs)
+                                if self.exit_status[i]:
+                                    self.structures[i] = new_structure
+                                    self.energies[i] = new_energy
+                                    exit_str = 'REFINED'
+                                else:
+                                    exit_str = 'SCRAMBLED'
+                                                                                                                                        
+                            except ValueError as e:
+                                # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                                # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                                # The easiest solution is to reject the structure and go on. TODO-check
+                                self.log(e)
+                                self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
 
-                                    if self.exit_status[i]:
-                                        self.structures[i] = new_structure
-                                        self.energies[i] = new_energy
-                                        exit_str = 'REFINED'
-                                    else:
-                                        exit_str = 'SCRAMBLED'
-                                                                                                                                            
-                                except ValueError as e:
-                                    # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
-                                    # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                                    # The easiest solution is to reject the structure and go on. TODO-check
-                                    self.log(e)
-                                    self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
-
-                                finally:
-                                    t_end_opt = time.time()
-                                    self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
-                            
-                            loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-                            t_end = time.time()
-                            self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
-                            self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{len(self.exit_status)} structures. Non-refined ones will not be discarded.')
-
-                            ################################################# PRUNING: ENERGY, AFTER REFINEMENT
+                            finally:
+                                t_end_opt = time.time()
+                                self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
                         
-                            mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
-                            self.structures = self.structures[mask]
-                            self.energies = self.energies[mask]
+                        loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                        t_end = time.time()
+                        self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                        self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{len(self.exit_status)} structures. Non-refined ones will not be discarded.')
 
-                            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-                            from optimization_methods import scramble
-                            self.energies = scramble(self.energies, sequence)
-                            self.structures = scramble(self.structures, sequence)
-                            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-                            # sorting structures based on energy
+                        ################################################# PRUNING: ENERGY, AFTER REFINEMENT
+                    
+                        mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
+                        self.structures = self.structures[mask]
+                        self.energies = self.energies[mask]
 
-                            if np.any(mask == False):
-                                self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
+                        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                        from optimization_methods import scramble
+                        self.energies = scramble(self.energies, sequence)
+                        self.structures = scramble(self.structures, sequence)
+                        self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                        # sorting structures based on energy
 
-                            ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
+                        if np.any(mask == False):
+                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
-                            if len(self.structures) == 0:
-                                raise ZeroCandidatesError()
+                        ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
 
-                            t_start = time.time()
-                            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
-                            self.energies = self.energies[mask]
-                            t_end = time.time()
-                            
-                            if np.any(mask == False):
-                                self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                            self.log()
+                        if len(self.structures) == 0:
+                            raise ZeroCandidatesError()
+
+                        t_start = time.time()
+                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                        self.energies = self.energies[mask]
+                        t_end = time.time()
+                        
+                        if np.any(mask == False):
+                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        self.log()
 
 
                 except ZeroCandidatesError:

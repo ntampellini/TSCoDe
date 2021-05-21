@@ -34,8 +34,8 @@ class Single:
 
         if update:
             if orb_dim is None:
+                key = self.symbol + ' ' + str(self)
                 try:
-                    key = self.symbol + ' ' + str(self)
                     orb_dim = orb_dim_dict[key]
                 except KeyError:
                     orb_dim = np.linalg.norm(self.coord - self.other)
@@ -43,6 +43,7 @@ class Single:
 
             self.orb_vecs = np.array([norm(self.coord - self.other)])
             self.center = np.array([orb_dim * self.orb_vecs[0] + self.coord])
+
 
 class Sp2:
     '''
@@ -77,8 +78,8 @@ class Sp2:
 
         if update:
             if orb_dim is None:
+                key = self.symbol + ' ' + str(self)
                 try:
-                    key = self.symbol + ' ' + str(self)
                     orb_dim = orb_dim_dict[key]
                 except KeyError:
                     orb_dim = orb_dim_dict['Fallback']
@@ -88,7 +89,6 @@ class Sp2:
 
             self.center += self.coord
 
-# class Sp: TODO       
 
 class Sp3:
     '''
@@ -125,8 +125,8 @@ class Sp3:
 
         if update:
             if orb_dim is None:
+                key = self.symbol + ' ' + str(self)
                 try:
-                    key = self.symbol + ' ' + str(self)
                     orb_dim = orb_dim_dict[key]
                 except KeyError:
                     orb_dim = orb_dim_dict['Fallback']
@@ -209,8 +209,8 @@ class Ether:
 
         if update:
             if orb_dim is None:
+                key = self.symbol + ' ' + str(self)
                 try:
-                    key = self.symbol + ' ' + str(self)
                     orb_dim = orb_dim_dict[key]
                 except KeyError:
                     orb_dim = orb_dim_dict['Fallback']
@@ -253,8 +253,8 @@ class Ketone:
 
         if update:
             if orb_dim is None:
+                key = self.symbol + ' ' + str(self)
                 try:
-                    key = self.symbol + ' ' + str(self)
                     orb_dim = orb_dim_dict[key]
                 except KeyError:
                     orb_dim = orb_dim_dict['Fallback']
@@ -274,8 +274,8 @@ class Ketone:
                 pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
 
             else:
-            # otherwise, it can be an alkoxide/ketene and they lie
-            # on a random plane. TODO: improve this
+            # otherwise, it can be an alkoxide/ketene and they can lie
+            # on a random plane.
                 r = np.random.rand()
                 v0 = self.vector[0]
                 v1 = self.vector[1]
@@ -319,23 +319,136 @@ class Imine:
 
         if update:
             if orb_dim is None:
+                key = self.symbol + ' ' + str(self)
                 try:
-                    key = self.symbol + ' ' + str(self)
                     orb_dim = orb_dim_dict[key]
                 except KeyError:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
-            self.center = np.array([norm(-np.mean(self.vectors, axis=0))*orb_dim])
+            self.center = self.center = np.array([-norm(np.mean([norm(v) for v in self.vectors], axis=0))*orb_dim])
             self.orb_vecs = np.array([norm(center) for center in self.center])
             self.center += self.coord
             # two vectors defining the position of the two orbital lobes centers
 
 
+class Sp_or_carbene:
+    '''
+    '''
+    def __init__(self):
+        pass
+    
+    def __repr__(self):
+        return self.type
+
+    def init(self, mol, i, update=False, orb_dim=None) -> None:
+        '''
+        '''
+        self.index = i
+        self.symbol = pt[mol.atomnos[i]].symbol
+        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
+        neighbors_indexes.remove(i)
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+
+        self.coord = mol.atomcoords[0][i]
+        self.others = mol.atomcoords[0][neighbors_indexes]
+
+        self.vectors = self.others - self.coord # vector connecting center to substituent
+
+        self.alignment_matrix = rotation_matrix_from_vectors(np.array([1,0,0]), -np.mean(self.vectors, axis=0))
+
+        angle = vec_angle(norm(self.others[0] - self.coord),
+                          norm(self.others[1] - self.coord))
+        
+        if np.abs(angle - 180) < 5:
+            self.type = 'sp'
+        else:
+            self.type = 'bent carbene'
+
+        self.allene = False
+        if self.type == 'sp' and all([s == 'C' for s in self.neighbors_symbols]):
+
+            neighbors_of_neighbors_indexes = (list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys()),
+                                              list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[1]][1].keys()))
+
+            neighbors_of_neighbors_indexes[0].remove(i)
+            neighbors_of_neighbors_indexes[1].remove(i)
+            neighbors_of_neighbors_indexes[0].remove(neighbors_indexes[0])
+            neighbors_of_neighbors_indexes[1].remove(neighbors_indexes[1])
+
+            if (len(side1) == len(side2) == 2 for side1, side2 in neighbors_of_neighbors_indexes):
+                self.allene = True
+
+        if update:
+            if orb_dim is None:
+                key = self.symbol + ' ' + self.type
+                try:
+                    orb_dim = orb_dim_dict[key]
+                except KeyError:
+                    orb_dim = orb_dim_dict['Fallback']
+                    print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
+        
+            if self.type == 'sp': # TODO would be cool to do better for allenes
+                
+                r = np.random.rand()
+                v0 = self.vectors[0][0]
+                v1 = self.vectors[0][1]
+                v2 = self.vectors[0][2]
+                pivot1 = np.array([r,r,-r*(v0+v1)/v2])
+
+                if self.allene:
+                    # if we have an allene, the generated pivot1 is aligned to
+                    # one allene substituent so that the resulting positions
+                    # for the four orbital centers make chemical sense.
+
+                    allene_axis = norm(self.others[0] - self.others[1])
+                    # versor connecting reactive atom neighbors
+                    
+                    ref = (mol.atomcoords[0][neighbors_of_neighbors_indexes[0][0]] -
+                           mol.atomcoords[0][neighbors_indexes[0]])
+
+                    ref = ref - ref @ allene_axis * allene_axis
+                    # projection of ref orthogonal to allene_axis (vector rejection)
+
+                    pivot1 = R.align_vectors((allene_axis, ref),
+                                             (allene_axis, pivot1))[0].as_matrix() @ pivot1
+
+                pivot2 = norm(np.cross(pivot1, self.vectors[0]))
+                        
+                self.center = np.array([rot_mat_from_pointer(pivot2, 90) @
+                                        rot_mat_from_pointer(pivot1, angle) @
+                                        norm(self.vectors[0]) for angle in (0, 90, 180, 270)]) * orb_dim
+
+                self.orb_vecs = np.array([norm(center) for center in self.center])
+                # unit vectors connecting reactive atom coord with orbital centers
+
+                self.center += self.coord
+                # four vectors defining the position of the four orbital lobes centers
+
+
+
+            else: # bent carbene case: three centers, sp2+p
+                
+                self.center = np.array([-norm(np.mean([norm(v) for v in self.vectors], axis=0))*orb_dim])
+                self.orb_vecs = np.array([norm(center) for center in self.center])
+                # one sp2 center first
+
+                p_vec = np.cross(norm(self.vectors[0]), norm(self.vectors[1]))
+                p_vecs = np.array([norm(p_vec)*orb_dim, -norm(p_vec)*orb_dim])
+                p_vecs_norm = np.array([norm(p) for p in p_vecs])
+                # adding two p centers
+
+                self.orb_vecs = np.concatenate((self.orb_vecs, p_vecs_norm))
+                self.center = np.concatenate((self.center, p_vecs))                
+
+                self.center += self.coord
+                # three vectors defining the position of the two p lobes and main sp2 lobe centers
+
+
 atom_type_dict = {
              'H1' : Single(),
              'C1' : Single(), # deprotonated terminal alkyne?
-            #  'C2' : Sp(), # toroidal geometry (or carbene, or vinyl anion - #panik)
+             'C2' : Sp_or_carbene(), # sp if straight, carbene if bent
              'C3' : Sp2(), # double ball
              'C4' : Sp3(), # one ball: on the back of weakest bond. If can't tell which is which, we ask user
              'N1' : Single(),

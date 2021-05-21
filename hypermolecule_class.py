@@ -384,7 +384,7 @@ class Hypermolecule:
             self.reactive_atoms_classes_dict[index] = atom_type
             # I should change it, even if it will be painful.
 
-            if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {neighbors} atom(s): {atom_type.neighbors_symbols}')
+            if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
             # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
 
     def write_hypermolecule(self):
@@ -397,10 +397,10 @@ class Hypermolecule:
             f.write(f'\nHypermolecule originated from {self.rootname}\n')
             orbs =np.vstack([atom_type.center for atom_type in self.reactive_atoms_classes_dict.values()]).ravel()
             orbs = orbs.reshape((int(len(orbs)/3), 3))
-            for orb in orbs:
-                f.write('%-5s %-8s %-8s %-8s\n' % ('D', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
             for i, atom in enumerate(self.hypermolecule):
                 f.write('%-5s %-8s %-8s %-8s\n' % (pt[self.hypermolecule_atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
+            for orb in orbs:
+                f.write('%-5s %-8s %-8s %-8s\n' % ('D', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
 
         
         print('Written .xyz orbital file -', hyp_name)
@@ -433,16 +433,17 @@ if __name__ == '__main__':
         16 : ('Resources/maleimide.xyz', (0,5)),
         17 : ('Resources/C2H4.xyz', (0,3)),
         18 : ('Resources/tropone.xyz', ()),
+        19 : ('Resources/C.xyz', (0,4,8))
 
 
             }
 
-    for i in (18,):
+    for i in (19,):
         t = Hypermolecule(test[i][0], test[i][1])
 
-        t.reactive_atoms_classes_dict.values()[0].init(t, t.reactive_indexes[0], update=True, orb_dim=1)
-        t.reactive_atoms_classes_dict.values()[1].init(t, t.reactive_indexes[1], update=True, orb_dim=1.5)
-        t._update_orbs()
+        # t.reactive_atoms_classes_dict.values()[0].init(t, t.reactive_indexes[0], update=True, orb_dim=1)
+        # t.reactive_atoms_classes_dict.values()[1].init(t, t.reactive_indexes[1], update=True, orb_dim=1.5)
+        # t._update_orbs()
 
         t._compute_hypermolecule()
         t.write_hypermolecule()

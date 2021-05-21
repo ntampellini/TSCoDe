@@ -17,6 +17,7 @@ orb_dim_dict = {
     'I Single Bond' : 1,
 
     'C sp' : 1,
+    'N sp' : 1,
 
     'C sp2' : 1.1,
     'N sp2' : 1,
@@ -31,6 +32,8 @@ orb_dim_dict = {
     'S Ketone': 1,
 
     'N Imine' : 1,
+
+    'C bent carbene' : 1,
 
     'Fallback' : 1
                 }       
