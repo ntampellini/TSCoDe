@@ -1,0 +1,120 @@
+*************************************************************
+*      TSCODE: Transition State Conformational Docker       *
+*************************************************************
+*                 Version 0.00 - Pre-release                *
+*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *
+*************************************************************
+
+--> Atom pairings imposed are 2: [[0, 10], [1, 10]] (Cumulative index numbering)
+
+--> Setup performed correctly. 1152 candidates will be generated.
+
+--> Input structures, reactive indexes and reactive atoms TSCODE type and orbital dimensions:
+    1. C2H4.xyz: 0 -> C(sp2, 1.3 A), 1 -> C(sp2, 1.3 A)
+    2. HCOOOH.xyz: 4 -> O(Ether, 1.3 A)
+
+--> Calculation options used were:
+    - checkpoint : False
+    - clash_thresh : 1.2
+    - max_clashes : 3
+    - max_newbonds : 1
+    - mopac_level : PM7
+    - nci : True
+    - neb : False
+    - only_refined : False
+    - optimization : True
+    - pruning_thresh : 0.5
+    - rigid : False
+    - rotation_steps : 12
+    - suprafacial : False
+
+--> Performing chelotropic embed (1152 candidates)
+Generated 1152 transition state candidates (2.17 s)
+
+--> Checking structures for compenetrations
+Discarded 612 candidates for compenetration (540 left, 0.1 s)
+
+--> Similarity Processing
+    - similarity pre-processing   (k=100) - 0.34 s - kept 508/540
+    - similarity pre-processing   (k=50) - 0.37 s - kept 459/508
+    - similarity pre-processing   (k=20) - 0.72 s - kept 367/459
+    - similarity pre-processing   (k=10) - 0.91 s - kept 248/367
+    - similarity pre-processing   (k=5) - 0.76 s - kept 163/248
+    - similarity pre-processing   (k=2) - 0.68 s - kept 85/163
+    - similarity final processing (k=1) - 0.39 s - kept 51/85
+Discarded 489 candidates for similarity (51 left, 4.17 s)
+
+--> Checkpoint output - Wrote 51 TS structures to TSCoDe_checkpoint_May_24_19-58.xyz file before optimization.
+
+--> Structure optimization (PM7 level)
+    - Mopac PM7 optimization: Structure 1 SCRAMBLED - took 0.14 s
+    - Mopac PM7 optimization: Structure 2 SCRAMBLED - took 0.19 s
+    - Mopac PM7 optimization: Structure 3 SCRAMBLED - took 0.06 s
+    - Mopac PM7 optimization: Structure 4 SCRAMBLED - took 0.5 s
+    - Mopac PM7 optimization: Structure 5 SCRAMBLED - took 0.6 s
+    - Mopac PM7 optimization: Structure 6 SCRAMBLED - took 0.08 s
+    - Mopac PM7 optimization: Structure 7 SCRAMBLED - took 0.25 s
+    - Mopac PM7 optimization: Structure 8 CONVERGED - took 0.43 s
+    - Mopac PM7 optimization: Structure 9 SCRAMBLED - took 0.41 s
+    - Mopac PM7 optimization: Structure 10 SCRAMBLED - took 0.44 s
+    - Mopac PM7 optimization: Structure 11 SCRAMBLED - took 0.17 s
+    - Mopac PM7 optimization: Structure 12 SCRAMBLED - took 0.41 s
+    - Mopac PM7 optimization: Structure 13 SCRAMBLED - took 0.38 s
+    - Mopac PM7 optimization: Structure 14 SCRAMBLED - took 0.36 s
+    - Mopac PM7 optimization: Structure 15 SCRAMBLED - took 0.74 s
+    - Mopac PM7 optimization: Structure 16 SCRAMBLED - took 1.84 s
+    - Mopac PM7 optimization: Structure 17 CONVERGED - took 0.24 s
+    - Mopac PM7 optimization: Structure 18 CONVERGED - took 0.18 s
+    - Mopac PM7 optimization: Structure 19 SCRAMBLED - took 0.98 s
+    - Mopac PM7 optimization: Structure 20 SCRAMBLED - took 0.39 s
+    - Mopac PM7 optimization: Structure 21 SCRAMBLED - took 0.19 s
+    - Mopac PM7 optimization: Structure 22 SCRAMBLED - took 0.5 s
+    - Mopac PM7 optimization: Structure 23 SCRAMBLED - took 0.26 s
+    - Mopac PM7 optimization: Structure 24 SCRAMBLED - took 0.68 s
+    - Mopac PM7 optimization: Structure 25 SCRAMBLED - took 0.29 s
+    - Mopac PM7 optimization: Structure 26 SCRAMBLED - took 0.28 s
+    - Mopac PM7 optimization: Structure 27 CONVERGED - took 0.48 s
+    - Mopac PM7 optimization: Structure 28 CONVERGED - took 0.18 s
+    - Mopac PM7 optimization: Structure 29 SCRAMBLED - took 0.72 s
+    - Mopac PM7 optimization: Structure 30 SCRAMBLED - took 0.23 s
+    - Mopac PM7 optimization: Structure 31 CONVERGED - took 0.15 s
+    - Mopac PM7 optimization: Structure 32 SCRAMBLED - took 0.3 s
+    - Mopac PM7 optimization: Structure 33 SCRAMBLED - took 0.72 s
+    - Mopac PM7 optimization: Structure 34 SCRAMBLED - took 0.15 s
+    - Mopac PM7 optimization: Structure 35 SCRAMBLED - took 0.16 s
+    - Mopac PM7 optimization: Structure 36 SCRAMBLED - took 0.35 s
+    - Mopac PM7 optimization: Structure 37 SCRAMBLED - took 0.3 s
+    - Mopac PM7 optimization: Structure 38 SCRAMBLED - took 0.37 s
+    - Mopac PM7 optimization: Structure 39 SCRAMBLED - took 0.31 s
+    - Mopac PM7 optimization: Structure 40 SCRAMBLED - took 0.12 s
+    - Mopac PM7 optimization: Structure 41 SCRAMBLED - took 0.33 s
+    - Mopac PM7 optimization: Structure 42 SCRAMBLED - took 0.21 s
+    - Mopac PM7 optimization: Structure 43 SCRAMBLED - took 0.43 s
+    - Mopac PM7 optimization: Structure 44 SCRAMBLED - took 0.5 s
+    - Mopac PM7 optimization: Structure 45 CONVERGED - took 0.24 s
+    - Mopac PM7 optimization: Structure 46 SCRAMBLED - took 0.49 s
+    - Mopac PM7 optimization: Structure 47 SCRAMBLED - took 0.38 s
+    - Mopac PM7 optimization: Structure 48 SCRAMBLED - took 0.41 s
+    - Mopac PM7 optimization: Structure 49 SCRAMBLED - took 0.31 s
+    - Mopac PM7 optimization: Structure 50 SCRAMBLED - took 0.26 s
+    - Mopac PM7 optimization: Structure 51 SCRAMBLED - took 0.21 s
+Mopac PM7 optimization took 19.34 s (~0.38 s per structure)
+Discarded 44 candidates because optimizations failed or scrambled some atoms (7 left)
+Discarded 3 candidates for similarity (4 left, 0.0 s)
+
+--> Refining bonding distances for TSs (PM7 level)
+    - Mopac PM7 refinement: Structure 1 REFINED - took 0.37 s
+    - Mopac PM7 refinement: Structure 2 REFINED - took 0.35 s
+    - Mopac PM7 refinement: Structure 3 REFINED - took 0.4 s
+    - Mopac PM7 refinement: Structure 4 REFINED - took 0.34 s
+Mopac PM7 refinement took 1.47 s (~0.37 s per structure)
+Successfully refined 4/4 structures. Non-refined ones will not be discarded.
+
+--> Output: Wrote 4 rough TS structures to TSCoDe_TSs_guesses_May_24_19-58.xyz file - Total time 27.28 s
+
+--> Non-covalent interactions spotting
+No particular NCIs spotted for these structures
+
+--> Output: Wrote VMD TSCoDe_TSs_guesses_May_24_19-58.vmd file
+
+--> TSCoDe normal termination: total time 27.281 seconds 

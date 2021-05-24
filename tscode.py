@@ -6,19 +6,29 @@ https://github.com/ntampellini/TSCoDe
 (Work in Progress)
 
 '''
-from hypermolecule_class import Hypermolecule, pt
+from hypermolecule_class import Hypermolecule
 import numpy as np
 from copy import deepcopy
 from parameters import *
 import os
 import time
 from optimization_methods import *
-from subprocess import DEVNULL, STDOUT, check_call
 from linalg_tools import *
 from compenetration import compenetration_check
 from prune import prune_conformers
 import re
 from dataclasses import dataclass
+from itertools import groupby
+
+def clean_directory():
+
+    for f in os.listdir():
+        if f.startswith('temp'):
+            os.remove(f)
+        elif f.endswith('.arc'):
+            os.remove(f)
+        elif f.endswith('.mop'):
+            os.remove(f)
 
 class ZeroCandidatesError(Exception):
     pass
@@ -48,6 +58,17 @@ def ase_view(mol):
     view(Atoms(atomnos, positions=coords))
 
 class Pivot:
+    '''
+    (Cyclical embed)
+    Pivot object: vector connecting two lobes of a
+    molecule, starting from v1 (first reactive atom in
+    mol.reacitve_atoms_classes_dict) and ending on v2.
+
+    For molecules involved in chelotropic reactions,
+    that is molecules that undergo a cyclical embed
+    while having only one reactive atom, pivots are
+    built on that single atom.
+    '''
     def __init__(self, v1, v2, index1, index2):
         self.start = v1
         self.end = v2
@@ -61,7 +82,6 @@ class Pivot:
     def __repr__(self):
         return f'Pivot object - index {self.index}, norm {round(np.linalg.norm(self.pivot), 3)}, meanpoint {self.meanpoint}'
 
-
 @dataclass
 class Options:
 
@@ -73,8 +93,6 @@ class Options:
                                   # for calculations and smaller turning angles.
 
                     'NOOPT',      # Skip the optimization steps, directly writing structures to file.
-
-                    'CHECKPOINT', # Writes structures to file before the geometry optimization steps.
 
                     'STEPS',      # Manually specify the number of steps to be taken in scanning 360°
                                   # rotations. The standard value of 6 will perform six 60° turns.
@@ -98,42 +116,49 @@ class Options:
                                   # can have to be retained and not to be considered scrambled. Default is 2.
                                   # Syntax: NEWBONDS=2
 
-                    'NOTS',       # Do not perform TS search but just the partial optimization step
+                    'NEB',        # Perform a NEB TS search after the partial optimization step
 
                     'LEVEL',      # Manually set the MOPAC theory level to be used, default is PM7.
                                   # Syntax: LEVEL=PM7
 
-                    'RIGID',      # For trimolecular TSs, do not bend structures to better build TSs
+                    'RIGID',      # Do not bend structures to better build TSs
 
                     'NONCI',      # Avoid estimating and printing non-covalent interactions
+
+                    'ONLYREFINED',# Discard structures that do not successfully refine bonding distances
+
+                    'LET',        # Overrides safety checks for large calculations
 
                     ]
                     
     # list of keyword names to be used in the first line of program input
 
-    rotation_steps = 6
-    pruning_thresh = 0.5
+    rotation_steps = 12
+    pruning_thresh = 0.5 # default value set later on the basis of number of atoms
     rigid = False
     
     max_clashes = 3
     clash_thresh = 1.2
 
-    max_newbonds = 2
+    max_newbonds = 1
 
     optimization = True
-    TS_optimization = True
+    neb = False
     mopac_level = 'PM7'
     suprafacial = False
     checkpoint = False
     nci = True
+    only_refined = False
 
     bypass = False
+    let = False
     # Default values, updated if _parse_input
     # finds keywords and calls _set_options
 
     def __repr__(self):
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
         d.pop('bypass')
+        d.pop('let')
         return '\n'.join([f'{var} : {d[var]}' for var in d])
 
 class Docker:
@@ -145,8 +170,10 @@ class Docker:
 
         '''
 
-        self.stamp = time.ctime().replace(' ','_').replace(':','-')
-        self.logfile = open(f'TSCoDe_log_{self.stamp}.txt', 'a', buffering=1)
+        self.stamp = time.ctime().replace(' ','_').replace(':','-')[4:-8]
+        # replaced ctime yields 'Sun_May_23_18-53-47_2021', only keeping 'May_23_18-53'
+
+        self.logfile = open(f'TSCoDe_{self.stamp}.log', 'a', buffering=1)
 
 
         s =  '*************************************************************\n'
@@ -233,7 +260,7 @@ class Docker:
                 if not all(k in self.options.__keywords__ for k in keywords):
                     raise SyntaxError(f'One (or more) keywords were not understood. Please check your syntax. ({keywords})')
 
-                keywords_list = lines[0].split()
+                keywords_list = [word.upper() for word in lines[0].split()]
 
                 if 'SUPRAFAC' in keywords_list:
                     self.options.suprafacial = True
@@ -246,26 +273,22 @@ class Docker:
 
                 if 'STEPS' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('STEPS')]
-                    self.options.rotation_steps = int(kw.split('=')[1])
+                    self.options.rotation_steps = int(kw.split('=')[1].lower())
 
                 if 'THRESH' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('THRESH')]
-                    self.options.pruning_thresh = float(kw.split('=')[1])
+                    self.options.pruning_thresh = float(kw.split('=')[1].lower())
 
                 if 'NOOPT' in keywords_list:
                     self.options.optimization = False
                     
-                if 'CHECKPOINT' in keywords_list:
-                    self.options.checkpoint = True
-
                 if 'BYPASS' in keywords_list:
                     self.options.bypass = True
                     self.options.optimization = False
-                    self.options.TS_optimization = False
 
                 if 'DIST' in [k.split('(')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('DIST')]
-                    orb_string = kw[5:-1]
+                    orb_string = kw[5:-1].lower()
                     # orb_string looks like 'a=2.345,b=3.456,c=2.22'
 
                     self._set_custom_orbs(orb_string)
@@ -277,9 +300,9 @@ class Docker:
 
                     for piece in clashes_string.split(','):
                         s = piece.split('=')
-                        if s[0] == 'num':
+                        if s[0].lower() == 'num':
                             self.options.max_clashes = int(s[1])
-                        elif s[0] == 'dist':
+                        elif s[0].lower() == 'dist':
                             self.options.clash_thresh = float(s[1])
                         else:
                             raise SyntaxError((f'Syntax error in CLASHES keyword -> CLASHES({clashes_string}).' +
@@ -289,21 +312,24 @@ class Docker:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('NEWBONDS')]
                     self.options.max_newbonds = int(kw.split('=')[1])
 
-                if 'NOTS' in keywords_list:
-                    self.options.TS_optimization = False
+                if 'NEB' in keywords_list:
+                    self.options.neb = True
 
                 if 'LEVEL' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('LEVEL')]
-                    self.options.mopac_level = kw.split('=')[1]
+                    self.options.mopac_level = kw.split('=')[1] # already uppercased
 
                 if 'RIGID' in keywords_list:
-                    if len(self.objects) == 3:
-                        self.options.rigid = True
-                    else:
-                        raise SyntaxError('RIGID keyword is only used for trimolecular transition states.')
+                    self.options.rigid = True
 
                 if 'NONCI' in keywords_list:
                     self.options.nci = False
+
+                if 'ONLYREFINED' in keywords_list:
+                    self.options.only_refined = True
+
+                if 'LET' in keywords_list:
+                    self.options.let = True
 
 
         except Exception as e:
@@ -333,21 +359,34 @@ class Docker:
         self.pairings_dict = {i:[] for i in range(len(self.objects))}
 
         for i, line in enumerate(lines):
-        # i is also molecule index in self.objects
+        # now i is also the molecule index in self.objects
 
-            pairings = line.split()[1:]
+            fragments = line.split()[1:]
             # remove the molecule name, keep pairs only ['2a','5b']
 
-            unlabeled = [int(j) for j in pairings if not j.lower().islower()]
-            # numbers without letters are stored here
+            unlabeled = []
+            pairings = []
 
-            pairings = [[int(j[:-1]), j[-1]] for j in pairings if j.lower().islower()]
-            # number with letters associated are stored here
+            for j in fragments:
+
+                if not j.lower().islower(): # if all we have is a number
+                    unlabeled.append(int(j))
+
+                else:
+                    index, letters = [''.join(g) for _, g in groupby(j, str.isalpha)]
+
+                    if len(letters) == 1:
+                        pairings.append([int(index), letters[0]])
+
+                    else:
+                        for l in letters:
+                            pairings.append([int(index), l])
+
 
             for pair in pairings:
                 self.pairings_dict[i].append(pair[:])
             # appending pairing to dict before
-            # calculating its cumulative index
+            # calculating their cumulative index
 
             if i > 0:
                 for z in pairings:
@@ -392,6 +431,14 @@ class Docker:
                 third_constraint = list(sorted(unlabeled_list))
                 self.pairings.append(third_constraint)
                 self.pairings_table['c'] = third_constraint
+        
+        elif len(lines) == 2:
+        # adding second pairing if we have two molecules and user specified one pairing
+        # (used to adjust distances for bimolecular TSs)
+            if len(unlabeled_list) == 2:
+                second_constraint = list(sorted(unlabeled_list))
+                self.pairings.append(second_constraint)
+                self.pairings_table['b'] = second_constraint
 
     def _set_custom_orbs(self, orb_string):
         '''
@@ -413,47 +460,20 @@ class Docker:
                         for reactive_index, reactive_atom in self.objects[index].reactive_atoms_classes_dict.items():
                             if reactive_index == pairing[0]:
                                 reactive_atom.init(self.objects[index], reactive_index, update=True, orb_dim=dist/2)
-                                # self.objects[index]._update_orbs()
-                                self.log(f'--> Custom distance read: modified orbital of {index+1}. {self.objects[index].name} atom {reactive_index} to {round(dist/2, 3)} A.')
+                                
                     # If the letter matches, look for the correct reactive atom on that molecule. When we find the correct match,
                     # set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
                     # user-specified one, as the final atomic distances will be given by two halves of this length.
-            self.log()
+            # self.log()
 
     def _set_pivots(self, mol):
         '''
         params mol: Hypermolecule class
         (Cyclical embed) Function that sets the mol.pivots attribute, that is a list
-        containing each vector connecting two orbitals on different atoms
+        containing each vector connecting two orbitals on different atoms or on the
+        same atom (for single-reactive atom molecules in chelotropic embedding)
         '''
-        mol.pivots = []
-
-        if len(mol.reactive_atoms_classes_dict) == 2:
-        # most molecules: dienes and alkenes for Diels-Alder, conjugated ketones for acid-bridged additions
-
-            indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict.values()])
-            # indexes of vectors in reactive_atom.center. Reactive atoms are 2 and so for one center on atom 0 and 
-            # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
-
-            for i,j in indexes:
-                c1 = list(mol.reactive_atoms_classes_dict.values())[0].center[i]
-                c2 = list(mol.reactive_atoms_classes_dict.values())[1].center[j]
-                mol.pivots.append(Pivot(c1, c2, i, j))
-
-        elif len(mol.reactive_atoms_classes_dict) == 1:
-        # carbenes, oxygen atom in Prilezhaev reaction, SO2 in classic chelotropic reactions
-
-            indexes = cartesian_product(*[range(len(list(mol.reactive_atoms_classes_dict.values())[0].center)) for _ in range(2)])
-            indexes = [i for i in indexes if i[0] != i[1] and (sorted(i) == i).all()]
-            # indexes of vectors in reactive_atom.center. Reactive atoms is just one, that builds pivots with itself. 
-            # pivots with the same index or inverse order are discarded. 2 centers on one atom 2 yield just [[0,1]]
-            
-            for i,j in indexes:
-                c1 = list(mol.reactive_atoms_classes_dict.values())[0].center[i]
-                c2 = list(mol.reactive_atoms_classes_dict.values())[0].center[j]
-                mol.pivots.append(Pivot(c1, c2, i, j))
-
-        mol.pivots = np.array(mol.pivots)
+        mol.pivots = self._get_pivots(mol)
 
         if len(mol.pivots) == 2:
         # reactive atoms have one and two centers,
@@ -487,6 +507,41 @@ class Docker:
                         mol.pivots = mol.pivots[mask]
                         break
 
+    def _get_pivots(self, mol):
+        '''
+        params mol: Hypermolecule class
+        (Cyclical embed) Function that yields the molecule pivots. Called by _set_pivots
+        and in pre-conditioning (deforming, bending) the molecules in ase_bend.
+        '''
+        pivots_list = []
+
+        if len(mol.reactive_atoms_classes_dict) == 2:
+        # most molecules: dienes and alkenes for Diels-Alder, conjugated ketones for acid-bridged additions
+
+            indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict.values()])
+            # indexes of vectors in reactive_atom.center. Reactive atoms are 2 and so for one center on atom 0 and 
+            # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
+
+            for i,j in indexes:
+                c1 = list(mol.reactive_atoms_classes_dict.values())[0].center[i]
+                c2 = list(mol.reactive_atoms_classes_dict.values())[1].center[j]
+                pivots_list.append(Pivot(c1, c2, i, j))
+
+        elif len(mol.reactive_atoms_classes_dict) == 1:
+        # carbenes, oxygen atom in Prilezhaev reaction, SO2 in classic chelotropic reactions
+
+            indexes = cartesian_product(*[range(len(list(mol.reactive_atoms_classes_dict.values())[0].center)) for _ in range(2)])
+            indexes = [i for i in indexes if i[0] != i[1] and (sorted(i) == i).all()]
+            # indexes of vectors in reactive_atom.center. Reactive atoms is just one, that builds pivots with itself. 
+            # pivots with the same index or inverse order are discarded. 2 centers on one atom 2 yield just [[0,1]]
+            
+            for i,j in indexes:
+                c1 = list(mol.reactive_atoms_classes_dict.values())[0].center[i]
+                c2 = list(mol.reactive_atoms_classes_dict.values())[0].center[j]
+                pivots_list.append(Pivot(c1, c2, i, j))
+
+        return np.array(pivots_list)
+
     def _setup(self):
         '''
         TODO
@@ -501,10 +556,17 @@ class Docker:
 
             if cyclical or chelotropic:
 
-                for molecule in self.objects:
-                    self._set_pivots(molecule)
+                if cyclical:
+                    self.embed = 'cyclical'
+                else:
+                    self.embed = 'chelotropic'
+                    for mol in self.objects:
+                        for index, atom in mol.reactive_atoms_classes_dict.items():
+                            orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
+                            atom.init(mol, index, update=True, orb_dim=orb_dim + 0.2)
+                    # Slightly enlarging orbitals for chelotropic embeds, or they will
+                    # be always generated too close to each other for how the cyclical embed works          
 
-                self.embed = 'cyclical'
                 if len(self.objects) == 3:
                     self.candidates = 8*(self.options.rotation_steps+1)**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
 
@@ -515,16 +577,28 @@ class Docker:
                 # no parings are to be respected. If there are any, each one reduces the number of
                 # candidates to be computed, and we divide self.candidates number in the next section.
 
+                for molecule in self.objects:
+                    self._set_pivots(molecule)
+
                 self.candidates *= np.prod([len(mol.pivots) for mol in self.objects])
 
                 if self.pairings != []:
-                    if len(self.objects) == 2:
+
+                    if len(self.objects) == 2 and not chelotropic:
+                    # diels-alder-like, if we have a pairing only half
+                    # of the total arrangements are to be checked
                         n = 2
-                    else:
+
+                    elif len(self.objects) == 3:
+
                         if len(self.pairings) == 1:
                             n = 4
-                        else:
+                        else: # trimolecular, 2 or 3 pairings imposed
                             n = 8
+
+                    else:
+                        n = 1
+
                     self.candidates /= n
                 # if the user specified some pairings to be respected, we have less candidates to check
                 self.candidates = int(self.candidates)
@@ -722,7 +796,12 @@ class Docker:
 
         def _adjust_directions(self, directions, constrained_indexes, triangle_vectors, v, pivots):
             '''
-            TODO: desc
+            For trimolecular TSs, correct molecules pre-alignment. That is, after the initial estimate
+            based on pivot triangle circocentrum, systematically rotate each molecule around its pivot
+            by fixed increments and look for the arrangement with the smallest deviation from orbital
+            parallel interaction. This optimizes the obtainment of poses with the correct inter-reactive
+            atoms distances.
+
             '''
             assert directions.shape[0] == 3
 
@@ -785,36 +864,42 @@ class Docker:
                         if r_atom.cumnum == c[1]:
                             pairings[i][1] = (m, index)
 
+            r = np.zeros((3,2))
+
             for first, second in pairings:
                 mol_index = first[0]
                 partner_index = second[0]
                 reactive_index = first[1]
-                exec(f'r{mol_index}{partner_index} = {reactive_index}', globals())
+                r[mol_index, partner_index] = reactive_index
 
                 mol_index = second[0]
                 partner_index = first[0]
                 reactive_index = second[1]
-                exec(f'r{mol_index}{partner_index} = {reactive_index}', globals())
-            # r01 is the reactive_index of molecule 0 that faces molecule 1 and so on
+                r[mol_index, partner_index] = reactive_index
+
+            # r[0,1] is the reactive_index of molecule 0 that faces molecule 1 and so on
 
             ############### calculate reactive atoms positions
 
             mol0, mol1, mol2 = mols
 
-            a01 = mol0.rotation @ mol0.atomcoords[0,r01] + mol0.position
-            a02 = mol0.rotation @ mol0.atomcoords[0,r02] + mol0.position
+            a01 = mol0.rotation @ mol0.atomcoords[0,r[0,1]] + mol0.position
+            a02 = mol0.rotation @ mol0.atomcoords[0,r[0,2]] + mol0.position
 
-            a10 = mol1.rotation @ mol1.atomcoords[0,r10] + mol1.position
-            a12 = mol1.rotation @ mol1.atomcoords[0,r12] + mol1.position
+            a10 = mol1.rotation @ mol1.atomcoords[0,r[1,0]] + mol1.position
+            a12 = mol1.rotation @ mol1.atomcoords[0,r[1,2]] + mol1.position
 
-            a20 = mol2.rotation @ mol2.atomcoords[0,r20] + mol2.position
-            a21 = mol2.rotation @ mol2.atomcoords[0,r21] + mol2.position
+            a20 = mol2.rotation @ mol2.atomcoords[0,r[2,0]] + mol2.position
+            a21 = mol2.rotation @ mol2.atomcoords[0,r[2,1]] + mol2.position
 
             ############### explore all angles combinations
 
             steps = 6
             angle_range = 30
-            angles_list = cartesian_product(*[range(steps+1) for _ in range(3)]) * 2*angle_range/steps - angle_range
+            step_angle = 2*angle_range/steps
+            angles_list = cartesian_product(*[range(steps+1) for _ in range(3)]) * step_angle - angle_range
+            # Molecules are rotated around the +angle_range/-angle_range range in the given number of steps.
+            # Therefore, the angular resolution between candidates is step_angle (10 degrees)
 
             candidates = []
             for angles in angles_list:
@@ -841,14 +926,14 @@ class Docker:
                         
                 candidates.append((cost, angles, (d0, d1, d2)))
 
-            ############### choose the one with the best alignment
+            ############### choose the one with the best alignment, that is minor cost
 
-            best = sorted(candidates, key=lambda x: x[0])[0]
+            cost, angles, directions = sorted(candidates, key=lambda x: x[0])[0]
             
-            return np.array(best[2])
+            return np.array(directions)
 
                 
-        self.log(f'\n--> Performing cyclical embed ({self.candidates} candidates)')
+        self.log(f'\n--> Performing {self.embed} embed ({self.candidates} candidates)')
 
         pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -871,37 +956,38 @@ class Docker:
             try:
                 polygon_vectors = polygonize(norms)
 
-            except AssertionError:
+            except TriangleError:
                 # Raised if we cannot build a triangle with the given norms.
                 # Try to bend the structure if it was close or just skip this triangle and go on.
 
                 deltas = [norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)]
-                delta = max(deltas)
+
                 rel_delta = max([deltas[i]/norms[i] for i in range(3)])
                 # s = 'Rejected triangle, delta was %s, %s of side length' % (round(delta, 3), str(round(100*rel_delta, 3)) + ' %')
                 # self.log(s, p=False)
 
-                if rel_delta < 0.1 and not self.options.rigid:
+                if rel_delta < 0.2 and not self.options.rigid:
                 # correct the molecule structure with the longest
-                # side if the distances are at most 10% off.
+                # side if the distances are at most 20% off.
 
                     index = deltas.index(max(deltas))
                     mol = thread_objects[index]
                     pivot = pivots[index]
 
-                    bent_mol = self.bend_molecule(mol, pivot, threshold=0.9)
+                    # ase_view(mol)
+                    maxval = norms[index-1] + norms[index-2]
+                    bent_mol = ase_bend(self, mol, pivot, 0.9*maxval, traj='ase_bend_v2.traj')
                     # ase_view(bent_mol)
 
-                    bent_mol = ase_bend(bent_mol, threshold=0.9, method=self.options.mopac_level)
-                    self._set_pivots(bent_mol)
-                    # ase_view(bent_mol)
+                    ###################################### DEBUGGING PURPOSES
 
                     # for p in bent_mol.pivots:
                     #     if p.index == pivot.index:
                     #         new_pivot = p
                     # now = np.linalg.norm(new_pivot.pivot)
-                    # maxval = norms[index-1] + norms[index-2]
-                    # input(f'Side was {round(norms[index], 3)} A, now it is {round(now, 3)}, {round(now/maxval, 3)} % of maximum value')
+                    # self.log(f'Corrected Triangle: Side was {round(norms[index], 3)} A, now it is {round(now, 3)}, {round(now/maxval, 3)} % of maximum value for triangle creation', p=False)
+                    
+                    #########################################################
 
                     thread_objects[index] = bent_mol
 
@@ -916,6 +1002,53 @@ class Docker:
 
                 else:
                     continue
+            
+            except TooDifferentLengthsError:
+
+                if not self.options.rigid:
+    
+                    if self.embed == 'chelotropic':
+                        target_length = min(norms)
+
+                    else:
+                        maxgap = 3 # in Angstrom
+                        gap = abs(norms[0]-norms[1])
+                        r = 0.5 + 0.5*(gap/maxgap)
+                        r = np.clip(5, 0.5, 1)
+                        # r is the ratio for the target_length based on the gap
+                        # that deformations will need to cover.
+                        # It ranges from 0.5 to 1 and if shifted more toward
+                        # the shorter norm as the gap rises. For gaps of more
+                        # than 3 Angstroms, basically only the molecule
+                        # with the longest pivot is bent.
+
+                        target_length = min(norms)*r + max(norms)*(1-r)
+                
+                    for i, mol in enumerate(deepcopy(thread_objects)):
+
+                        if len(mol.reactive_indexes) > 1:
+                        # do not try to bend molecules that react with a single atom
+
+                            if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
+                            # do not try to bend molecules where the two reactive indices are bonded
+
+                                bent_mol = ase_bend(self, mol, pivots[i], target_length, method=f'{self.options.mopac_level}')
+                                # ase_view(bent_mol) TODO - remove traj
+                                thread_objects[i] = bent_mol
+
+                    # Repeating the previous polygonization steps with the bent molecules
+
+                    pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+                    # updating the active pivot for each molecule for this run
+                    
+                    norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
+                    # updating the pivots norms to feed into the polygonize function
+
+                    
+                    polygon_vectors = polygonize(norms, override=True)
+                    # repeating the failed polygon creation
+
+
 
             directions = _get_directions(norms)
             # directions to orient the molecules toward, orthogonal to each vec_pair
@@ -927,6 +1060,7 @@ class Docker:
                 # get indexes of atoms that face each other
 
                 if self.pairings == [] or all([pair in ids for pair in self.pairings]):
+                # ensure that the active arrangement has all the pairings that the user specified
 
                     if len(self.objects) == 3:
 
@@ -1039,49 +1173,6 @@ class Docker:
 
         return threads
 
-    def bend_molecule(self, mol, pivot, threshold):
-        '''
-        '''
-        def f(x, k):
-            x_c = np.clip(x, 0, 5)
-            return k*0.1*np.exp(0.5*x_c)
-
-        temp = deepcopy(mol)
-        threshold = threshold*np.linalg.norm(pivot.pivot)
-
-        for step in range(5):
-        # 5 subsequent steps of bending the molecule a little (~5 degrees)
-
-            orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in temp.reactive_atoms_classes_dict.items()}
-            reactive_coords = temp.atomcoords[0][temp.reactive_indexes]
-            direction = pivot.meanpoint - np.mean(reactive_coords, axis=0)
-            rotation_pointer = np.cross(pivot.pivot, direction)
-
-            for c, conformer in enumerate(temp.atomcoords):
-                for a, atom in enumerate(conformer):
-                    dist = (atom - pivot.meanpoint) @ pivot.pivot / np.linalg.norm(pivot.pivot)
-                    # distance of atom from rotation center, along the pivot coordinate
-                    angle = f(dist, 5)
-                    if dist > 0:
-                        mat = rot_mat_from_pointer(rotation_pointer, angle)
-                    else:
-                        mat = rot_mat_from_pointer(rotation_pointer, -angle)
-
-                    # temp.atomcoords[c,a] = mat @ (atom - pivot.meanpoint) + pivot.meanpoint
-                    temp.atomcoords[c,a] = mat @ (atom - np.mean(reactive_coords, axis=0)) + np.mean(reactive_coords, axis=0)
-            
-            #update orbitals and pivots
-            for index, atom in temp.reactive_atoms_classes_dict.items():
-                atom.init(temp, index, update=True, orb_dim=orb_memo[index])
-            self._set_pivots(temp)
-
-            # if we have reached the target pivot length stop, otherwise do another iteration
-            for temp_pivot in temp.pivots:
-                if temp_pivot.index == pivot.index:
-                    if np.linalg.norm(temp_pivot.pivot) < threshold:
-                        return temp
-        return temp
-
     def _set_default_distances(self):
         '''
         Called before TS refinement if user did not specify all
@@ -1113,26 +1204,29 @@ class Docker:
     def run(self):
         '''
         '''
+        global scramble
+
         try:
             self._setup()
 
-            assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message' +
-                                           ' and proceed, run this python file with the -O flag. Ex: python -O tscode.py input.txt')
+            if not self.options.let:
+                assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message' +
+                                               ' and proceed, add the LET keyword to the input file.')
 
             head = ''
             for i, mol in enumerate(self.objects):
-                s = [atom.symbol+'('+str(atom)+')' for atom in mol.reactive_atoms_classes_dict.values()]
-                t = ', '.join([f'{a}->{b}' for a,b in zip(mol.reactive_indexes, s)])
+                s = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A)' for atom in mol.reactive_atoms_classes_dict.values()]
+                t = ', '.join([f'{a} -> {b}' for a,b in zip(mol.reactive_indexes, s)])
                 head += f'    {i+1}. {mol.name}: {t}\n'
 
-            self.log('--> Input structures, reactive indexes and reactive atoms TSCODE type:\n' + head)
+            self.log('--> Input structures, reactive indexes and reactive atoms TSCODE type and orbital dimensions:\n' + head)
             self.log(f'--> Calculation options used were:')
             for line in str(self.options).split('\n'):
                 self.log(f'    - {line}')
 
             t_start_run = time.time()
 
-            if self.embed == 'cyclical':
+            if self.embed == 'cyclical' or self.embed == 'chelotropic':
                 embedded_structures = self.cyclical_embed()
 
                 if embedded_structures == []:
@@ -1237,13 +1331,12 @@ class Docker:
 
                     ################################################# CHECKPOINT SAVE BEFORE OPTIMIZATION
 
-                    if self.options.checkpoint:
-                            outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
-                            with open(outname, 'w') as f:        
-                                for i, structure in enumerate(self.structures):
-                                    write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - Checkpoint before optimization')
-                            t_end_run = time.time()
-                            self.log(f'--> Checkpoint requested - Wrote {len(self.structures)} TS structures to {outname} file before optimizaiton.\n')
+                    outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
+                    with open(outname, 'w') as f:        
+                        for i, structure in enumerate(self.structures):
+                            write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - Checkpoint before optimization')
+                    t_end_run = time.time()
+                    self.log(f'--> Checkpoint output - Wrote {len(self.structures)} TS structures to {outname} file before optimization.\n')
 
                     ################################################# GEOMETRY OPTIMIZATION
 
@@ -1276,7 +1369,7 @@ class Docker:
                             except MopacReadError:
                                 # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
                                 # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                                # The easiest solution is to reject the structure and go on. TODO - not true anymore
+                                # The easiest solution is to reject the structure and go on.
                                 self.structures[i] = None
                                 self.energies[i] = np.inf
                                 self.exit_status[i] = False
@@ -1290,7 +1383,7 @@ class Docker:
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
-                        self.log(f'Mopac {self.options.mopac_level} optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                        self.log(f'Mopac {self.options.mopac_level} optimization took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
                         ################################################# PRUNING: EXIT STATUS
 
@@ -1305,24 +1398,25 @@ class Docker:
                         
 
                         ################################################# PRUNING: ENERGY
+
+                        if THRESHOLD_KCAL != None:
                     
-                        if len(self.structures) == 0:
-                            raise ZeroCandidatesError()
+                            if len(self.structures) == 0:
+                                raise ZeroCandidatesError()
 
-                        mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
-                        self.structures = self.structures[mask]
-                        self.energies = self.energies[mask]
-                        self.exit_status = self.exit_status[mask]
+                            mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
+                            self.structures = self.structures[mask]
+                            self.energies = self.energies[mask]
+                            self.exit_status = self.exit_status[mask]
 
-                        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-                        from optimization_methods import scramble
-                        self.energies = scramble(self.energies, sequence)
-                        self.structures = scramble(self.structures, sequence)
-                        self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-                        # sorting structures based on energy
+                            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                            self.energies = scramble(self.energies, sequence)
+                            self.structures = scramble(self.structures, sequence)
+                            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                            # sorting structures based on energy
 
-                        if np.any(mask == False):
-                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
+                            if np.any(mask == False):
+                                self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
                         ################################################# PRUNING: SIMILARITY (POST PARTIAL OPT)
 
@@ -1342,6 +1436,15 @@ class Docker:
                         ################################################# REFINING: BONDING DISTANCES
 
                         self.log(f'--> Refining bonding distances for TSs ({self.options.mopac_level} level)')
+
+                        # backing up structures before refinement
+                        outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
+                        with open(outname, 'w') as f:        
+                            for i, structure in enumerate(self.structures):
+                                write_xyz(structure, atomnos, f, title=f'Structure {i+1} - NOT REFINED')
+
+                        os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
+                        # We don't need the pre-optimized structures anymore
 
                         if not hasattr(self, 'pairings_dists') or len(self.pairings) > len(self.pairings_dists):
                         # if user did not specify all (or any) of the distances
@@ -1374,24 +1477,38 @@ class Docker:
                         
                         loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
                         t_end = time.time()
-                        self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
-                        self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{len(self.exit_status)} structures. Non-refined ones will not be discarded.')
+                        self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+
+                        before = len(self.structures)
+                        if self.options.only_refined:
+                            mask = self.exit_status
+                            self.structures = self.structures[mask]
+                            self.energies = self.energies[mask]
+                            self.exit_status = self.exit_status[mask]
+                            s = f'Discarded {len([i for i in mask if i == False])} unrefined structures'
+
+                        else:
+                            s = 'Non-refined ones will not be discarded.'
+
+
+                        self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{before} structures. {s}')
 
                         ################################################# PRUNING: ENERGY, AFTER REFINEMENT
                     
-                        mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
-                        self.structures = self.structures[mask]
-                        self.energies = self.energies[mask]
+                        if THRESHOLD_KCAL != None:
 
-                        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-                        from optimization_methods import scramble
-                        self.energies = scramble(self.energies, sequence)
-                        self.structures = scramble(self.structures, sequence)
-                        self.constrained_indexes = scramble(self.constrained_indexes, sequence)
-                        # sorting structures based on energy
+                            mask = (self.energies - np.min(self.energies)) < THRESHOLD_KCAL
+                            self.structures = self.structures[mask]
+                            self.energies = self.energies[mask]
 
-                        if np.any(mask == False):
-                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
+                            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                            self.energies = scramble(self.energies, sequence)
+                            self.structures = scramble(self.structures, sequence)
+                            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                            # sorting structures based on energy
+
+                            if np.any(mask == False):
+                                self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {THRESHOLD_KCAL} kcal/mol)')
 
                         ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
 
@@ -1413,8 +1530,9 @@ class Docker:
                     s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
                          '    - Enlarging the search space by specifying a larger "steps" value with the keyword STEPS=n\n' +
                          '    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.\n')
-                    self.log(f'--> Program termination: No candidates found - Total time {round(t_end_run-t_start_run, 2)} s')
+                    self.log(f'\n--> Program termination: No candidates found - Total time {round(t_end_run-t_start_run, 2)} s')
                     self.log(s)
+                    clean_directory()
                     raise ZeroCandidatesError(s)
 
             else:
@@ -1422,97 +1540,124 @@ class Docker:
 
             ################################################# XYZ GUESSES OUTPUT 
 
-            self.energies = self.energies - np.min(self.energies)
+            if self.options.optimization:
 
-            outname = 'TSCoDe_TSs_guesses.xyz'
-            with open(outname, 'w') as f:        
-                for i, structure in enumerate(self.structures):
-
-                    if len(self.objects) == 3:
-                        kind = 'REFINED - ' if self.exit_status[i] else 'NOT REFINED - '
-                    else:
-                        kind = ''
-
-                    write_xyz(structure, atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
-
-            t_end_run = time.time()
-            self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s\n')
-
-            ################################################# TS SEEKING: IRC + NEB
-
-            if self.options.optimization and self.options.TS_optimization:
-            
-
-                self.log(f'--> HyperNEB optimization ({self.options.mopac_level} level)')
-                t_start = time.time()
-
-                for i, structure in enumerate(self.structures):
-
-                    loadbar(i, len(self.structures), prefix=f'Performing NEB {i+1}/{len(self.structures)} ')
-
-                    t_start_opt = time.time()
-
-                    self.structures[i], self.energies[i] = hyperNEB(structure,
-                                                                    atomnos,
-                                                                    self.ids,
-                                                                    self.constrained_indexes[i],
-                                                                    reag_prod_method=f'{self.options.mopac_level}',
-                                                                    NEB_method=f'{self.options.mopac_level} GEO-OK',
-                                                                    title=f'structure_{i+1}')
-
-                    t_end_opt = time.time()
-
-                    self.log(f'    - Mopac {self.options.mopac_level} NEB optimization: Structure {i+1} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
-
-                loadbar(1, 1, prefix=f'Performing NEB {len(self.structures)}/{len(self.structures)} ')
-                t_end = time.time()
-                self.log(f'Mopac {self.options.mopac_level} NEB optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
-
-                ################################################# PRUNING: SIMILARITY (POST NEB)
-
-                t_start = time.time()
-                self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
-                self.energies = self.energies[mask]
-                t_end = time.time()
-                
-                if np.any(mask == False):
-                    self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
-                self.log()
-
-                ################################################# TS CHECK - FREQUENCY CALCULATION
-
-                self.log(f'--> TS frequency calculation ({self.options.mopac_level} level)')
-                t_start = time.time()
-
-                for i, structure in enumerate(self.structures):
-
-                    loadbar(i, len(self.structures), prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
-
-                    mopac_opt(structure,
-                              atomnos,
-                              method=f'{self.options.mopac_level} FORCE',
-                              title=f'TS_{i+1}_FREQ',
-                              read_output=False)
-
-                loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
-                t_end = time.time()
-                self.log(f'Mopac {self.options.mopac_level} frequency calculation took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
-
-                ################################################# NEB XYZ OUTPUT
-
-                self.energies -= np.min(self.energies)
+                self.energies = self.energies - np.min(self.energies)
                 _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
                 self.energies = scramble(self.energies, sequence)
                 self.structures = scramble(self.structures, sequence)
                 self.constrained_indexes = scramble(self.constrained_indexes, sequence)
                 # sorting structures based on energy
 
-                outname = 'TSCoDe_NEB_TSs.xyz'
+
+                outname = f'TSCoDe_TSs_guesses_{self.stamp}.xyz'
                 with open(outname, 'w') as f:        
                     for i, structure in enumerate(self.structures):
-                        write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
-                self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
+                        kind = 'REFINED - ' if self.exit_status[i] else 'NOT REFINED - '
+
+                        write_xyz(structure, atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
+                os.remove(f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz')
+                # since we have the refined structures, we can get rid of the unrefined ones
+
+                t_end_run = time.time()
+                self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s\n')
+
+            ################################################# TS SEEKING: IRC + NEB
+
+                if self.options.neb:
+                
+                    self.log(f'--> HyperNEB optimization ({self.options.mopac_level} level)')
+                    t_start = time.time()
+
+                    for i, structure in enumerate(self.structures):
+
+                        loadbar(i, len(self.structures), prefix=f'Performing NEB {i+1}/{len(self.structures)} ')
+
+                        t_start_opt = time.time()
+
+                        try:
+
+                            self.structures[i], self.energies[i] = hyperNEB(structure,
+                                                                            atomnos,
+                                                                            self.ids,
+                                                                            self.constrained_indexes[i],
+                                                                            reag_prod_method=f'{self.options.mopac_level}',
+                                                                            NEB_method=f'{self.options.mopac_level} GEO-OK',
+                                                                            title=f'structure_{i+1}')
+
+                            exit_str = 'COMPLETED'
+                            self.exit_status[i] = True
+
+                        except (MopacReadError, ValueError):
+                            # Both are thrown if a MOPAC file read fails, but the former occurs when an internal (TSCoDe)
+                            # read fails (getting reagent or product), the latter when an ASE read fails (during NEB)
+                            exit_str = 'CRASHED'
+                            self.exit_status[i] = False
+
+                        t_end_opt = time.time()
+
+                        self.log(f'    - Mopac {self.options.mopac_level} NEB optimization: Structure {i+1} - {exit_str} - ({round(t_end_opt-t_start_opt, 2)} s)', p=False)
+
+                    loadbar(1, 1, prefix=f'Performing NEB {len(self.structures)}/{len(self.structures)} ')
+                    t_end = time.time()
+                    self.log(f'Mopac {self.options.mopac_level} NEB optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                    self.log(f'NEB converged for {len([i for i in self.exit_status if i == True])}/{len(self.structures)} structures\n')
+
+                    mask = self.exit_status
+                    self.structures = self.structures[mask]
+                    self.energies = self.energies[mask]
+                    self.exit_status = self.exit_status[mask]
+
+                    ################################################# PRUNING: SIMILARITY (POST NEB)
+
+                    if len(self.structures) != 0:
+
+                        t_start = time.time()
+                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                        self.energies = self.energies[mask]
+                        t_end = time.time()
+                        
+                        if np.any(mask == False):
+                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        self.log()
+
+                    ################################################# TS CHECK - FREQUENCY CALCULATION
+
+
+                        self.log(f'--> TS frequency calculation ({self.options.mopac_level} level)')
+                        t_start = time.time()
+
+                        for i, structure in enumerate(self.structures):
+
+                            loadbar(i, len(self.structures), prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
+
+                            mopac_opt(structure,
+                                    atomnos,
+                                    method=f'{self.options.mopac_level} FORCE',
+                                    title=f'TS_{i+1}_FREQ',
+                                    read_output=False)
+
+                        loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
+                        t_end = time.time()
+                        self.log(f'Mopac {self.options.mopac_level} frequency calculation took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
+
+                    ################################################# NEB XYZ OUTPUT
+
+                        self.energies -= np.min(self.energies)
+                        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+                        self.energies = scramble(self.energies, sequence)
+                        self.structures = scramble(self.structures, sequence)
+                        self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+                        # sorting structures based on energy
+
+                        outname = f'TSCoDe_NEB_TSs_{self.stamp}.xyz'
+                        with open(outname, 'w') as f:        
+                            for i, structure in enumerate(self.structures):
+                                write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
+                        self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
 
             ################################################# OPTIONAL: PRINT NON-COVALENT INTERACTION GUESSES
 
@@ -1556,6 +1701,7 @@ class Docker:
                         for nci, shared_by in unshared_nci:
                             nci_type, i1, i2 = nci
                             self.log(f'    {nci_type} between indexes {i1}/{i2} is present in {len(shared_by)}/{len(self.structures)} structures {tuple([i+1 for i in shared_by])}')
+                        self.log()
 
             ################################################# VMD OUTPUT
 
@@ -1571,7 +1717,7 @@ class Docker:
                     'mol addrep top\n')
 
                 for a, b in self.pairings:
-                    s += f'add label Bonds 0/{a} 0/{b}\n'
+                    s += f'label add Bonds 0/{a} 0/{b}\n'
 
                 f.write(s)
 
@@ -1579,13 +1725,7 @@ class Docker:
             
             ################################################# END: CLEAN ALL TEMP FILES AND CLOSE LOG
 
-            for f in os.listdir():
-                if f.startswith('temp'):
-                    os.remove(f)
-                elif f.endswith('.arc'):
-                    os.remove(f)
-                elif f.endswith('.mop'):
-                    os.remove(f)
+            clean_directory()
 
             t_end_run = time.time()
             total_time = t_end_run - t_start_run
@@ -1623,10 +1763,12 @@ if __name__ == '__main__':
 
     import sys
     if len(sys.argv) != 2:
+
+        # filename = 'DA.txt'
         filename = 'input.txt'
-        # filename = 'input2.txt'
-        # os.chdir('Resources/tri')
+        # os.chdir('Resources/bend')
         os.chdir('Resources/epox')
+
         # print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
         # quit()
     
@@ -1638,4 +1780,5 @@ if __name__ == '__main__':
     # initialize docker from input file
 
     docker.run()
+    # run the program
 

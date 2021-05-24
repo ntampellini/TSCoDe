@@ -1,5 +1,4 @@
 import os
-import sys
 import warnings
 import numpy as np
 import networkx as nx
@@ -9,7 +8,6 @@ from copy import deepcopy
 from cclib.io import ccread
 from rdkit.Chem import AllChem
 from reactive_atoms_classes import *
-from rdkit_conformational_search import csearch
 from scipy.spatial.transform import Rotation as R
 from subprocess import DEVNULL, STDOUT, check_call
 warnings.simplefilter("ignore", UserWarning)

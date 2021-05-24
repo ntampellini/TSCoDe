@@ -1,0 +1,60 @@
+*************************************************************
+*      TSCODE: Transition State Conformational Docker       *
+*************************************************************
+*                 Version 0.00 - Pre-release                *
+*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *
+*************************************************************
+
+--> No atom pairing imposed. Computing all possible dispositions.
+--> Setup performed correctly. 1152 candidates will be generated.
+
+--> Input structures, reactive indexes and reactive atoms TSCODE type and orbital dimensions:
+    1. C2H4.xyz: 0 -> C(sp2, 1.1 A), 1 -> C(sp2, 1.1 A)
+    2. diene.xyz: 2 -> C(sp2, 1.1 A), 7 -> C(sp2, 1.1 A)
+
+--> Calculation options used were:
+    - checkpoint : False
+    - clash_thresh : 1.2
+    - max_clashes : 3
+    - max_newbonds : 1
+    - mopac_level : PM7
+    - nci : True
+    - neb : False
+    - only_refined : False
+    - optimization : True
+    - pruning_thresh : 0.5
+    - rigid : False
+    - rotation_steps : 12
+    - suprafacial : True
+
+--> Performing cyclical embed (1152 candidates)
+*************************************************************
+*      TSCODE: Transition State Conformational Docker       *
+*************************************************************
+*                 Version 0.00 - Pre-release                *
+*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *
+*************************************************************
+
+--> No atom pairing imposed. Computing all possible dispositions.
+--> Setup performed correctly. 1152 candidates will be generated.
+
+--> Input structures, reactive indexes and reactive atoms TSCODE type and orbital dimensions:
+    1. C2H4.xyz: 0 -> C(sp2, 1.1 A), 1 -> C(sp2, 1.1 A)
+    2. diene.xyz: 2 -> C(sp2, 1.1 A), 7 -> C(sp2, 1.1 A)
+
+--> Calculation options used were:
+    - checkpoint : False
+    - clash_thresh : 1.2
+    - max_clashes : 3
+    - max_newbonds : 1
+    - mopac_level : PM7
+    - nci : True
+    - neb : False
+    - only_refined : False
+    - optimization : True
+    - pruning_thresh : 0.5
+    - rigid : False
+    - rotation_steps : 12
+    - suprafacial : True
+
+--> Performing cyclical embed (1152 candidates)

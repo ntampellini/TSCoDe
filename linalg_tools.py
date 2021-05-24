@@ -4,58 +4,6 @@ from scipy.spatial.transform import Rotation as R
 def norm(vec):
     return vec / np.linalg.norm(vec)
 
-def polygonize(lengths):
-    '''
-    Returns coordinates for the polygon vertexes used in cyclical TS construction,
-    as a list of vector couples specifying starting and ending point of each pivot 
-    vector. For bimolecular TSs, returns vertexes for the centered superposition of
-    two segments. For trimolecular TSs, returns triangle vertexes.
-
-    :params vertexes: list of floats, used as polygon side lenghts.
-    :return vertexes_out: list of vectors couples (start, end)
-    '''
-    assert len(lengths) in (2,3)
-
-    arr = np.zeros((len(lengths),2,3))
-
-    if len(lengths) == 2:
-        arr[0,0] = np.array([-lengths[0]/2,0,0])
-        arr[0,1] = np.array([+lengths[0]/2,0,0])
-        arr[1,0] = np.array([-lengths[1]/2,0,0])
-        arr[1,1] = np.array([+lengths[1]/2,0,0])
-
-        vertexes_out = np.vstack(([arr],[arr]))
-        vertexes_out[1,1] *= -1
-
-    else:
-        
-        assert all([lengths[i] < lengths[i-1] + lengths[i-2] for i in (0,1,2)]), (
-            f'Impossible to build a triangle with sides {lengths}')
-        # check that we can build a triangle with the specified vectors
-
-        arr[0,1] = np.array([lengths[0],0,0])
-        arr[1,0] = np.array([lengths[0],0,0])
-
-        a = np.power(lengths[0], 2)
-        b = np.power(lengths[1], 2)
-        c = np.power(lengths[2], 2)
-        x = (a-b+c)/(2*a**0.5)
-        y = (c-x**2)**0.5
-
-        arr[1,1] = np.array([x,y,0])
-        arr[2,0] = np.array([x,y,0])
-
-        vertexes_out = np.vstack(([arr],[arr],[arr],[arr],
-                                  [arr],[arr],[arr],[arr]))
-
-        swaps = [(1,2),(2,1),(3,1),(3,2),(4,0),(5,0),(5,1),(6,0),(6,2),(7,0),(7,1),(7,2)]
-
-        for t,v in swaps:
-            # triangle, vector couples to be swapped
-            vertexes_out[t,v][[0,1]] = vertexes_out[t,v][[1,0]]
-
-    return vertexes_out
-
 def cartesian_product(*arrays):
     return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
 
@@ -147,3 +95,73 @@ def vec_angle(v1, v2):
 
 def point_angle(p1, p2, p3):
     return np.arccos(np.clip(norm(p1 - p2) @ norm(p3 - p2), -1.0, 1.0))*180/np.pi
+
+class TriangleError(Exception):
+    '''
+    Raised from polygonize if it cannot build
+    a triangle with the given side lengths.
+    '''
+    pass
+
+class TooDifferentLengthsError(Exception):
+    '''
+    Raised from polygonize if bimolecular TSs have
+    too different pivot lenghts.
+    '''
+    pass
+
+def polygonize(lengths, override=False):
+    '''
+    Returns coordinates for the polygon vertexes used in cyclical TS construction,
+    as a list of vector couples specifying starting and ending point of each pivot 
+    vector. For bimolecular TSs, returns vertexes for the centered superposition of
+    two segments. For trimolecular TSs, returns triangle vertexes.
+
+    :params vertexes: list of floats, used as polygon side lenghts.
+    :return vertexes_out: list of vectors couples (start, end)
+    '''
+    assert len(lengths) in (2,3)
+
+    arr = np.zeros((len(lengths),2,3))
+
+    if len(lengths) == 2:
+
+        if not override and abs(lengths[0] - lengths[1]) > 1: # 1 Angstrom threshold
+            raise TooDifferentLengthsError
+
+        arr[0,0] = np.array([-lengths[0]/2,0,0])
+        arr[0,1] = np.array([+lengths[0]/2,0,0])
+        arr[1,0] = np.array([-lengths[1]/2,0,0])
+        arr[1,1] = np.array([+lengths[1]/2,0,0])
+
+        vertexes_out = np.vstack(([arr],[arr]))
+        vertexes_out[1,1] *= -1
+
+    else:
+        
+        if not all([lengths[i] < lengths[i-1] + lengths[i-2] for i in (0,1,2)]): 
+            raise TriangleError(f'Impossible to build a triangle with sides {lengths}')
+            # check that we can build a triangle with the specified vectors
+
+        arr[0,1] = np.array([lengths[0],0,0])
+        arr[1,0] = np.array([lengths[0],0,0])
+
+        a = np.power(lengths[0], 2)
+        b = np.power(lengths[1], 2)
+        c = np.power(lengths[2], 2)
+        x = (a-b+c)/(2*a**0.5)
+        y = (c-x**2)**0.5
+
+        arr[1,1] = np.array([x,y,0])
+        arr[2,0] = np.array([x,y,0])
+
+        vertexes_out = np.vstack(([arr],[arr],[arr],[arr],
+                                  [arr],[arr],[arr],[arr]))
+
+        swaps = [(1,2),(2,1),(3,1),(3,2),(4,0),(5,0),(5,1),(6,0),(6,2),(7,0),(7,1),(7,2)]
+
+        for t,v in swaps:
+            # triangle, vector couples to be swapped
+            vertexes_out[t,v][[0,1]] = vertexes_out[t,v][[1,0]]
+
+    return vertexes_out

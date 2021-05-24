@@ -3,8 +3,9 @@
 MOPAC_COMMAND = 'mopac2016'
 # command with which mopac will be called from the command line
 
-THRESHOLD_KCAL = 1000
-# energy threshold (kcal/mol) for TS retention after constrained optimization
+THRESHOLD_KCAL = None
+# Energy threshold (kcal/mol) for TS retention after constrained optimization.
+# set to None to ignore this pruning.
 
 orb_dim_dict = {
     'H Single Bond' : 0.85,

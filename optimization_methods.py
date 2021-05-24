@@ -1,16 +1,25 @@
+from copy import deepcopy
 import os
 import numpy as np
 from ase import Atoms
 from ase.constraints import Hookean
 from ase.calculators.mopac import MOPAC
 from ase.dyneb import DyNEB
-from ase.optimize import BFGS, LBFGS, FIRE
+from ase.optimize import BFGS, LBFGS
 from hypermolecule_class import pt, graphize
 from parameters import MOPAC_COMMAND
 from linalg_tools import *
 from subprocess import DEVNULL, STDOUT, check_call
 from parameters import nci_dict
 import itertools as it
+import sys
+from rmsd import kabsch
+
+class MopacReadError(Exception):
+    '''
+    Thrown when reading MOPAC output files fails for some reason.
+    '''
+    pass
 
 class suppress_stdout_stderr(object):
     '''
@@ -41,17 +50,6 @@ class suppress_stdout_stderr(object):
         for fd in self.null_fds + self.save_fds:
             os.close(fd)
 
-import sys
-# TODO: test hiddenprints
-class HiddenPrints:
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
-
 class Spring:
     '''
     ASE Custom Constraint Class
@@ -73,9 +71,9 @@ class Spring:
         # vector connecting atom1 to atom2
 
         spring_force = self.k * (np.linalg.norm(direction) - self.d_eq)
-        # absolute spring force (float)
+        # absolute spring force (float). Positive if spring is overstretched.
 
-        spring_force = min(spring_force, 100)
+        spring_force = np.clip(spring_force, -100, 100)
         # force is clipped at 100 eV/A
 
         forces[self.i1] += (norm(direction) * spring_force)
@@ -101,12 +99,6 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='TEST'):
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
-
-class MopacReadError(Exception):
-    '''
-    Thrown when reading MOPAC output files fails for some reason.
-    '''
-    pass
 
 def read_mop_out(filename):
     '''
@@ -332,11 +324,25 @@ def optimize(TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, me
     opt_coords, energy, success = mopac_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, title=title)
 
     if success:
-        success = scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=max_newbonds)
+        success = scramble_check(opt_coords, TS_atomnos, mols_graphs, max_newbonds=max_newbonds)
 
     return opt_coords, energy, success
 
-def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=2) -> bool:
+def molecule_check(old_coords, new_coords, atomnos, max_newbonds=1):
+    '''
+    Checks if two molecules have the same bonds between the same atomic indexes
+    '''
+    old_bonds = {(a, b) for a, b in list(graphize(old_coords, atomnos).edges) if a != b}
+    new_bonds = {(a, b) for a, b in list(graphize(new_coords, atomnos).edges) if a != b}
+
+    delta_bonds = (old_bonds | new_bonds) - (old_bonds & new_bonds)
+
+    if len(delta_bonds) > max_newbonds:
+        return False
+    else:
+        return True
+
+def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=1) -> bool:
     '''
     Check if a transition state structure has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the
@@ -354,6 +360,7 @@ def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=2) -> boo
 
         for bond in [(a+pos, b+pos) for a, b in list(graph.edges) if a != b]:
             bonds.append(bond)
+
     bonds = set(bonds)
     # creating bond set containing all bonds present in the desired transition state
 
@@ -387,12 +394,8 @@ def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max
 
     with LBFGS(atoms, maxstep=0.1, logfile=None) as opt:
 
-        try:
-            opt.run(fmax=0.05, steps=100)
+        opt.run(fmax=0.05, steps=100)
 
-        except Exception as e:
-            print(e)
-            quit()
 
     success = scramble_check(structure, atomnos, mols_graphs, max_newbonds=max_newbonds)
 
@@ -455,11 +458,13 @@ def hyperNEB(coords, atomnos, ids, constrained_indexes, reag_prod_method ='PM7',
     products = get_product(coords, atomnos, ids, constrained_indexes, method=reag_prod_method)
     # get reagents and products for this reaction
 
-    # reagents -= centroid(reagents[constrained_indexes.ravel()])
-    # products -= centroid(products[constrained_indexes.ravel()])
+    reagents -= np.mean(reagents, axis=0)
+    products -= np.mean(products, axis=0)
     # centering both structures on the centroid of reactive atoms
 
-    # align the two reagents and products structures to the TS (minimal RMSD)?
+    aligment_rotation = R.align_vectors(reagents, products)
+    products = np.array([aligment_rotation @ v for v in products])
+    # rotating the two structures to minimize differences
 
     ts_coords, ts_energy = ase_neb(reagents, products, atomnos, method=NEB_method, optimizer=LBFGS, title=title)
     # Use these structures plus the TS guess to run a NEB calculation through ASE
@@ -486,9 +491,10 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
         mol2_center = np.mean([coords[b] for _, b in constrained_indexes], axis=0)
         motion = norm(mol2_center - mol1_center)
         # norm of the motion that, when applied to mol1,
-        # superimposes its reactive centers to the ones of mol2
+        # superimposes its reactive atoms to the ones of mol2
 
-        threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius + pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
+        threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius +
+                                        pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
 
         reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
         # distances between reactive atoms
@@ -585,8 +591,7 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
         # move reactive atoms away from each other just enough
 
-        # coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
-        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=[constrained_indexes[0]], method=method)
+        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
         # optimize the structure but keeping the reactive atoms distanced
 
         return coords
@@ -616,8 +621,8 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
             coords[moving_molecule_slice][i] -= displacement*np.exp(-0.5*dist)
             # the closer they are to the reactive atom, the further they are moved
 
-        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
-        # when all atoms are moved, optimize the geometry with the previous constraints
+        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=np.array([constrained_indexes[0]]), method=method)
+        # when all atoms are moved, optimize the geometry with only the first of the previous constraints
 
         newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
         # finally, when structures are close enough, do a free optimization to get the reaction product
@@ -630,34 +635,6 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
             return newcoords
         else:
             return coords
-
-def ase_bend(mol, threshold, method='PM7', title='temp'):
-    '''
-    '''
-    conf = 0
-    coords = mol.atomcoords[conf]
-
-    orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict.items()}
-
-    atoms = Atoms(mol.atomnos, positions=coords, calculator=MOPAC(label=title, command=f'{MOPAC_COMMAND} {title}.mop', method=method))
-
-    i1, i2 = mol.reactive_indexes
-    threshold = threshold*np.linalg.norm(coords[i1]-coords[i2])
-    c = Hookean(a1=int(i1), a2=int(i2), rt=threshold, k=10)
-    atoms.set_constraint(c)
-
-    opt = BFGS(atoms, maxstep=0.1, logfile=None)
-
-    with suppress_stdout_stderr():
-        opt.run(fmax=0.5, steps=100)
-
-    mol.atomcoords[conf] = atoms.get_positions()
-
-    #update orbitals and pivots
-    for index, atom in mol.reactive_atoms_classes_dict.items():
-        atom.init(mol, index, update=True, orb_dim=orb_memo[index])
-
-    return mol
 
 def get_nci(coords, atomnos, constrained_indexes, ids):
     '''
@@ -810,6 +787,160 @@ def is_phenyl(coords):
     
     return False, None
 
+class OrbitalSpring:
+    '''
+    ASE Custom Constraint Class
+    Adds an harmonic force between a pair of orbitals, that is
+    virtual points "bonded" to a given atom.
+    '''
+    def __init__(self, i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq, k=100):
+        self.i1, self.i2 = i1, i2
+        self.orb1, self.orb2 = orb1, orb2
+        self.neighbors_of_1, self.neighbors_of_2 = neighbors_of_1, neighbors_of_2
+        self.d_eq = d_eq
+        self.k = k
+
+    def adjust_positions(self, atoms, newpositions):
+        pass
+
+    def adjust_forces(self, atoms, forces):
+
+        # First, add the force between reactive atoms i1, i2
+
+        orb_direction = self.orb2 - self.orb1
+        # vector connecting orb1 to orb2
+
+        spring_force = self.k * (np.linalg.norm(orb_direction) - self.d_eq)
+        # absolute spring force (float). Positive if spring is overstretched.
+
+        spring_force = np.clip(spring_force, -10, 10)
+        # force is clipped at 10 eV/A
+
+        force_direction1 = np.sign(spring_force) * norm(np.mean((norm(+orb_direction),
+                                                                 norm(self.orb1-atoms.positions[self.i1])), axis=0))
+
+        force_direction2 = np.sign(spring_force) * norm(np.mean((norm(-orb_direction),
+                                                                 norm(self.orb2-atoms.positions[self.i2])), axis=0))
+
+        # versors specifying the direction at which forces act, that is on the
+        # bisector of the angle between vector connecting atom to orbital and
+        # vector connecting the two orbitals
+
+        forces[self.i1] += (force_direction1 * spring_force)
+        forces[self.i2] += (force_direction2 * spring_force)
+        # applying harmonic force to each atom, directed toward the other one
+
+        # Now applying to neighbors the force derived by torque, scaled to half the spring force
+
+        torque1 = np.cross(self.orb1 - atoms.positions[self.i1], forces[self.i1])
+        for i in self.neighbors_of_1:
+            forces[i] += norm(np.cross(torque1, atoms.positions[i] - atoms.positions[self.i1])) * spring_force/2
+
+        torque2 = np.cross(self.orb2 - atoms.positions[self.i2], forces[self.i2])
+        for i in self.neighbors_of_2:
+            forces[i] += norm(np.cross(torque2, atoms.positions[i] - atoms.positions[self.i2])) * spring_force/2
+
+def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp', traj=None):
+    '''
+    threshold: float (A) TODO
+    '''
+    from ase.io.trajectory import Trajectory
+    def orbitalized(atoms, orbitals):
+        positions = np.concatenate((atoms.positions, orbitals))
+        symbols = str(atoms.symbols) + 'F'*len(orbitals)
+        return Atoms(symbols, positions=positions)
+
+    mol = deepcopy(original_mol)
+
+    i1, i2 = mol.reactive_indexes
+
+    neighbors_of_1 = list([(a, b) for a, b in mol.graph.adjacency()][i1][1].keys())
+    neighbors_of_1.remove(i1)
+
+    neighbors_of_2 = list([(a, b) for a, b in mol.graph.adjacency()][i2][1].keys())
+    neighbors_of_2.remove(i2)
+
+    for p in mol.pivots:
+        if p.index == pivot.index:
+            active_pivot = p
+            break
+    
+    dist = np.linalg.norm(active_pivot.pivot)
+
+    for conf in range(len(mol.atomcoords)):
+
+        atoms = Atoms(mol.atomnos, positions=mol.atomcoords[conf], calculator=MOPAC(label=title, command=f'{MOPAC_COMMAND} {title}.mop > {title}.cmdlog 2>&1', method=method))
+        traj = Trajectory(traj, mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])))
+
+        for iteration in range(100):
+
+            atoms.positions = mol.atomcoords[conf]
+
+            orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict.items()}
+
+            orb1, orb2 = active_pivot.start, active_pivot.end
+
+            c = OrbitalSpring(i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq=threshold)
+            atoms.set_constraint(c)
+
+            opt = BFGS(atoms, maxstep=0.1, logfile=None)
+
+            opt.run(fmax=0.5, steps=1)
+            # print('atoms need to get ' + ('more distant' if dist < threshold else 'closer'))
+            # atoms.edit()
+            traj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
+            traj.write()
+
+            mol.atomcoords[conf] = atoms.get_positions()
+
+            # Update orbitals and get temp pivots
+            for index, atom in mol.reactive_atoms_classes_dict.items():
+                atom.init(mol, index, update=True, orb_dim=orb_memo[index], atomcoords_index=conf)
+                # orbitals positions are calculated based on the conformer we are working on
+
+            temp_pivots = docker._get_pivots(mol)
+
+            for p in temp_pivots:
+                if p.index == pivot.index:
+                    active_pivot = p
+                    break
+            # print(active_pivot)
+
+            dist = np.linalg.norm(active_pivot.pivot)
+            # print(f'{iteration}. {mol.name} conf {conf}: pivot is {round(dist, 3)} (target {round(threshold, 3)})')
+
+            if abs(dist - threshold) < 0.1:
+                break
+
+        if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[conf], mol.atomnos, max_newbonds=1):
+            mol.atomcoords[conf] = original_mol.atomcoords[conf]
+            # print('opt screwed')
+        # keep the bent structures only if no scrambling occurred between atoms
+
+    # Now align the ensembles on the new reactive atoms positions
+
+    reference, *targets = mol.atomcoords
+    reference = np.array(reference)
+    targets = np.array(targets)
+
+    r = reference - np.mean(reference[mol.reactive_indexes], axis=0)
+    ts = np.array([t - np.mean(t[mol.reactive_indexes], axis=0) for t in targets])
+
+    output = []
+    output.append(r)
+    for target in ts:
+        matrix = kabsch(r, target)
+        output.append([matrix @ vector for vector in target])
+
+    mol.atomcoords = np.array(output)
+
+    # Update orbitals and pivots
+    for index, atom in mol.reactive_atoms_classes_dict.items():
+        atom.init(mol, index, update=True, orb_dim=orb_memo[index])
+
+    docker._set_pivots(mol)
+
+    return mol
 
 
 
