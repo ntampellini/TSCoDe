@@ -60,8 +60,8 @@ TSCoDe can work with all molecular formats read by [cclib](https://github.com/cc
 Reactive atoms supported are `CHONPS`. Reactions can be of four kinds:
 - Two molecules, one reactive atom each - "string embed" (*i.e.* SN2 reactions)
 - Two molecules, one with a single reactive atom and the other with two reactive atoms - "chelotropic embed" (*i.e.* epoxidations)
-- Two molecules, two reactive atoms each - "cyclical embed" (i.e. Diels-Alder reactions)
-- Three molecules, two reactive atoms each - "cycical embed" (i.e. reactions where two partners are bridged by a carboxylic acid)
+- Two molecules, two reactive atoms each - "cyclical embed" (*i.e.* Diels-Alder reactions)
+- Three molecules, two reactive atoms each - "cycical embed" (*i.e.* reactions where two partners are bridged by a carboxylic acid)
 
 After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the oxygen of a peracid, like `4ab`.
   
@@ -125,6 +125,6 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE2MDY0NzU1ODIsNjAwMjg3MzA3LDU0Nz
-ExMjc5OSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbNjQ5MzYzNTg2LDYwMDI4NzMwNyw1NDcxMT
+I3OTksLTY3MjExODU2MF19
 -->
