@@ -59,7 +59,7 @@ TSCoDe can work with all molecular formats read by [cclib](https://github.com/cc
  
 Reactive atoms supported are `CHONPS`. Reactions can be of four kinds:
 - Two molecules, one reactive atom each - "string embed" (*i.e.* SN2 reactions)
-- Two molecules, one with one reactive atom and the other with two reactive atoms - "chelotropic embed" (*i.e.* epoxidations)
+- Two molecules, one with a single reactive atom and the other with two reactive atoms - "chelotropic embed" (*i.e.* epoxidations)
 - Two molecules, two reactive atoms each - "cyclical embed" (i.e. Diels-Alder reactions)
 - Three molecules, two reactive atoms each - "cycical embed" (i.e. reactions where two partners are bridged by a carboxylic acid)
 
@@ -125,6 +125,6 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE5MTY3NDg0ODUsNjAwMjg3MzA3LDU0Nz
+eyJoaXN0b3J5IjpbLTE2MDY0NzU1ODIsNjAwMjg3MzA3LDU0Nz
 ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
