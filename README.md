@@ -7,10 +7,9 @@
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 </div>
 
+  TSCoDe is a program written mostly in Python, with some libraries optionally boosted via Cython. It mostly leverages 
+
   ## What the program can do (well)
-  
-  TSCoDe is a program written mostly in Python, with minor 
-  
   ## What the program can do (sometimes)
   ## What the program cannot do
   ## Usage
@@ -78,5 +77,5 @@
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTc4MDUzMjQzMiwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbLTE2NDczNDMzMSwtNjcyMTE4NTYwXX0=
 -->
