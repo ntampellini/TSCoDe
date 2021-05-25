@@ -3,7 +3,7 @@
   
 
 <div align="center">
-![Doge](https://blog.bitpanda.com/it/much-wow-cosa-sta-succedendo-con-dogecoin-doge/&psig=AOvVaw3hJOCj0Rnq0sVgqQswawP6&ust=1622042836213000&source=images&cd=vfe&ved=0CAIQjRxqFwoTCLjD4M6S5fACFQAAAAAdAAAAABAD)
+![Doge](https://blog.bitpanda.com/content/images/size/w2000/2021/02/Bitpanda_blog_much_wow_dogecoin_it.png)
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 </div>
 
@@ -87,5 +87,5 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTI4MjM4Mzc0NywtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbMTk1ODc3NjQxNCwtNjcyMTE4NTYwXX0=
 -->
