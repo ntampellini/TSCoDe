@@ -23,6 +23,7 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 **Generate transition state structures** (semiempirical level) - After poses generation, these can be used to try to directly obtain transition state structures at the semiempirical level chosen. This is not a default behavior, and it is invoked by the `NEB` keyword. A climbing image nudged elastic band (CI-NEB) transition state search is performed after inferring both reagents and products for each individual pose. This entire process is of course challenging to automate completely, and can be prone to failures. Associative reactions, where two (or three) molecules are bound together (or strongly interacting) after the TS, with no additional species involved, tend to give good results. For example, cycloaddition reactions are great candidates while atom transfer reactions (*i.e.* epoxidations) are not.
 
 ## What the program cannot do
+**Perfectly replicate TS structures at high levels of theory**
 
 ## Installation
 
@@ -95,6 +96,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTYyNjkxNzE3Nyw2MDAyODczMDcsNTQ3MT
+eyJoaXN0b3J5IjpbLTgxODQ3NDAxMyw2MDAyODczMDcsNTQ3MT
 EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
