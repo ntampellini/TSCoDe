@@ -2,7 +2,7 @@
 
   
 
-![Doge](images/tri.png)
+![](images/tri.png)
 
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -100,6 +100,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTEzMjc2MDUyMiw2MDAyODczMDcsNTQ3MT
+eyJoaXN0b3J5IjpbMTI1Njk5MDcwMSw2MDAyODczMDcsNTQ3MT
 EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
