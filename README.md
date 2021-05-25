@@ -31,7 +31,9 @@ I you have Git installed, clone the repository: *(otherwise download the code an
 
     git clone https://github.com/ntampellini/TSCoDe
     
-Open a command shell, move to the TS
+Open a command shell, move to the TSCoDe folder and install the requirements.
+
+    pip install -r requirements.txt
 
 
 ## Usage
@@ -105,6 +107,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTUxNjk5OTI0Nyw2MDAyODczMDcsNTQ3MT
-EyNzk5LC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbLTEyMDQ3NjM5NjAsNjAwMjg3MzA3LDU0Nz
+ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
