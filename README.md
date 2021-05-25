@@ -18,7 +18,7 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 Create poses for bimolecular and trimolecular transition states of organic molecules by various manipulations, including structural deformation. If a transition state is already in hand, the distance between reactive atoms can be specified, so as to obtain all the stereo/regioisomeric analogs with precise molecular spacings.
 
 ## What the program can do (sometimes)
-After the guesses generation, the program will try to infer the non-covalent interactions (NCI
+After the poses generation, the program will try to infer the non-covalent interactions (NCIs) between all generated structures, and if a particular NCI is not shared by all of them, that is reported in the program output. This is 
 
 ## What the program cannot do
 
@@ -93,6 +93,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbNDg3MTA4ODAzLDYwMDI4NzMwNyw1NDcxMT
-I3OTksLTY3MjExODU2MF19
+eyJoaXN0b3J5IjpbLTExMDEwNTYyNjIsNjAwMjg3MzA3LDU0Nz
+ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
