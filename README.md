@@ -3,7 +3,7 @@
   
 
 <div align="center">
-
+![Doge](https://blog.bitpanda.com/it/much-wow-cosa-sta-succedendo-con-dogecoin-doge/&psig=AOvVaw3hJOCj0Rnq0sVgqQswawP6&ust=1622042836213000&source=images&cd=vfe&ved=0CAIQjRxqFwoTCLjD4M6S5fACFQAAAAAdAAAAABAD)
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 </div>
 
@@ -14,8 +14,14 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 
 ## What the program can do (well)
 Create 
+
 ## What the program can do (sometimes)
+
+
 ## What the program cannot do
+
+## Installation
+
 ## Usage
 
 ### Input formatting
@@ -81,5 +87,5 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTkxMjAxNzIzLC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbMTI4MjM4Mzc0NywtNjcyMTE4NTYwXX0=
 -->
