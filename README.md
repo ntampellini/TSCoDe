@@ -43,9 +43,12 @@ After these have been installed, if you haven't already, you should [request a l
 
 ### Example
 
+    NOOPT DIST(a
+
 ### Input formatting
-The program input (`myinput.txt`) can be any text file. Syntax is
-- wd
+The program input (`myinput.txt`) can be any text file. Syntax:
+- Any blank line will be ignored
+- Any line starting with `#` will be ignored 
 - 
 
 TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. 
@@ -113,6 +116,6 @@ Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbNzg5NTM2MDM5LDYwMDI4NzMwNyw1NDcxMT
-I3OTksLTY3MjExODU2MF19
+eyJoaXN0b3J5IjpbLTcwNzUxODk2OSw2MDAyODczMDcsNTQ3MT
+EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
