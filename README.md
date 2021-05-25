@@ -15,14 +15,10 @@ TSCoDe is the first systematical conformational embedder for bimolecular and tri
 TSCoDe is written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of manipulation on the provided structures through the [MOPAC2016](http://openmopac.net/MOPAC2016.html) calculator. While the former is free software, the latter is only free for academic use, and a license must be requested via the MOPAC website.
 
 ## What the program can do (well)
-Create poses for bimolecular and trimolecular transition states of organic molecules. Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
-- Two molecules, one reactive atom each - string embed (SN2 reactions)
-
-
-
+Create poses for bimolecular and trimolecular transition states of organic molecules by various manipulations, including bending and
 
 ## What the program can do (sometimes)
-E
+Infer the 
 
 ## What the program cannot do
 
@@ -30,6 +26,10 @@ E
 
 ## Usage
 
+
+Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
+- Two molecules, one reactive atom each - "string embed" (SN2 reactions)
+- Two molecules, one
 ### Input formatting
 The program is 
  
@@ -93,6 +93,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbNzg1MjkzNzksNjAwMjg3MzA3LDU0NzExMj
-c5OSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbMjEyMjY3MzE1MCw2MDAyODczMDcsNTQ3MT
+EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
