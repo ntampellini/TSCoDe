@@ -67,7 +67,7 @@ After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) 
   
 ### Keywords
 
-Keywords are divided by at least one blak
+Keywords are divided by at least one blank space. Some of them are self-sufficient (*i.e.* `DEEP`), some others require an input (*i.e.* `STEPS=10` or `DIST`
 
 - **SUPRAFAC** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 
@@ -125,6 +125,6 @@ Keywords are divided by at least one blak
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE5NjMwMzY5MTEsNjAwMjg3MzA3LDU0Nz
-ExMjc5OSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbLTI0NDk4MjQ1Nyw2MDAyODczMDcsNTQ3MT
+EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
