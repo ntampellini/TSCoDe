@@ -8,13 +8,14 @@
 </div>
 
 TSCoDe is the first systematical conformational embedder for bimolecular and trimolecular chemical reactions. It is able to generate a comprehensive set of both regioisomeric and stereoisomeric poses for molecular arrangements, provided the atoms that will be reacting. It supports both open and cyclical transition states. By feeding the program conformational ensembles, it also generates all conformations combinations. It is thought as a tool to explore TS conformational space in a fast and systematical way, and yield a series of starting points for higher-level calculations.
+
 **NOTE: structures obtained from TSCoDe are not proper transition states (most of the times) but are often quite close. The program is intended to yield and rank poses, not TSs. In this way, the computational chemist can skip the error-prone phase of molecular embedding and proceed to the most appropriate higher-level calculation step.**
 
 ### Required packages and tools
 TSCoDe is written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of manipulation on the provided structures through the [MOPAC2016](http://openmopac.net/MOPAC2016.html) calculator. While the former is free software, the latter is only free for academic use, and a license must be requested via the MOPAC website.
 
 ## What the program can do (well)
-Create poses for bimolecular and trimolecular transition states of organic molecules. The desired set of transition states-like
+Create poses for bimolecular and trimolecular transition states of organic molecules. The desired set of transition states-like structures must
 
 ## What the program can do (sometimes)
 
@@ -88,5 +89,5 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbNjk0NDc4NTQyLC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbNzE0NDI1MDQ3LC02NzIxMTg1NjBdfQ==
 -->
