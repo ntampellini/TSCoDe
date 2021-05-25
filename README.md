@@ -20,7 +20,7 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 ## What the program can do (sometimes)
 **Infer differential NCIs** - After the poses generation, the program will try to infer the non-covalent interactions (NCIs) between all generated structures, and if a particular NCI is not shared by all of them, that is reported in the program output. I a particularly strong NCI is present only in a given TS, this can be a handy indicator of the source of selectivity in a given chemical reaction.
 
-**Generate transition state structures** (semiempirical level) - After poses generation, these can be used to try to directly obtain transition state structures at the semiempirical level chosen. This is not a default behavior, and it is invoked by the `NEB` keyword. A climbing image nudged elastic band (CI-NEB) transition state search is performed after inferring both reagents and products for each individual pose. This entire process is of course challenging to automate completely, and is prone to failure
+**Generate transition state structures** (semiempirical level) - After poses generation, these can be used to try to directly obtain transition state structures at the semiempirical level chosen. This is not a default behavior, and it is invoked by the `NEB` keyword. A climbing image nudged elastic band (CI-NEB) transition state search is performed after inferring both reagents and products for each individual pose. This entire process is of course challenging to automate completely, and can be prone to failures. Associative reactions
 
 ## What the program cannot do
 
@@ -95,6 +95,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTQ1Njk1MjQ2NSw2MDAyODczMDcsNTQ3MT
+eyJoaXN0b3J5IjpbMTE5ODcxMzM0Miw2MDAyODczMDcsNTQ3MT
 EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
