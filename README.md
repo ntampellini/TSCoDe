@@ -79,7 +79,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
   
 
-- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. The standard value of 6 will perform six 60° turns. Syntax: `SCAN=n`, where n is an integer. **UPDATE**
+- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. The rotation range to be explored is +-45° and it is scanned in `2*STEPS+1`
 
   
 
@@ -125,6 +125,6 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbNjQ5MzYzNTg2LDYwMDI4NzMwNyw1NDcxMT
-I3OTksLTY3MjExODU2MF19
+eyJoaXN0b3J5IjpbLTI2MzcwNTc3Nyw2MDAyODczMDcsNTQ3MT
+EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
