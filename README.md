@@ -63,9 +63,10 @@ Reactive atoms supported are `CHONPS`. Reactions can be of four kinds:
 - Two molecules, two reactive atoms each - "cyclical embed" (i.e. Diels-Alder reactions)
 - Three molecules, two reactive atoms each - "cycical embed" (i.e. reactions where two partners are bridged by a carboxylic acid)
 
-After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags
+After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the oxygen of a peracid, like `4ab`.
   
 ### Keywords
+Many keywords are
 - **SUPRAFAC** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder reactions.
 
 
@@ -122,6 +123,6 @@ After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) 
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE5NjkwMDYzMTAsNjAwMjg3MzA3LDU0Nz
+eyJoaXN0b3J5IjpbLTE2Mjk1NzI1MTUsNjAwMjg3MzA3LDU0Nz
 ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
