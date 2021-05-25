@@ -25,14 +25,19 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 ## What the program cannot do
 **Perfectly replicate TS structures at high levels of theory** - As the program exploits MOPAC to perform calculations, final geometries arise from constrained optimizations at a semiempirical level of theory (default is PM7). They are therefore not granted to perfectly replicate higher-level calculations. However, constrained optimizations through external programs are meant to be used to refine these structures and obtain TSs.
 
+
 ## Installation
+The TSCoDe Python distribution is most easily installed throu
+
 
 ## Usage
 
+### Example
 
 Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 - Two molecules, one reactive atom each - "string embed" (SN2 reactions)
 - Two molecules, one
+- 
 ### Input formatting
 The program is 
  
@@ -96,6 +101,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbNTczNTY2NDgxLDYwMDI4NzMwNyw1NDcxMT
-I3OTksLTY3MjExODU2MF19
+eyJoaXN0b3J5IjpbLTIwODI1MzM5ODgsNjAwMjg3MzA3LDU0Nz
+ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
