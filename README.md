@@ -77,11 +77,9 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **NOOPT** - Skip the optimization steps, directly writing structures to file.
 
-  
+- **ROTRANGE**  - Me
 
-- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. The rotation range to be explored is +-45° and it is scanned in `2*STEPS+1` steps. Therefore, a value of `STEPS=6` will perform
-
--**ROTRANGE**  
+- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. The rotation range to be explored is +-`ROTRANGE` degrees and it is scanned in `2*STEPS+1` steps. Therefore, a value of `STEPS=6` will perform
 
 - **BYPASS** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
 
@@ -125,6 +123,6 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTkyNjM2OTg0Myw2MDAyODczMDcsNTQ3MT
-EyNzk5LC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbLTE4NDYyMDk4NzQsNjAwMjg3MzA3LDU0Nz
+ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
