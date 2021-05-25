@@ -62,7 +62,8 @@ Reactive atoms supported are `CHONPS`. Reactions can be of four kinds:
 - Two molecules, one with one reactive atom and the other with two reactive atoms - "chelotropic embed" (*i.e.* epoxidations)
 - Two molecules, two reactive atoms each - "cyclical embed" (i.e. Diels-Alder reactions)
 - Three molecules, two reactive atoms each - "cycical embed" (i.e. reactions where two partners are bridged by a carboxylic acid)
-  
+
+After each reactive index, a letter (a, b or c)
   
 ### Keywords
 - **SUPRAFAC** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder reactions.
@@ -121,6 +122,6 @@ Reactive atoms supported are `CHONPS`. Reactions can be of four kinds:
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTgxMzI2OTIyNiw2MDAyODczMDcsNTQ3MT
+eyJoaXN0b3J5IjpbLTYwOTQwMjk5MSw2MDAyODczMDcsNTQ3MT
 EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
