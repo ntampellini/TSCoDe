@@ -39,17 +39,18 @@ After these have been installed, if you haven't already, you should [request a l
 
 ## Usage
 
+    python tscode.py $complete
+
 ### Example
 
+### Input formatting
+TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. The program input can be any test file, formatted as:
+- wd
+ 
 Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 - Two molecules, one reactive atom each - "string embed" (SN2 reactions)
 - Two molecules, one
 - 
-### Input formatting
-TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. The program input can be any test file, formatted as:
-
- 
-  
   
   
 ### Keywords
@@ -109,6 +110,6 @@ TSCoDe can work with all molecular formats read by [cclib](https://github.com/cc
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTg3MjU2MzM5NSw2MDAyODczMDcsNTQ3MT
+eyJoaXN0b3J5IjpbLTExNzQwNjc3MSw2MDAyODczMDcsNTQ3MT
 EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
