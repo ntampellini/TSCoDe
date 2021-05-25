@@ -27,9 +27,11 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 
 ## Installation
 ### Windows 
-I you have Git installlone the repository:
+I you have Git installed, clone the repository: *(otherwise download the code and unpack it)*
 
     git clone https://github.com/ntampellini/TSCoDe
+    
+Open a command shell, move to the TS
 
 
 ## Usage
@@ -103,6 +105,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTM4Njg4MDEyNCw2MDAyODczMDcsNTQ3MT
+eyJoaXN0b3J5IjpbMTUxNjk5OTI0Nyw2MDAyODczMDcsNTQ3MT
 EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
