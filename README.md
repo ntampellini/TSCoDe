@@ -37,9 +37,8 @@ Open a command shell, move to the TSCoDe folder and install the requirements.
 
 After these have been installed, if you haven't already, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "mopac2016" command. To test this, the command `mopac2016` should return [this](https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d) message.
 
-
 ## Usage
-
+TSCoDe can work with all molecular formats read by cclib
 ### Example
 
 Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
@@ -109,6 +108,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTQzNDYwNjA5MSw2MDAyODczMDcsNTQ3MT
-EyNzk5LC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbNTY4ODAwMzgxLDYwMDI4NzMwNyw1NDcxMT
+I3OTksLTY3MjExODU2MF19
 -->
