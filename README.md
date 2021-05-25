@@ -67,7 +67,7 @@ After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) 
   
 ### Keywords
 
-Many keywords are 
+Keywords are divided by at least one blak
 
 - **SUPRAFAC** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 
@@ -125,6 +125,6 @@ Many keywords are
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTczNDY4MDYzNCw2MDAyODczMDcsNTQ3MT
-EyNzk5LC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbLTE5NjMwMzY5MTEsNjAwMjg3MzA3LDU0Nz
+ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
