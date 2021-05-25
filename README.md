@@ -10,9 +10,10 @@
 TSCoDe is the first systematical conformational embedder for bimolecular and trimolecular chemical reactions. It is able to generate a comprehensive set of both regioisomeric and stereoisomeric poses for molecular arrangements, provided the atoms that will be reacting. By feeding the program with conformational ensembles, it also generates all conformations combinations. It supports both open and cyclical transition states.
 
 ### Required packages and tools
-TSCoDe is written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of manipulation on the provided structures through the [MOPAC2016](http://openmopac.net/MOPAC2016.html) calculator. While the former is free software, the latter is only free for academic use, and a licence must be requested via the MOPAC website.
+TSCoDe is written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of manipulation on the provided structures through the [MOPAC2016](http://openmopac.net/MOPAC2016.html) calculator. While the former is free software, the latter is only free for academic use, and a license must be requested via the MOPAC website.
 
 ## What the program can do (well)
+Create 
 ## What the program can do (sometimes)
 ## What the program cannot do
 ## Usage
@@ -80,5 +81,5 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTUxNzA2OTU0MSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbLTkxMjAxNzIzLC02NzIxMTg1NjBdfQ==
 -->
