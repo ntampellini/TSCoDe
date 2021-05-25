@@ -77,12 +77,11 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **NOOPT** - Skip the optimization steps, directly writing structures to file.
 
-- **ROTRANGE**  - Manually specify the rotation range to be explored around the structure pivot. Only applies to "cyclical" embeds. Default is
+- **ROTRANGE**  - Manually specify the rotation range to be explored around the structure pivot. Only applies to "cyclical" embeds. Default is 45. Syntax: `ROTRANGE=45`
 
-- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. The rotation range to be explored is +-`ROTRANGE` degrees and it is scanned in `2*STEPS+1` steps. Therefore, a value of `STEPS=6` will perform
+- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. The rotation range to be explored is +-`ROTRANGE` degrees. For cyclical embeds,  it is scanned in `2*STEPS+1` steps. Therefore, a value of `STEPS=6` will perform 7.5 degrees turns.
 
 - **BYPASS** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
-
   
 
 - **THRESH** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures. Default is 0.5 A. Syntax: `THRESH=n`, where n is a number.
@@ -123,6 +122,6 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTY0MDYyMDQwMCw2MDAyODczMDcsNTQ3MT
+eyJoaXN0b3J5IjpbLTk5MzY2OTM2MSw2MDAyODczMDcsNTQ3MT
 EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
