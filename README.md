@@ -55,7 +55,7 @@ The program input can be any text file.
 - Keywords, if present, need to be on first non-blank, non-comment line
 - Then, two or three molecule files are specified, along with their reactive atoms indexes
 
-TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. The reactive indexes specified are
+TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. **The reactive indexes specified are counted starting from zero!** If the molecules are specified without reactive indexes, a pop-up ASE GUI window will guide the user into ma
  
 Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 - Two molecules, one reactive atom each - "string embed" (SN2 reactions)
@@ -120,6 +120,6 @@ Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE3ODc1MTMzLDYwMDI4NzMwNyw1NDcxMT
+eyJoaXN0b3J5IjpbNDg2MjU2MjAwLDYwMDI4NzMwNyw1NDcxMT
 I3OTksLTY3MjExODU2MF19
 -->
