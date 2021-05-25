@@ -133,7 +133,7 @@ class Options:
                     
     # list of keyword names to be used in the first line of program input
 
-    rotation_steps = 12
+    rotation_steps = 6
     pruning_thresh = 0.5 # default value set later on the basis of number of atoms
     rigid = False
     
@@ -864,7 +864,7 @@ class Docker:
                         if r_atom.cumnum == c[1]:
                             pairings[i][1] = (m, index)
 
-            r = np.zeros((3,2))
+            r = np.zeros((3,3), dtype=int)
 
             for first, second in pairings:
                 mol_index = first[0]
@@ -878,19 +878,20 @@ class Docker:
                 r[mol_index, partner_index] = reactive_index
 
             # r[0,1] is the reactive_index of molecule 0 that faces molecule 1 and so on
+            # diagonal of r (r[0,0], r[1,1], r[2,2]) is just unused
 
             ############### calculate reactive atoms positions
 
             mol0, mol1, mol2 = mols
 
-            a01 = mol0.rotation @ mol0.atomcoords[0,r[0,1]] + mol0.position
-            a02 = mol0.rotation @ mol0.atomcoords[0,r[0,2]] + mol0.position
+            a01 = mol0.rotation @ mol0.atomcoords[0][r[0,1]] + mol0.position
+            a02 = mol0.rotation @ mol0.atomcoords[0][r[0,2]] + mol0.position
 
-            a10 = mol1.rotation @ mol1.atomcoords[0,r[1,0]] + mol1.position
-            a12 = mol1.rotation @ mol1.atomcoords[0,r[1,2]] + mol1.position
+            a10 = mol1.rotation @ mol1.atomcoords[0][r[1,0]] + mol1.position
+            a12 = mol1.rotation @ mol1.atomcoords[0][r[1,2]] + mol1.position
 
-            a20 = mol2.rotation @ mol2.atomcoords[0,r[2,0]] + mol2.position
-            a21 = mol2.rotation @ mol2.atomcoords[0,r[2,1]] + mol2.position
+            a20 = mol2.rotation @ mol2.atomcoords[0][r[2,0]] + mol2.position
+            a21 = mol2.rotation @ mol2.atomcoords[0][r[2,1]] + mol2.position
 
             ############### explore all angles combinations
 
