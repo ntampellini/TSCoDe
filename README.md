@@ -7,7 +7,7 @@
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 </div>
 
-  TSCoDe is a program written mostly in Python, with some libraries optionally boosted via Cython. It mostly leverages 
+  TSCoDe is a program written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, and the ASE environment
 
   ## What the program can do (well)
   ## What the program can do (sometimes)
@@ -77,5 +77,5 @@
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE2NDczNDMzMSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbNDgyNTg0MjcsLTY3MjExODU2MF19
 -->
