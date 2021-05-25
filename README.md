@@ -79,7 +79,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **ROTRANGE**  - Manually specify the rotation range to be explored around the structure pivot. Only applies to "cyclical" embeds. Default is 45. Syntax: `ROTRANGE=45`
 
-- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. The rotation range to be explored is +-`ROTRANGE` degrees. For cyclical embeds,  it is scanned in `2*STEPS+1` steps. Therefore, a value of `STEPS=6` will perform 7.5 degrees turns.
+- **STEPS** - Manually specify the number of steps to be taken in scanning rotations. For cyclical and chelotropic embeds, the rotation range to be explored is +-`ROTRANGE` degrees and it is scanned in `2*STEPS+1` steps. Therefore, the default value of `STEPS=6` will perform 7.5 degrees turns. For string embeds, the range to be explored is the full 360°, and
 
 - **BYPASS** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
   
@@ -122,6 +122,6 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTk5MzY2OTM2MSw2MDAyODczMDcsNTQ3MT
-EyNzk5LC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbLTYyNjAzOTk1LDYwMDI4NzMwNyw1NDcxMT
+I3OTksLTY3MjExODU2MF19
 -->
