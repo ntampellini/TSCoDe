@@ -6,16 +6,17 @@
 
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 </div>
+TSCoDe is the first  State Conformational Docker. Systematically generate poses for bimolecular and trimolecular transition states. Support for open and cyclical transition states, exploring all regiosomeric and stereoisomeric poses.
 
-  TSCoDe is a program written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, and the ASE environment
+TSCoDe is written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of manipulation on the provided structures
 
-  ## What the program can do (well)
-  ## What the program can do (sometimes)
-  ## What the program cannot do
-  ## Usage
- 
-  ### Input formatting
-  The program is 
+## What the program can do (well)
+## What the program can do (sometimes)
+## What the program cannot do
+## Usage
+
+### Input formatting
+The program is 
  
   
   
@@ -77,5 +78,5 @@
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbNDgyNTg0MjcsLTY3MjExODU2MF19
+eyJoaXN0b3J5IjpbMTY2MjU0NzMwMywtNjcyMTE4NTYwXX0=
 -->
