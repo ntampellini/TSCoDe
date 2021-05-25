@@ -41,7 +41,7 @@ After these have been installed, if you haven't already, you should [request a l
 
     python tscode.py $PathToInputFolder/myinput.txt
 
-### Example of `mi`
+### Example of `myinput.txt`
     DIST(a=1.84, b=2.2012) SUPRAFAC NEB
     nitrostyrene.xyz 0a 1b
     diaminopentadiene.xyz 5a 8b
@@ -49,10 +49,10 @@ After these have been installed, if you haven't already, you should [request a l
     
 
 ### Input formatting
-The program input (`myinput.txt`) can be any text file. Syntax:
+The program input can be any text file.
 - Any blank line will be ignored
-- Any line starting with `#` will be ignored 
-- 
+- Any line starting with `#` will be ignored as a comment
+- Keywords, if present, need to be on first non-blank, non-comment line
 
 TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. 
  
@@ -119,6 +119,6 @@ Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTk0MTc1OTM4Myw2MDAyODczMDcsNTQ3MT
-EyNzk5LC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbLTE5OTE2OTYzNDMsNjAwMjg3MzA3LDU0Nz
+ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
