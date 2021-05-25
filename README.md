@@ -35,7 +35,7 @@ Open a command shell, move to the TSCoDe folder and install the requirements.
 
     pip install -r requirements.txt
 
-After these have been installed, if you haven't already, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "mopac2016" command. To test this, the command `mopac2016` should return a text message.
+After these have been installed, if you haven't already, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "mopac2016" command. To test this, the command `mopac2016` should return a text message with a link to the online manual.
 
 
 ## Usage
@@ -109,6 +109,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbODA4NDUyNDkwLDYwMDI4NzMwNyw1NDcxMT
+eyJoaXN0b3J5IjpbNzYxMjQzNDc0LDYwMDI4NzMwNyw1NDcxMT
 I3OTksLTY3MjExODU2MF19
 -->
