@@ -26,7 +26,10 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 
 
 ## Installation
-The TSCoDe Python distribution is most easily installed through `conda`
+### Windows 
+I you have Git installlone the repository:
+
+    git clone https://github.com/ntampellini/TSCoDe
 
 
 ## Usage
@@ -100,6 +103,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE0NjMyMTEzODQsNjAwMjg3MzA3LDU0Nz
-ExMjc5OSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbLTM4Njg4MDEyNCw2MDAyODczMDcsNTQ3MT
+EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
