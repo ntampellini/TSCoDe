@@ -44,7 +44,8 @@ After these have been installed, if you haven't already, you should [request a l
 ### Example
 
     DIST(a=1.84, b=2.2012) NEB ONLYREFINED
-    styrene.xyz
+    nitrostyrene.xyz 0a 1b
+    diaminopentaadiene.xyz 5a 8b
     
 
 ### Input formatting
@@ -118,6 +119,6 @@ Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE4NTE2MDg0MDEsNjAwMjg3MzA3LDU0Nz
+eyJoaXN0b3J5IjpbLTE2ODk3NDEyNjMsNjAwMjg3MzA3LDU0Nz
 ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
