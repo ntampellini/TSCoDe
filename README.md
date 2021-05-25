@@ -2,7 +2,7 @@
 
   
 
-<img src="images/tri.PNG" alt="TSCoDe Banner" width="200"/>
+<img src="images/tri.PNG" alt="TSCoDe Banner" class="center" width="500"/>
 
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -100,6 +100,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMTQ0Nzc1ODQzMSw2MDAyODczMDcsNTQ3MT
-EyNzk5LC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbLTE0NTA1OTI4ODgsNjAwMjg3MzA3LDU0Nz
+ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
