@@ -16,7 +16,7 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 
 ## What the program can do (well)
 Create poses for bimolecular and trimolecular transition states of organic molecules. Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
-- d
+- Two molecules, one reactive atom each - string embed (SN2 reactions)
 
 
 
@@ -93,6 +93,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE0MjI0NDgwODIsNjAwMjg3MzA3LDU0Nz
-ExMjc5OSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbNzg1MjkzNzksNjAwMjg3MzA3LDU0NzExMj
+c5OSwtNjcyMTE4NTYwXX0=
 -->
