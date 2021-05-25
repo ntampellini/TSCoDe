@@ -41,11 +41,11 @@ After these have been installed, if you haven't already, you should [request a l
 
     python tscode.py $PathToInputFolder/myinput.txt
 
-### Example
-
-    DIST(a=1.84, b=2.2012) NEB ONLYREFINED
+### Example of `mi`
+    DIST(a=1.84, b=2.2012) SUPRAFAC NEB
     nitrostyrene.xyz 0a 1b
-    diaminopentaadiene.xyz 5a 8b
+    diaminopentadiene.xyz 5a 8b
+    # Diels-Alder reaction
     
 
 ### Input formatting
@@ -119,6 +119,6 @@ Reactive atoms supported are `CHONPS`. Reactions can be of three kinds:
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTE2ODk3NDEyNjMsNjAwMjg3MzA3LDU0Nz
-ExMjc5OSwtNjcyMTE4NTYwXX0=
+eyJoaXN0b3J5IjpbLTk0MTc1OTM4Myw2MDAyODczMDcsNTQ3MT
+EyNzk5LC02NzIxMTg1NjBdfQ==
 -->
