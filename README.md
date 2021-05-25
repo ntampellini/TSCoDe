@@ -7,7 +7,7 @@
  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 </div>
 
-TSCoDe is the first systematical conformational embedder for bimolecular and trimolecular chemical reactions. It is able to generate a comprehensive set of both regioisomeric and stereoisomeric poses for molecular arrangements, provided the atoms that will be reacting. By feeding the program with conformational ensembles, it also generates all conformations combinations. It supports both open and cyclical transition states.
+TSCoDe is the first systematical conformational embedder for bimolecular and trimolecular chemical reactions. It is able to generate a comprehensive set of both regioisomeric and stereoisomeric poses for molecular arrangements, provided the atoms that will be reacting. By feeding the program with conformational ensembles, it also generates all conformations combinations. It supports both open and cyclical transition states. It is thought as a tool to systematically explore TS conformational space in a fast way and yield a series of starting points for higher-level calculations.
 **NOTE: structures obtained from TSCoDe are not proper transition states (most of the times) but are often quite close. The program is intended to yield and rank poses, not TSs. In this way, the higher-level calculations needed to obtain TSs at a given level of theory can be carried  **
 
 ### Required packages and tools
@@ -88,5 +88,5 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbMzEyODA1NjYyLC02NzIxMTg1NjBdfQ==
+eyJoaXN0b3J5IjpbLTc1MTQ5NzYwNCwtNjcyMTE4NTYwXX0=
 -->
