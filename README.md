@@ -8,6 +8,9 @@
 </div>
 
   ## What the program can do (well)
+  
+  TSCoDe is a program written mostly in Python, with minor 
+  
   ## What the program can do (sometimes)
   ## What the program cannot do
   ## Usage
@@ -75,5 +78,5 @@
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTY3MjExODU2MF19
+eyJoaXN0b3J5IjpbMTc4MDUzMjQzMiwtNjcyMTE4NTYwXX0=
 -->
