@@ -35,6 +35,8 @@ Open a command shell, move to the TSCoDe folder and install the requirements.
 
     pip install -r requirements.txt
 
+After these
+
 
 ## Usage
 
@@ -107,6 +109,6 @@ The program is
 
 - **LET** - Overrides safety checks that prevent the program from running too large calculations.
 <!--stackedit_data:
-eyJoaXN0b3J5IjpbLTEyMDQ3NjM5NjAsNjAwMjg3MzA3LDU0Nz
+eyJoaXN0b3J5IjpbLTIwNzUxMzI0MTcsNjAwMjg3MzA3LDU0Nz
 ExMjc5OSwtNjcyMTE4NTYwXX0=
 -->
