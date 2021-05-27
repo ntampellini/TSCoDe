@@ -169,7 +169,7 @@ class Options:
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
         d.pop('bypass')
         d.pop('let')
-        d.pop('check')
+        d.pop('check_structures')
         return '\n'.join([f'{var} : {d[var]}' for var in d])
 
 class Docker:
@@ -215,10 +215,14 @@ class Docker:
         self._set_options(filename)
 
         if self.options.check_structures:
-            self.logfile.close()
-            os.remove(f'TSCoDe_{self.stamp}.log')
+            self.log('--> Structures check requested. Shutting down after last window is closed.\n')
+
             for mol in self.objects:
                 ase_view(mol)
+            
+            self.logfile.close()
+            os.remove(f'TSCoDe_{self.stamp}.log')
+
             quit()
 
         self._setup()
