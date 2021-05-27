@@ -10,46 +10,40 @@ from rdkit.Chem import AllChem
 from reactive_atoms_classes import *
 from scipy.spatial.transform import Rotation as R
 from subprocess import DEVNULL, STDOUT, check_call
+from rmsd import kabsch
 warnings.simplefilter("ignore", UserWarning)
 
 class CCReadError(Exception):
     pass
 
-def kabsch(filename, indexes=None):
+def align_structures(structures, indexes=None):
     '''
-    Reads filename, aligns it based on indexes and
-    writes an aligned .xyz file (filename_aligned.xyz)
-    returning its name
+    Aligns molecules of a structure array (shape is (n_structures, n_atoms, 3))
+    to the first one, based on the indexes. If not provided, all atoms are used
+    to get the best alignment. Return is the aligned array.
 
     '''
 
-    from rmsd import kabsch, centroid
+    reference = structures[0]
+    targets = structures[1:]
+    if type(indexes) == list:
+        indexes = np.array(indexes)
+    indexes = indexes.ravel()
 
-    data = ccread(filename)
-    reference, *targets = data.atomcoords
-    reference = np.array(reference)
-    targets = np.array(targets)
+    indexes = slice(0,len(reference)) if indexes is None else indexes
 
-    indexes = slice(0,len(reference)) if not indexes else indexes
+    reference -= np.mean(reference[indexes], axis=0)
+    for t in range(len(targets)):
+        targets[t] -= np.mean(targets[t,indexes], axis=0)
 
-    r = reference - centroid(reference[indexes])
-    ts = np.array([t - centroid(t[indexes]) for t in targets])
+    output = np.zeros(structures.shape)
+    output[0] = reference
 
-    output = []
-    output.append(r)
-    for target in ts:
-        matrix = kabsch(r, target)
-        output.append([matrix @ vector for vector in target])
+    for t, target in enumerate(targets):
+        matrix = kabsch(reference[indexes], target[indexes])
+        output[t+1] = np.array([matrix @ vector for vector in target])
 
-    outname = filename.split('.')[0] + '_aligned.xyz'
-    with open(outname, 'w') as f:
-        for i, structure in enumerate(output):
-            f.write(str(len(structure)))
-            f.write(f'\nAligned Conformer {i}\n')
-            for i, atom in enumerate(structure):
-                f.write('%-5s %-8s %-8s %-8s\n' % (pt[data.atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
-        
-    return outname
+    return output
 
 def graphize(coords, atomnos):
     '''
@@ -99,7 +93,6 @@ class Hypermolecule:
 
         self.rootname = filename.split('.')[0]
         self.name = filename
-        self.T = T
         self.debug = debug
 
         if reactive_atoms == ():
@@ -129,36 +122,17 @@ class Hypermolecule:
         # show_graph(self)
         self._inspect_reactive_atoms() # sets reactive atoms properties to rotate the ensemble correctly afterwards
 
-        self.atomcoords = self._align_ensemble(filename, self.reactive_indexes)
-
-        reactive_vector = []
-        for structure in self.atomcoords:
-            for index in self.reactive_indexes:
-                reactive_vector.append(structure[index])
-        reactive_vector = np.mean(np.array(reactive_vector), axis=0)
-
-        # if not np.all(reactive_vector == 0.):
-        #     self.atomcoords = np.array([self._orient_along_x(structure, reactive_vector) for structure in self.atomcoords])
-        # After reading aligned conformers, they are stored as self.atomcoords after being translated to origin and aligned the reactive atom(s) to x axis.
+        
+        self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
 
         for index, reactive_atom in self.reactive_atoms_classes_dict.items():   
             reactive_atom.init(self, index, update=True)
             # update properties into reactive_atom class
 
-        # self._update_orbs()
-        # Building orbitals and updating their positions in the Hypermolecule class
-
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atomic positions
         if self.debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
 
         # self._compute_hypermolecule()
-
-    # def _update_orbs(self):
-    #     '''
-    #     Update molecule orbitals from the reactive_atom subclasses
-    #     '''
-        # self.centers = np.concatenate([r_atom.center for r_atom in self.reactive_atoms_classes_dict.values()])
-        # self.orb_vers = np.concatenate([norm(r_atom.center - r_atom.coord) for r_atom in self.reactive_atoms_classes_dict.values()])
 
     def _set_reactive_atoms(self, filename):
         '''
@@ -184,36 +158,6 @@ class Hypermolecule:
             GUI(images=Images([atoms]), show_bonds=True).run()
 
         return list(atoms.constraints[0].get_indices())
-
-    def _get_ensemble_energies(self, filename):
-        '''
-        Reads file and returns an rdkit.Mol object with the first molecule
-        and a list with the computed energy of all molecules at MMFF level.
-
-        '''
-        
-        sdf_name = filename.split('.')[0] + '.sdf'
-        check_call(f'obabel {filename} -o sdf -O {sdf_name}'.split(), stdout=DEVNULL, stderr=STDOUT)    # Bad, we should improve this
-
-        mols = Chem.SDMolSupplier(sdf_name)
-        # mols = [Chem.AddHs(m) for m in supplier]
-        # mols = [m for m in supplier]
-        energies = []
-        for m in mols:
-            # m = Chem.AddHs(m)
-            # print(m.GetNumAtoms())
-            ff = AllChem.MMFFGetMoleculeForceField(m, AllChem.MMFFGetMoleculeProperties(m))
-            ff.Initialize()
-            ff.Minimize(maxIts=200)
-            energies.append(ff.CalcEnergy())
-
-        # self.smiles = Chem.MolToSmiles(mols[0])
-
-        del mols
-        os.remove(sdf_name)
-
-        return energies
-
 
     def _compute_hypermolecule(self):
         '''
@@ -271,7 +215,7 @@ class Hypermolecule:
                             max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
                             max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
     
-    def _alignment_indexes(self, coords, atomnos, reactive_atoms):
+    def get_alignment_indexes(self):
         '''
         Return the indexes to align the molecule to, given a list of
         atoms that should be reacting. List is composed by reactive atoms
@@ -281,86 +225,12 @@ class Hypermolecule:
         :return: list of indexes
         '''
 
-        self.graph = graphize(coords, atomnos)
-
         indexes = set()
 
-        for atom in reactive_atoms:
+        for atom in self.reactive_indexes:
             indexes |= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
         if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
         return list(indexes)
-
-    def _align_ensemble(self, filename, reactive_atoms):
-        '''
-        Align a set of conformers to the first one.
-        Alignment is done on reactive atom(s) and its immediate neighbors.
-        If ensembles has readable energies, they are kept, otherwise thy are calculated at MMFF level.
-
-        filename            Input file name, must be a single structure file
-        reactive_atoms      Index of atoms that will link during the desired reaction.
-                            May be either int or list of int.
-        return              Aligned coordinates
-
-        '''
-        # try:
-        #     if type(reactive_atoms) == int:
-        #         reactive_atoms = [reactive_atoms]
-        # except Exception:
-        #     raise Exception('Unrecognized reactive atoms IDs. Argument must either be one int or a list of ints.')
-
-        self.reactive_indexes = np.array(reactive_atoms)
-
-        if self.debug: print(f'DEBUG--> Read Conformational ensemble from file {filename} : {len(self.energies)} conformers found.')
-
-        data = ccread(filename)  # if we could read energies directly from ensemble, actually take those
-        try:
-            assert len(data.scfenergies) == len(data.atomcoords)
-            self.energies = data.scfenergies / 23.06054194532933
-            self.energies -= min(self.energies)
-
-            if self.debug: print(f'DEBUG--> Read relative energies from ensemble : {self.energies} kcal/mol')
-
-        except:
-            # self.energies = self._get_ensemble_energies(filename)
-            self.energies = np.zeros(len(self.atomcoords), dtype=float)
-            self.energies = np.array(self.energies) - np.min(self.energies)
-            if self.debug: print(f'DEBUG--> Computed relative energies for the ensemble : {self.energies} kcal/mol')
-
-        alignment_indexes = self._alignment_indexes(data.atomcoords[0], data.atomnos, self.reactive_indexes)
-
-        del data
-
-        outname = kabsch(filename, alignment_indexes)
-
-        ccread_object = ccread(outname)
-        os.remove(outname)    # <--- FINAL ALIGNED ENSEMBLE
-
-        return ccread_object.atomcoords
-
-
-    def _orient_along_x(self, array, vector):
-        # TODO: check if this is still required
-        '''
-        :params array:    array of atomic coordinates arrays: len(array) structures with len(array[i]) atoms
-        :params vector:   list of shape (1,3) with anchor vector to align to the x axis
-        :return:          array, aligned so that vector is on x
-        '''
-
-        assert array.shape[1] == 3
-        assert vector.shape == (3,)
-
-        if len(self.reactive_atoms_classes_dict) == 1:
-            if str(self.reactive_atoms_classes_dict.values()[0]) == 'Single Bond':
-                rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
-                return np.array([rotation_matrix @ v for v in array])
-
-            else:
-                return np.array([self.reactive_atoms_classes_dict.values()[0].alignment_matrix @ v for v in array])
-
-        # if more than one reactive atom, only a rough alignment is done
-        rotation_matrix = R.align_vectors(np.array([[1,0,0]]), np.array([vector]))[0].as_matrix()
-        return np.array([rotation_matrix @ v for v in array])
-
 
     def _inspect_reactive_atoms(self):
         '''
@@ -377,10 +247,9 @@ class Hypermolecule:
             atom_type = deepcopy(atom_type_dict[symbol + str(len(neighbors_indexes))])
 
             atom_type.init(self, index)
-            # setting the pointer to reactive_atom class
+            # setting the reactive_atom class type
 
             self.reactive_atoms_classes_dict[index] = atom_type
-            # I should change it, even if it will be painful.
 
             if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
             # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals

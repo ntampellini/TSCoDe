@@ -1,6 +1,8 @@
 .vscode/
 .DS_Store
 __pycache__/
+.ipynb_checkpoints
 vmdpath
 Obsolete (backup purposes)
 cython
+rdkit_conformational_search.py

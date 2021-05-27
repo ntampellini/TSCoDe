@@ -6,7 +6,7 @@ https://github.com/ntampellini/TSCoDe
 (Work in Progress)
 
 '''
-from hypermolecule_class import Hypermolecule
+from hypermolecule_class import Hypermolecule, align_structures
 import numpy as np
 from copy import deepcopy
 from parameters import *
@@ -48,14 +48,19 @@ def calc_positioned_conformers(self):
     self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
 
 def ase_view(mol):
-    from ase.visualize import view
     from ase import Atoms
-    coords = mol.atomcoords[0]
+    from ase.gui.gui import GUI
+    from ase.gui.images import Images
+
     centers = np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])
-    coords = np.concatenate((coords, centers))
-    atomnos = mol.atomnos
-    atomnos = np.concatenate((atomnos, [9 for _ in centers]))
-    view(Atoms(atomnos, positions=coords))
+    atomnos = np.concatenate((mol.atomnos, [0 for _ in centers]))
+    images = []
+    for coords in mol.atomcoords:
+
+        totalcoords = np.concatenate((coords, centers))
+        images.append(Atoms(atomnos, positions=totalcoords))
+    
+    GUI(images=Images(images), show_bonds=True).run()
 
 class Pivot:
     '''
@@ -98,6 +103,8 @@ class Options:
                                   # rotations. The standard value of 6 will perform six 60° turns.
                                   # Syntax: SCAN=n, where n is an integer.
 
+                    'ROTRANGE'    # Manually set the rotation range to be explored (only cyclical)
+
                     'BYPASS',     # Debug keyword. Used to skip all pruning steps and directly output
                                   # all the embedded geometries.
 
@@ -129,11 +136,14 @@ class Options:
 
                     'LET',        # Overrides safety checks for large calculations
 
+                    'CHECK'
+
                     ]
                     
     # list of keyword names to be used in the first line of program input
 
-    rotation_steps = 6
+    rotation_range = 45
+    rotation_steps = None # This is set later by the _setup() function, based on embed type
     pruning_thresh = 0.5 # default value set later on the basis of number of atoms
     rigid = False
     
@@ -146,12 +156,12 @@ class Options:
     neb = False
     mopac_level = 'PM7'
     suprafacial = False
-    checkpoint = False
     nci = True
     only_refined = False
 
     bypass = False
     let = False
+    check_structures = False
     # Default values, updated if _parse_input
     # finds keywords and calls _set_options
 
@@ -159,6 +169,7 @@ class Options:
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
         d.pop('bypass')
         d.pop('let')
+        d.pop('check')
         return '\n'.join([f'{var} : {d[var]}' for var in d])
 
 class Docker:
@@ -176,10 +187,10 @@ class Docker:
         self.logfile = open(f'TSCoDe_{self.stamp}.log', 'a', buffering=1)
 
 
-        s =  '*************************************************************\n'
+        s ='\n*************************************************************\n'
         s += '*      TSCODE: Transition State Conformational Docker       *\n'
         s += '*************************************************************\n'
-        s += '*                 Version 0.00 - Pre-release                *\n'
+        s += '*                 Version 0.00 - Test pre-release           *\n'
         s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
         s += '*************************************************************\n'
 
@@ -189,18 +200,28 @@ class Docker:
         self.objects = [Hypermolecule(name, c_ids) for name, c_ids in self._parse_input(filename)]
 
         self.ids = [len(mol.atomnos) for mol in self.objects]
+        # used to divide molecules in TSs
+
         for i, mol in enumerate(self.objects):
             for r_atom in mol.reactive_atoms_classes_dict.values():
                 if i == 0:
                     r_atom.cumnum = r_atom.index
                 else:
                     r_atom.cumnum = r_atom.index + sum(self.ids[:i])
+        # appending to each reactive atom the cumulative
+        # number indexing in the TS context
 
         self._read_pairings(filename)
         self._set_options(filename)
 
-        # for mol in self.objects:
-            # ase_view(mol)
+        if self.options.check_structures:
+            self.logfile.close()
+            os.remove(f'TSCoDe_{self.stamp}.log')
+            for mol in self.objects:
+                ase_view(mol)
+            quit()
+
+        self._setup()
 
     def log(self, string='', p=True):
         if p:
@@ -271,13 +292,17 @@ class Docker:
                     self.options.max_clashes = 5
                     self.options.clash_thresh = 1
 
+                if 'ROTRANGE' in [k.split('=')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('ROTRANGE')]
+                    self.options.rotation_range = int(kw.split('=')[1])
+
                 if 'STEPS' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('STEPS')]
-                    self.options.rotation_steps = int(kw.split('=')[1].lower())
+                    self.options.custom_rotation_steps = int(kw.split('=')[1])
 
                 if 'THRESH' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('THRESH')]
-                    self.options.pruning_thresh = float(kw.split('=')[1].lower())
+                    self.options.pruning_thresh = float(kw.split('=')[1])
 
                 if 'NOOPT' in keywords_list:
                     self.options.optimization = False
@@ -288,14 +313,14 @@ class Docker:
 
                 if 'DIST' in [k.split('(')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('DIST')]
-                    orb_string = kw[5:-1].lower()
+                    orb_string = kw[5:-1].lower().replace(' ','')
                     # orb_string looks like 'a=2.345,b=3.456,c=2.22'
 
                     self._set_custom_orbs(orb_string)
 
                 if 'CLASHES' in [k.split('(')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('CLASHES')]
-                    clashes_string = kw[8:-1]
+                    clashes_string = kw[8:-1].lower().replace(' ','')
                     # clashes_string looks like 'num=3,dist=1.2'
 
                     for piece in clashes_string.split(','):
@@ -317,7 +342,7 @@ class Docker:
 
                 if 'LEVEL' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('LEVEL')]
-                    self.options.mopac_level = kw.split('=')[1] # already uppercased
+                    self.options.mopac_level = kw.split('=')[1].upper()
 
                 if 'RIGID' in keywords_list:
                     self.options.rigid = True
@@ -331,9 +356,13 @@ class Docker:
                 if 'LET' in keywords_list:
                     self.options.let = True
 
+                if 'CHECK' in keywords_list:
+                    self.options.check_structures = True
 
-        except Exception as e:
-            print(e)
+        except SyntaxError as e:
+            raise e
+
+        except Exception:
             raise InputError(f'Error in reading keywords from {filename}. Please check your syntax.')
 
     def _read_pairings(self, filename):
@@ -376,10 +405,18 @@ class Docker:
                     index, letters = [''.join(g) for _, g in groupby(j, str.isalpha)]
 
                     if len(letters) == 1:
+
+                        if letters not in ('a', 'b', 'c'):
+                            raise SyntaxError('The only letters allowed for pairings are "a", "b" or "c".')
+
                         pairings.append([int(index), letters[0]])
 
                     else:
                         for l in letters:
+
+                            if l not in ('a', 'b', 'c'):
+                                raise SyntaxError('The only letters allowed for pairings are "a", "b" or "c".')
+
                             pairings.append([int(index), l])
 
 
@@ -418,11 +455,18 @@ class Docker:
         self.pairings = [sorted(i[1]) for i in pairings]
         # getting rid of the letters and sorting the values [34, 3] -> [3, 34]
 
-        if self.pairings == []:
-            s = '--> No atom pairing imposed. Computing all possible dispositions.'
-        else:
-            s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
-        self.log(s)
+        for letter, ids in self.pairings_table.items():
+            if len(ids) == 1:
+                raise SyntaxError(f'Letter \'{letter}\' is only specified once. Please flag the second reactive atom.')
+            elif len(ids) > 2:
+                raise SyntaxError(f'Letter \'{letter}\' is specified more than two times. Please remove the unwanted letters.')
+
+        if not all([len(mol.reactive_indexes) == 1 for mol in self.objects]): # if not self.embed == 'string', but we that is set afterward by _setup()
+            if self.pairings == []:
+                s = '--> No atom pairings imposed. Computing all possible dispositions.'
+            else:
+                s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
+            self.log(s)
 
         if len(lines) == 3:
         # adding third pairing if we have three molecules and user specified two pairings
@@ -450,6 +494,11 @@ class Docker:
         self.pairings_dists = sorted(self.pairings_dists, key=lambda x: x[0])
 
         for letter, dist in self.pairings_dists:
+
+            if letter not in self.pairings_table:
+                raise SyntaxError(f'Letter \'{letter}\' is specified in DIST but not present in molecules string.')
+
+
             for index in range(len(self.objects)):
                 for pairing in self.pairings_dict[index]:
 
@@ -544,7 +593,7 @@ class Docker:
 
     def _setup(self):
         '''
-        TODO
+        Setting embed type and calculating the number of conformation combinations based on embed type
         '''
 
         if len(self.objects) in (2,3):
@@ -567,11 +616,18 @@ class Docker:
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
                     # be always generated too close to each other for how the cyclical embed works          
 
-                if len(self.objects) == 3:
-                    self.candidates = 8*(self.options.rotation_steps+1)**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+                self.options.rotation_steps = 6
 
+                if hasattr(self.options, 'custom_rotation_steps'):
+                # if user specified a custom value, use it.
+                    self.options.rotation_steps = self.options.custom_rotation_steps
+
+                self.candidates = (self.options.rotation_steps+1)**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+                
+                if len(self.objects) == 3:
+                    self.candidates *= 8
                 else:
-                    self.candidates = 2*self.options.rotation_steps**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+                    self.candidates *= 2
                 # The number 8 is the number of different triangles originated from three oriented vectors,
                 # while 2 is the disposition of two vectors (parallel, antiparallel). This ends here if
                 # no parings are to be respected. If there are any, each one reduces the number of
@@ -604,9 +660,16 @@ class Docker:
                 self.candidates = int(self.candidates)
 
             elif string:
+                
                 self.embed = 'string'
-                self.candidates = self.options.rotation_steps*np.prod([len(mol.atomcoords) for mol in self.objects])*np.prod([len(mol.centers) for mol in self.objects])
+                self.options.rotation_steps = 24
 
+                if hasattr(self.options, 'custom_rotation_steps'):
+                # if user specified a custom value, use it.
+                    self.options.rotation_steps = self.options.custom_rotation_steps
+
+                self.candidates = self.options.rotation_steps*np.prod([len(mol.atomcoords) for mol in self.objects])*np.prod([len(list(mol.reactive_atoms_classes_dict.values())[0].center) for mol in self.objects])
+                
             else:
                 raise InputError(('Bad input - The only molecular configurations accepted are:\n' + 
                                   '1) Two or three molecules with two reactive centers each (cyclical embed)\n' + 
@@ -614,6 +677,7 @@ class Docker:
                                   '3) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
         else:
             raise InputError('Bad input - too many or too few molecules specified (2 or 3 are required).')
+
 
         self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
@@ -677,7 +741,11 @@ class Docker:
 
         self.log(f'\n--> Performing string embed ({self.candidates} candidates)')
 
-        centers_indexes = cartesian_product(*[np.array(range(len(molecule.centers))) for molecule in self.objects])
+        for mol in self.objects:
+            mol.centers = list(mol.reactive_atoms_classes_dict.values())[0].center
+            mol.orb_vers = np.array([norm(v) for v in list(mol.reactive_atoms_classes_dict.values())[0].orb_vecs])
+
+        centers_indexes = cartesian_product(*[np.array(range(len(mol.centers))) for mol in self.objects])
         # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
         
         threads = []
@@ -936,6 +1004,10 @@ class Docker:
                 
         self.log(f'\n--> Performing {self.embed} embed ({self.candidates} candidates)')
 
+        steps = self.options.rotation_steps + 1
+        angle_range = self.options.rotation_range
+        systematic_angles = cartesian_product(*[range(steps) for _ in self.objects]) * 2*angle_range/steps - angle_range
+
         pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
         # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
        
@@ -1069,17 +1141,7 @@ class Docker:
                         # For trimolecular TSs, the alignment direction previously get is 
                         # just a general first approximation that needs to be corrected
                         # for the specific case through another algorithm.
-
-                        steps = self.options.rotation_steps + 1
-                        angle_range = 45
-                        systematic_angles = cartesian_product(*[range(steps) for _ in self.objects]) * 2*angle_range/steps - angle_range
-                        # trimoleculare TSs are rotated through the range -angle_range/+angle_range
-                        # in n+1 rotation steps, where n is the specified value for self.options.rotation_steps.
-
-                    else:
-                        systematic_angles = cartesian_product(*[range(self.options.rotation_steps) for _ in self.objects]) * 360/self.options.rotation_steps
-                        # bimolecular TSs are rotated through the full 360°
-
+                        
                     for angles in systematic_angles:
 
                         threads.append([deepcopy(obj) for obj in thread_objects])
@@ -1208,7 +1270,6 @@ class Docker:
         global scramble
 
         try:
-            self._setup()
 
             if not self.options.let:
                 assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message' +
@@ -1223,6 +1284,9 @@ class Docker:
             self.log('--> Input structures, reactive indexes and reactive atoms TSCODE type and orbital dimensions:\n' + head)
             self.log(f'--> Calculation options used were:')
             for line in str(self.options).split('\n'):
+                if self.embed == 'string':
+                    if line.split()[0] in ('rotation_range', 'rigid', 'suprafacial'):
+                        continue
                 self.log(f'    - {line}')
 
             t_start_run = time.time()
@@ -1334,7 +1398,7 @@ class Docker:
 
                     outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
                     with open(outname, 'w') as f:        
-                        for i, structure in enumerate(self.structures):
+                        for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
                             write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - Checkpoint before optimization')
                     t_end_run = time.time()
                     self.log(f'--> Checkpoint output - Wrote {len(self.structures)} TS structures to {outname} file before optimization.\n')
@@ -1441,7 +1505,7 @@ class Docker:
                         # backing up structures before refinement
                         outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
                         with open(outname, 'w') as f:        
-                            for i, structure in enumerate(self.structures):
+                            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
                                 write_xyz(structure, atomnos, f, title=f'Structure {i+1} - NOT REFINED')
 
                         os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
@@ -1553,7 +1617,7 @@ class Docker:
 
                 outname = f'TSCoDe_TSs_guesses_{self.stamp}.xyz'
                 with open(outname, 'w') as f:        
-                    for i, structure in enumerate(self.structures):
+                    for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
 
                         kind = 'REFINED - ' if self.exit_status[i] else 'NOT REFINED - '
 
@@ -1655,7 +1719,7 @@ class Docker:
 
                         outname = f'TSCoDe_NEB_TSs_{self.stamp}.xyz'
                         with open(outname, 'w') as f:        
-                            for i, structure in enumerate(self.structures):
+                            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
                                 write_xyz(structure, atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
                         self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {outname} file')
@@ -1763,17 +1827,25 @@ class Docker:
 if __name__ == '__main__':
 
     import sys
+
+    usage = '\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
+
     if len(sys.argv) != 2:
 
         # filename = 'DA.txt'
         filename = 'input.txt'
         # os.chdir('Resources/bend')
-        os.chdir('Resources/epox')
+        os.chdir('Resources/test')
 
-        # print('\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
+        # print(usage)
         # quit()
     
     else:
+        if len(sys.argv[1].split('.')) == 1:
+            print(usage)
+            quit()
+
+
         filename = os.path.realpath(sys.argv[1])
         os.chdir(os.path.dirname(filename))
 

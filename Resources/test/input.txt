@@ -1,0 +1,3 @@
+CHECK
+diene.xyz 9
+funky.xyz 16

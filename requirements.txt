@@ -8,6 +8,4 @@ scipy==1.5.4
 matplotlib==3.3.2
 more_itertools==8.7.0
 dataclasses==0.7
-prune==0.0.1
-rdkit==2009.Q1-1
 spyrmsd==0.4.0
