@@ -1,13 +1,15 @@
 import os
 import warnings
 import numpy as np
-from numpy.linalg import LinAlgError
 import networkx as nx
+from rdkit import Chem
 from parameters import *
 from copy import deepcopy
 from cclib.io import ccread
+from rdkit.Chem import AllChem
 from reactive_atoms_classes import *
 from scipy.spatial.transform import Rotation as R
+from subprocess import DEVNULL, STDOUT, check_call
 from rmsd import kabsch
 warnings.simplefilter("ignore", UserWarning)
 
@@ -38,14 +40,7 @@ def align_structures(structures, indexes=None):
     output[0] = reference
 
     for t, target in enumerate(targets):
-
-        try:
-            matrix = kabsch(reference[indexes], target[indexes])
-
-        except LinAlgError:
-        # it is actually possible for the kabsch alg not to converge
-            matrix = np.eye(3)
-        
+        matrix = kabsch(reference[indexes], target[indexes])
         output[t+1] = np.array([matrix @ vector for vector in target])
 
     return output
@@ -69,9 +64,10 @@ def graphize(coords, atomnos):
 
     return nx.from_numpy_matrix(matrix)
 
+
 class Hypermolecule:
     '''
-    Molecule class to be used within TSCoDe.
+    Conformational density and orbital density 3D object from a conformational ensemble.
     '''
 
     def __repr__(self):
@@ -162,45 +158,6 @@ class Hypermolecule:
             GUI(images=Images([atoms]), show_bonds=True).run()
 
         return list(atoms.constraints[0].get_indices())
-    
-    def get_alignment_indexes(self):
-        '''
-        Return the indexes to align the molecule to, given a list of
-        atoms that should be reacting. List is composed by reactive atoms
-        plus adjacent atoms.
-        :param coords: coordinates of a single molecule
-        :param reactive atoms: int or list of ints
-        :return: list of indexes
-        '''
-
-        indexes = set()
-
-        for atom in self.reactive_indexes:
-            indexes |= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
-        if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
-        return list(indexes)
-
-    def _inspect_reactive_atoms(self):
-        '''
-        Control the type of reactive atoms and sets the class attribute self.reactive_atoms_classes_dict
-        '''
-        self.reactive_atoms_classes_dict = {}
-
-        for index in self.reactive_indexes:
-            symbol = pt[self.atomnos[index]].symbol
-
-            neighbors_indexes = list([(a, b) for a, b in self.graph.adjacency()][index][1].keys())
-            neighbors_indexes.remove(index)
-
-            atom_type = deepcopy(atom_type_dict[symbol + str(len(neighbors_indexes))])
-
-            atom_type.init(self, index)
-            # setting the reactive_atom class type
-
-            self.reactive_atoms_classes_dict[index] = atom_type
-
-            if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
-            # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
 
     def _compute_hypermolecule(self):
         '''
@@ -257,6 +214,45 @@ class Hypermolecule:
         self.dimensions = (max([coord[0] for coord in self.hypermolecule]) - min([coord[0] for coord in self.hypermolecule]),
                             max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
                             max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
+    
+    def get_alignment_indexes(self):
+        '''
+        Return the indexes to align the molecule to, given a list of
+        atoms that should be reacting. List is composed by reactive atoms
+        plus adjacent atoms.
+        :param coords: coordinates of a single molecule
+        :param reactive atoms: int or list of ints
+        :return: list of indexes
+        '''
+
+        indexes = set()
+
+        for atom in self.reactive_indexes:
+            indexes |= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
+        if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
+        return list(indexes)
+
+    def _inspect_reactive_atoms(self):
+        '''
+        Control the type of reactive atoms and sets the class attribute self.reactive_atoms_classes_dict
+        '''
+        self.reactive_atoms_classes_dict = {}
+
+        for index in self.reactive_indexes:
+            symbol = pt[self.atomnos[index]].symbol
+
+            neighbors_indexes = list([(a, b) for a, b in self.graph.adjacency()][index][1].keys())
+            neighbors_indexes.remove(index)
+
+            atom_type = deepcopy(atom_type_dict[symbol + str(len(neighbors_indexes))])
+
+            atom_type.init(self, index)
+            # setting the reactive_atom class type
+
+            self.reactive_atoms_classes_dict[index] = atom_type
+
+            if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
+            # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
 
     def write_hypermolecule(self):
         '''

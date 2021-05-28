@@ -97,7 +97,7 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
         string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
     output.write(string)
 
-def openbabel_opt(structure, atomnos, constrained_indexes, graphs, method='UFF'):
+def openbabel_opt(structure, atomnos, constrained_indexes, method='UFF'):
         '''
         return : MM-optimized structure (UFF/MMFF)
         '''
@@ -144,9 +144,7 @@ def openbabel_opt(structure, atomnos, constrained_indexes, graphs, method='UFF')
 
         opt_coords = ccread(outname).atomcoords[0]
 
-        success = scramble_check(opt_coords, atomnos, graphs)
-
-        return opt_coords, success
+        return opt_coords
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
@@ -379,7 +377,7 @@ def optimize(TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, me
 
     return opt_coords, energy, success
 
-def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
+def molecule_check(old_coords, new_coords, atomnos, max_newbonds=1):
     '''
     Checks if two molecules have the same bonds between the same atomic indexes
     '''
@@ -393,7 +391,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
     else:
         return True
 
-def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=0) -> bool:
+def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=1) -> bool:
     '''
     Check if a transition state structure has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the

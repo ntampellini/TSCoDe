@@ -144,10 +144,10 @@ class Options:
     pruning_thresh = 0.5
     rigid = False
     
-    max_clashes = 2
-    clash_thresh = 1.4
+    max_clashes = 3
+    clash_thresh = 1.2
 
-    max_newbonds = 0
+    max_newbonds = 1
 
     optimization = True
     neb = False
@@ -919,33 +919,22 @@ class Docker:
                     if self.options.optimization:
 
                         self.log(f'--> Structure optimization ({self.options.openbabel_level} level)')
-                        self.exit_status = np.zeros(len(self.structures), dtype=bool)
                         t_start = time.time()
 
                         for i, structure in enumerate(deepcopy(self.structures)):
                             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
                             try:
-                                new_structure, self.exit_status[i] = openbabel_opt(structure, atomnos, self.constrained_indexes[i], graphs, method=self.options.openbabel_level)
-
-                                if self.exit_status[i]:
-                                    self.structures[i] = new_structure
+                                self.structures[i] = openbabel_opt(structure, atomnos, self.constrained_indexes[i], method=self.options.openbabel_level)
 
                             except Exception as e:
+                                
+                                # self.structures[i] = structure
+
                                 raise e
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
                         self.log(f'Openbabel {self.options.openbabel_level} optimization took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
-                        
-                        ################################################# DIFFERENTIATING: EXIT STATUS
-
-                        # mask = self.exit_status
-                        # self.structures = self.structures[mask]
-                        # self.constrained_indexes = self.constrained_indexes[mask]
-                        # self.exit_status = self.exit_status[mask]
-
-                        if np.any(mask == False):
-                            self.log(f'Successfully refined {len(np.where(self.exit_status == True)[0])}/{len(self.structures)} candidates at UFF level. Non-refined structures are kept anyway.')
                         
                         ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
 
@@ -954,7 +943,6 @@ class Docker:
 
                         t_start = time.time()
                         self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
-                        self.exit_status = self.exit_status[mask]
                         t_end = time.time()
                         
                         if np.any(mask == False):
@@ -965,16 +953,16 @@ class Docker:
 
                         with open(outname, 'w') as f:        
                             for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                                exit_str = f'{self.options.openbabel_level} REFINED' if self.exit_status[i] else 'RAW'
-                                write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before MOPAC optimization')
+                                write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - Checkpoint before MOPAC optimization')
                         self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {outname} file before MOPAC optimization.\n')
-                        
+
                         ################################################# GEOMETRY OPTIMIZATION - SEMIEMPIRICAL
 
                         if len(self.structures) == 0:
                             raise ZeroCandidatesError()
 
                         self.energies = np.zeros(len(self.structures))
+                        self.exit_status = np.zeros(len(self.structures), dtype=bool)
 
                         t_start = time.time()
 
@@ -984,15 +972,13 @@ class Docker:
                             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
                             try:
                                 t_start_opt = time.time()
-                                new_structure, self.energies[i], self.exit_status[i] = optimize(structure,
+                                self.structures[i], self.energies[i], self.exit_status[i] = optimize(structure,
                                                                                                      atomnos,
                                                                                                      graphs,
                                                                                                      self.constrained_indexes[i],
                                                                                                      method=f'{self.options.mopac_level} GEO-OK CYCLES=500',
                                                                                                      max_newbonds=self.options.max_newbonds)
 
-                                if self.exit_status[i]:
-                                    self.structures[i] = new_structure
 
                                 exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'
 
@@ -1000,6 +986,7 @@ class Docker:
                                 # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
                                 # This occurs when one or more of them is not defined, that is when the calculation did not end well.
                                 # The easiest solution is to reject the structure and go on.
+                                self.structures[i] = None
                                 self.energies[i] = np.inf
                                 self.exit_status[i] = False
                                 exit_str = 'FAILED TO READ FILE'
@@ -1014,6 +1001,17 @@ class Docker:
                         t_end = time.time()
                         self.log(f'Mopac {self.options.mopac_level} optimization took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
+                        ################################################# PRUNING: EXIT STATUS
+
+                        mask = self.exit_status
+                        self.structures = self.structures[mask]
+                        self.energies = self.energies[mask]
+                        self.constrained_indexes = self.constrained_indexes[mask]
+                        self.exit_status = self.exit_status[mask]
+
+                        if np.any(mask == False):
+                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates because optimizations failed or scrambled some atoms ({len([b for b in mask if b == True])} left)')
+                        
                         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
                         if len(self.structures) == 0:
@@ -1347,7 +1345,7 @@ class Docker:
             ################################################
 
         except KeyboardInterrupt:
-            print('\n\nKeyboardInterrupt requested by user. Quitting.')
+            print('\nKeyboardInterrupt requested by user. Quitting.')
             quit()
 
 

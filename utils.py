@@ -1,8 +1,85 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+import os
+
+class ZeroCandidatesError(Exception):
+    pass
+
+class InputError(Exception):
+    pass
+
+class TriangleError(Exception):
+    '''
+    Raised from polygonize if it cannot build
+    a triangle with the given side lengths.
+    '''
+    pass
+
+class TooDifferentLengthsError(Exception):
+    '''
+    Raised from polygonize if bimolecular TSs have
+    too different pivot lenghts.
+    '''
+    pass
+
+def clean_directory():
+    for f in os.listdir():
+        if f.split('.')[0] == 'temp':
+            os.remove(f)
+        elif f.startswith('temp_ob'):
+            os.remove(f)
+
+def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
+    percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end='\r')
+    if iteration == total:
+        print()
 
 def norm(vec):
     return vec / np.linalg.norm(vec)
+
+def dihedral(p):
+    '''
+    Praxeolitic formula: 1 sqrt, 1 cross product
+    
+    '''
+    p0 = p[0]
+    p1 = p[1]
+    p2 = p[2]
+    p3 = p[3]
+
+    b0 = -1.0*(p1 - p0)
+    b1 = p2 - p1
+    b2 = p3 - p2
+
+    # normalize b1 so that it does not influence magnitude of vector
+    # rejections that come next
+    b1 /= np.linalg.norm(b1)
+
+    # vector rejections
+    # v = projection of b0 onto plane perpendicular to b1
+    #   = b0 minus component that aligns with b1
+    # w = projection of b2 onto plane perpendicular to b1
+    #   = b2 minus component that aligns with b1
+    v = b0 - np.dot(b0, b1)*b1
+    w = b2 - np.dot(b2, b1)*b1
+
+    # angle between v and w in a plane is the torsion angle
+    # v and w may not be normalized but that's fine since tan is y/x
+    x = np.dot(v, w)
+    y = np.dot(np.cross(b1, v), w)
+    
+    return np.degrees(np.arctan2(y, x))
+
+def vec_angle(v1, v2):
+    v1_u = norm(v1)
+    v2_u = norm(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))*180/np.pi
+
+def point_angle(p1, p2, p3):
+    return np.arccos(np.clip(norm(p1 - p2) @ norm(p3 - p2), -1.0, 1.0))*180/np.pi
 
 def cartesian_product(*arrays):
     return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
@@ -54,61 +131,6 @@ def rot_mat_from_pointer(pointer, angle):
                     np.cos(angle/2)])            # normalized quaternion, scalar last (i j k w)
     
     return R.from_quat(quat).as_matrix()
-
-def dihedral(p):
-    '''
-    Praxeolitic formula: 1 sqrt, 1 cross product
-    
-    '''
-    p0 = p[0]
-    p1 = p[1]
-    p2 = p[2]
-    p3 = p[3]
-
-    b0 = -1.0*(p1 - p0)
-    b1 = p2 - p1
-    b2 = p3 - p2
-
-    # normalize b1 so that it does not influence magnitude of vector
-    # rejections that come next
-    b1 /= np.linalg.norm(b1)
-
-    # vector rejections
-    # v = projection of b0 onto plane perpendicular to b1
-    #   = b0 minus component that aligns with b1
-    # w = projection of b2 onto plane perpendicular to b1
-    #   = b2 minus component that aligns with b1
-    v = b0 - np.dot(b0, b1)*b1
-    w = b2 - np.dot(b2, b1)*b1
-
-    # angle between v and w in a plane is the torsion angle
-    # v and w may not be normalized but that's fine since tan is y/x
-    x = np.dot(v, w)
-    y = np.dot(np.cross(b1, v), w)
-    
-    return np.degrees(np.arctan2(y, x))
-
-def vec_angle(v1, v2):
-    v1_u = norm(v1)
-    v2_u = norm(v2)
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))*180/np.pi
-
-def point_angle(p1, p2, p3):
-    return np.arccos(np.clip(norm(p1 - p2) @ norm(p3 - p2), -1.0, 1.0))*180/np.pi
-
-class TriangleError(Exception):
-    '''
-    Raised from polygonize if it cannot build
-    a triangle with the given side lengths.
-    '''
-    pass
-
-class TooDifferentLengthsError(Exception):
-    '''
-    Raised from polygonize if bimolecular TSs have
-    too different pivot lenghts.
-    '''
-    pass
 
 def polygonize(lengths, override=False):
     '''
@@ -165,3 +187,22 @@ def polygonize(lengths, override=False):
             vertexes_out[t,v][[0,1]] = vertexes_out[t,v][[1,0]]
 
     return vertexes_out
+
+def ase_view(mol):
+    '''
+    Display an Hypermolecule instance from the ASE GUI
+    '''
+    from ase import Atoms
+    from ase.gui.gui import GUI
+    from ase.gui.images import Images
+
+    centers = np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])
+    atomnos = np.concatenate((mol.atomnos, [0 for _ in centers]))
+    images = []
+    for coords in mol.atomcoords:
+
+        totalcoords = np.concatenate((coords, centers))
+        images.append(Atoms(atomnos, positions=totalcoords))
+    
+    GUI(images=Images(images), show_bonds=True).run()
+
