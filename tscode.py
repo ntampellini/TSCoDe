@@ -1,11 +1,26 @@
 '''
+
 TSCODE: Transition State Conformational Docker
+Copyright (C) 2021 Nicolò Tampellini
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
 Version 0.00 - Pre-release
-Nicolo' Tampellini - nicolo.tampellini@yale.edu
+
 https://github.com/ntampellini/TSCoDe
-(Work in Progress)
+
+Nicolo' Tampellini - nicolo.tampellini@yale.edu
 
 '''
+
 from hypermolecule_class import Hypermolecule, align_structures
 import numpy as np
 from copy import deepcopy
@@ -19,18 +34,20 @@ from dataclasses import dataclass
 from itertools import groupby
 from embeds import *
 
-from compenetration import compenetration_check
-from prune import prune_conformers
 
-# try: TODO
+# try: 
 #     from compenetration import compenetration_check
 # except ImportError:
-#     from elsewhere import the same function
+#     from _fallback import compenetration_check
 
 # try:
 #     from prune import prune_conformers
 # except ImportError:
-#     from elsewhere import the same function
+#     from _fallback import prune_conformers
+# If cython libraries are not present, load pure python ones.
+# TODO - eventually I will re-write cython libraries, for now pure python are fast enough
+
+from _fallback import prune_conformers, compenetration_check
 
 
 def calc_positioned_conformers(self):
@@ -886,13 +903,13 @@ class Docker:
                     for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
                         if 5*k < len(self.structures):
                             t_start_int = time.time()
-                            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh, k=k)
+                            self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh, k=k)
                             self.constrained_indexes = self.constrained_indexes[mask]
                             t_end_int = time.time()
                             self.log(f'    - similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
                     
                     t_start_int = time.time()
-                    self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                    self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
                     t_end = time.time()
                     self.log(f'    - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
 
@@ -953,7 +970,7 @@ class Docker:
                             raise ZeroCandidatesError()
 
                         t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
                         self.exit_status = self.exit_status[mask]
                         t_end = time.time()
                         
@@ -1020,7 +1037,7 @@ class Docker:
                             raise ZeroCandidatesError()
 
                         t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
                         self.energies = self.energies[mask]
                         self.exit_status = self.exit_status[mask]
                         t_end = time.time()
@@ -1095,7 +1112,7 @@ class Docker:
                             raise ZeroCandidatesError()
 
                         t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
                         self.energies = self.energies[mask]
                         t_end = time.time()
                         
@@ -1207,7 +1224,7 @@ class Docker:
                     if len(self.structures) != 0:
 
                         t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
+                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
                         self.energies = self.energies[mask]
                         t_end = time.time()
                         

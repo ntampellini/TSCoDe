@@ -1,3 +1,20 @@
+'''
+
+TSCODE: Transition State Conformational Docker
+Copyright (C) 2021 Nicolò Tampellini
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+'''
+
 import os
 import warnings
 import numpy as np
@@ -7,7 +24,6 @@ from parameters import *
 from copy import deepcopy
 from cclib.io import ccread
 from reactive_atoms_classes import *
-from scipy.spatial.transform import Rotation as R
 from rmsd import kabsch
 warnings.simplefilter("ignore", UserWarning)
 
@@ -275,8 +291,6 @@ class Hypermolecule:
 
         
         print('Written .xyz orbital file -', hyp_name)
-
-
 
 if __name__ == '__main__':
     # TESTING PURPOSES

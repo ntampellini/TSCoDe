@@ -1,11 +1,9 @@
 cclib==1.7
+dataclasses==0.8
+networkx==2.5
 periodictable==1.5.3
 ase==3.21.1
-numpy==1.19.5
-networkx==2.5
-rmsd==1.4
 scipy==1.5.4
-matplotlib==3.3.2
-more_itertools==8.7.0
-dataclasses==0.7
-spyrmsd==0.4.0
+rmsd==1.4
+numpy==1.19.5
+openbabel==3.1.1.1
