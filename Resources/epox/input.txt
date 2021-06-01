@@ -1,3 +1,0 @@
-DIST(a=2.2,b=2.2)
-C2H4.xyz 0a 1b
-HCOOOH.xyz 4ab

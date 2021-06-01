@@ -1,7 +1,0 @@
-display resetview
-mol new {C:\Users\Nik\Desktop\Coding\TSCoDe\Resources\DA\TSCoDe_NEB_TSs.xyz}
-mol selection index 0 18 6 16
-mol representation CPK 0.7 0.5 50 50
-mol color ColorID 7
-mol material Transparent
-mol addrep top

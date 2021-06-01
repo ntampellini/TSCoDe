@@ -1,3 +1,0 @@
-DIST(a=3.2,b=3.2)
-ketene.xyz 0a 2b
-ketene.xyz 0b 2a

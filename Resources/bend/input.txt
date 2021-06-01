@@ -1,7 +1,0 @@
-DIST(a=2.135,b=1.548,c=1.901)
-
-maleimide.xyz 0a 5b
-HCOOH.xyz 4b 1c
-dienamine.xyz 6a 23c
-
-# First pairing (a) should be the scanned reactive distance (C-C)
