@@ -161,8 +161,8 @@ class Options:
     pruning_thresh = 0.5
     rigid = False
     
-    max_clashes = 2
-    clash_thresh = 1.4
+    max_clashes = 0
+    clash_thresh = 1.5
 
     max_newbonds = 0
 
@@ -276,6 +276,8 @@ class Docker:
             inp = []
             for line in lines:
                 filename, *reactive_atoms = line.split()
+                if len(reactive_atoms) > 2:
+                    raise SyntaxError(f'Too many reactive atoms specified for {filename} ({len(reactive_atoms)})')
                 reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
                 inp.append((filename, reactive_indexes))
 
@@ -436,7 +438,7 @@ class Docker:
                     if len(letters) == 1:
 
                         if letters not in ('a', 'b', 'c'):
-                            raise SyntaxError('The only letters allowed for pairings are "a", "b" or "c".')
+                            raise SyntaxError('The only letters allowed for pairings are "a", "b" and "c".')
 
                         pairings.append([int(index), letters[0]])
 
@@ -444,7 +446,7 @@ class Docker:
                         for l in letters:
 
                             if l not in ('a', 'b', 'c'):
-                                raise SyntaxError('The only letters allowed for pairings are "a", "b" or "c".')
+                                raise SyntaxError('The only letters allowed for pairings are "a", "b" and "c".')
 
                             pairings.append([int(index), l])
 
@@ -461,7 +463,12 @@ class Docker:
                 if unlabeled != []:
                     for z in unlabeled:
                         z += sum(self.ids[:i])
-                    unlabeled_list.append(z)
+                        unlabeled_list.append(z)
+            else:
+                if unlabeled != []:
+                    for z in unlabeled:
+                        unlabeled_list.append(z)
+                    
             # getting the cumulative index rather than the molecule index
 
             for cumulative_pair in pairings:
@@ -484,9 +491,23 @@ class Docker:
         self.pairings = [sorted(i[1]) for i in pairings]
         # getting rid of the letters and sorting the values [34, 3] -> [3, 34]
 
+        letters = tuple(self.pairings_table.keys())
+
+        if len(letters) == 1 and tuple(sorted(letters)) != ('a',):
+            raise SyntaxError('The pairing letters specified are invalid. To only specify one label, use letter \'a\'.')
+
+        elif len(letters) == 2 and tuple(sorted(letters)) != ('a', 'b'):
+            raise SyntaxError('The pairing letters specified are invalid. To specify two labels, use letters \'a\' and \'b\'.')
+
+        elif len(letters) == 3 and tuple(sorted(letters)) != ('a', 'b', 'c'):
+            raise SyntaxError('The pairing letters specified are invalid. To only three labels, use letters \'a\', \'b\' and \'c\'.')
+
+
         for letter, ids in self.pairings_table.items():
+
             if len(ids) == 1:
                 raise SyntaxError(f'Letter \'{letter}\' is only specified once. Please flag the second reactive atom.')
+
             elif len(ids) > 2:
                 raise SyntaxError(f'Letter \'{letter}\' is specified more than two times. Please remove the unwanted letters.')
 
@@ -1048,63 +1069,71 @@ class Docker:
 
                         ################################################# REFINING: BONDING DISTANCES
 
-                        self.log(f'--> Refining bonding distances for TSs ({self.options.mopac_level} level)')
+                        if self.pairings != []:
+                        # We can only refine structures if user specified at least one pairing
 
-                        # backing up structures before refinement
-                        outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
-                        with open(outname, 'w') as f:        
-                            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                                write_xyz(structure, atomnos, f, title=f'Structure {i+1} - NOT REFINED')
+                            self.log(f'--> Refining bonding distances for TSs ({self.options.mopac_level} level)')
 
-                        os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
-                        # We don't need the pre-optimized structures anymore
+                            # backing up structures before refinement
+                            outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
+                            with open(outname, 'w') as f:        
+                                for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                                    write_xyz(structure, atomnos, f, title=f'Structure {i+1} - NOT REFINED')
 
-                        if not hasattr(self, 'pairings_dists') or len(self.pairings) > len(self.pairings_dists):
-                        # if user did not specify all (or any) of the distances
-                        # between imposed pairings, default values will be used
-                            self._set_default_distances()
+                            os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
+                            # We don't need the pre-optimized structures anymore
 
-                        for i, structure in enumerate(deepcopy(self.structures)):
-                            loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-                            try:
-                                t_start_opt = time.time()
-                                new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self, structure, atomnos, graphs)
+                            if not hasattr(self, 'pairings_dists') or len(self.pairings) > len(self.pairings_dists):
+                            # if user did not specify all (or any) of the distances
+                            # between imposed pairings, default values will be used
+                                self._set_default_distances()
 
-                                if self.exit_status[i]:
-                                    self.structures[i] = new_structure
-                                    self.energies[i] = new_energy
-                                    exit_str = 'REFINED'
-                                else:
-                                    exit_str = 'SCRAMBLED'
-                                                                                                                                        
-                            except ValueError as e:
-                                # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
-                                # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                                # The easiest solution is to reject the structure and go on. TODO-check
-                                self.log(e)
-                                self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
+                            for i, structure in enumerate(deepcopy(self.structures)):
+                                loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                                try:
+                                    t_start_opt = time.time()
+                                    new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
+                                                                                                         structure,
+                                                                                                         atomnos,
+                                                                                                         graphs,
+                                                                                                        #  traj=f'adjust_{i}.traj'
+                                                                                                         )
 
-                            finally:
-                                t_end_opt = time.time()
-                                self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
-                        
-                        loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-                        t_end = time.time()
-                        self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                                    if self.exit_status[i]:
+                                        self.structures[i] = new_structure
+                                        self.energies[i] = new_energy
+                                        exit_str = 'REFINED'
+                                    else:
+                                        exit_str = 'SCRAMBLED'
+                                                                                                                                            
+                                except ValueError as e:
+                                    # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                                    # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                                    # The easiest solution is to reject the structure and go on. TODO-check
+                                    self.log(e)
+                                    self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
 
-                        before = len(self.structures)
-                        if self.options.only_refined:
-                            mask = self.exit_status
-                            self.structures = self.structures[mask]
-                            self.energies = self.energies[mask]
-                            self.exit_status = self.exit_status[mask]
-                            s = f'Discarded {len([i for i in mask if i == False])} unrefined structures'
+                                finally:
+                                    t_end_opt = time.time()
+                                    self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                            
+                            loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                            t_end = time.time()
+                            self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
 
-                        else:
-                            s = 'Non-refined ones will not be discarded.'
+                            before = len(self.structures)
+                            if self.options.only_refined:
+                                mask = self.exit_status
+                                self.structures = self.structures[mask]
+                                self.energies = self.energies[mask]
+                                self.exit_status = self.exit_status[mask]
+                                s = f'Discarded {len([i for i in mask if i == False])} unrefined structures'
+
+                            else:
+                                s = 'Non-refined ones will not be discarded.'
 
 
-                        self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{before} structures. {s}')
+                            self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{before} structures. {s}')
 
                         ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
 
@@ -1380,7 +1409,7 @@ if __name__ == '__main__':
         filename = 'input.txt'
         # os.chdir('Resources/bend')
         # os.chdir('Resources/test')
-        os.chdir('Resources/tri')
+        os.chdir('Resources/antara')
 
         # print(usage)
         # quit()

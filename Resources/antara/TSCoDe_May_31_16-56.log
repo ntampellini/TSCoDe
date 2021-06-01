@@ -1,0 +1,135 @@
+
+*************************************************************
+*      TSCODE: Transition State Conformational Docker       *
+*************************************************************
+*                 Version 0.00 - Test pre-release           *
+*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *
+*************************************************************
+
+--> Atom pairings imposed are 2: [[0, 10], [2, 8]] (Cumulative index numbering)
+
+--> Setup performed correctly. 3136 candidates will be generated.
+
+--> Input structures, reactive indexes and reactive atoms TSCODE type and orbital dimensions:
+    1. ketene.xyz:
+        0  -> C(sp, 1.6 A)
+        2  -> C(sp2, 1.6 A)
+    2. ketene.xyz:
+        0  -> C(sp, 1.6 A)
+        2  -> C(sp2, 1.6 A)
+
+--> Calculation options used were:
+    - clash_thresh    : 1.5
+    - max_clashes     : 0
+    - max_newbonds    : 0
+    - mopac_level     : PM7
+    - nci             : True
+    - neb             : False
+    - only_refined    : False
+    - openbabel_level : UFF
+    - optimization    : True
+    - pruning_thresh  : 0.5
+    - rigid           : False
+    - rotation_range  : 45
+    - rotation_steps  : 6
+    - suprafacial     : False
+
+--> Performing cyclical embed (3136 candidates)
+Generated 3136 transition state candidates (7.27 s)
+
+--> Checking structures for compenetrations
+Discarded 2434 candidates for compenetration (702 left, 0.25 s)
+
+--> Similarity Processing
+    - similarity pre-processing   (k=100) - 0.22 s - kept 640/702
+    - similarity pre-processing   (k=50) - 0.36 s - kept 520/640
+    - similarity pre-processing   (k=20) - 0.5 s - kept 375/520
+    - similarity pre-processing   (k=10) - 0.51 s - kept 246/375
+    - similarity pre-processing   (k=5) - 0.41 s - kept 149/246
+    - similarity pre-processing   (k=2) - 0.37 s - kept 79/149
+    - similarity final processing (k=1) - 0.18 s - kept 44/79
+Discarded 658 candidates for similarity (44 left, 2.55 s)
+
+--> Checkpoint output - Wrote 44 TS structures to TSCoDe_checkpoint_May_31_16-56.xyz file before MM optimization.
+
+--> Structure optimization (UFF level)
+Openbabel UFF optimization took 2.44 s (~0.06 s per structure)
+Successfully refined 44/44 candidates at UFF level. Non-refined structures are kept anyway.
+Discarded 10 candidates for similarity (34 left, 0.07 s)
+
+--> Checkpoint output - Updated 34 TS structures to TSCoDe_checkpoint_May_31_16-56.xyz file before MOPAC optimization.
+
+--> Structure optimization (PM7 level)
+    - Mopac PM7 optimization: Structure 1 CONVERGED - took 0.33 s
+    - Mopac PM7 optimization: Structure 2 CONVERGED - took 0.5 s
+    - Mopac PM7 optimization: Structure 3 CONVERGED - took 0.33 s
+    - Mopac PM7 optimization: Structure 4 CONVERGED - took 0.74 s
+    - Mopac PM7 optimization: Structure 5 CONVERGED - took 0.46 s
+    - Mopac PM7 optimization: Structure 6 CONVERGED - took 0.97 s
+    - Mopac PM7 optimization: Structure 7 CONVERGED - took 0.34 s
+    - Mopac PM7 optimization: Structure 8 CONVERGED - took 0.47 s
+    - Mopac PM7 optimization: Structure 9 CONVERGED - took 0.42 s
+    - Mopac PM7 optimization: Structure 10 CONVERGED - took 0.21 s
+    - Mopac PM7 optimization: Structure 11 CONVERGED - took 0.35 s
+    - Mopac PM7 optimization: Structure 12 CONVERGED - took 0.21 s
+    - Mopac PM7 optimization: Structure 13 CONVERGED - took 0.55 s
+    - Mopac PM7 optimization: Structure 14 CONVERGED - took 0.73 s
+    - Mopac PM7 optimization: Structure 15 CONVERGED - took 0.65 s
+    - Mopac PM7 optimization: Structure 16 CONVERGED - took 0.29 s
+    - Mopac PM7 optimization: Structure 17 CONVERGED - took 0.61 s
+    - Mopac PM7 optimization: Structure 18 CONVERGED - took 0.55 s
+    - Mopac PM7 optimization: Structure 19 CONVERGED - took 0.77 s
+    - Mopac PM7 optimization: Structure 20 CONVERGED - took 0.4 s
+    - Mopac PM7 optimization: Structure 21 CONVERGED - took 0.54 s
+    - Mopac PM7 optimization: Structure 22 CONVERGED - took 0.32 s
+    - Mopac PM7 optimization: Structure 23 CONVERGED - took 0.59 s
+    - Mopac PM7 optimization: Structure 24 CONVERGED - took 0.69 s
+    - Mopac PM7 optimization: Structure 25 CONVERGED - took 0.56 s
+    - Mopac PM7 optimization: Structure 26 CONVERGED - took 0.17 s
+    - Mopac PM7 optimization: Structure 27 CONVERGED - took 0.24 s
+    - Mopac PM7 optimization: Structure 28 CONVERGED - took 0.49 s
+    - Mopac PM7 optimization: Structure 29 CONVERGED - took 0.88 s
+    - Mopac PM7 optimization: Structure 30 CONVERGED - took 0.64 s
+    - Mopac PM7 optimization: Structure 31 CONVERGED - took 1.27 s
+    - Mopac PM7 optimization: Structure 32 CONVERGED - took 0.52 s
+    - Mopac PM7 optimization: Structure 33 CONVERGED - took 0.87 s
+    - Mopac PM7 optimization: Structure 34 CONVERGED - took 0.55 s
+Mopac PM7 optimization took 18.24 s (~0.54 s per structure)
+Discarded 10 candidates for similarity (24 left, 0.04 s)
+
+--> Refining bonding distances for TSs (PM7 level)
+    - Mopac PM7 refinement: Structure 1 REFINED - took 8.19 s
+    - Mopac PM7 refinement: Structure 2 REFINED - took 3.53 s
+    - Mopac PM7 refinement: Structure 3 REFINED - took 6.08 s
+    - Mopac PM7 refinement: Structure 4 REFINED - took 6.67 s
+    - Mopac PM7 refinement: Structure 5 REFINED - took 3.79 s
+    - Mopac PM7 refinement: Structure 6 REFINED - took 4.57 s
+    - Mopac PM7 refinement: Structure 7 REFINED - took 3.41 s
+    - Mopac PM7 refinement: Structure 8 REFINED - took 8.45 s
+    - Mopac PM7 refinement: Structure 9 REFINED - took 0.42 s
+    - Mopac PM7 refinement: Structure 10 REFINED - took 0.39 s
+    - Mopac PM7 refinement: Structure 11 REFINED - took 3.43 s
+    - Mopac PM7 refinement: Structure 12 REFINED - took 0.08 s
+    - Mopac PM7 refinement: Structure 13 REFINED - took 4.47 s
+    - Mopac PM7 refinement: Structure 14 REFINED - took 4.09 s
+    - Mopac PM7 refinement: Structure 15 REFINED - took 5.44 s
+    - Mopac PM7 refinement: Structure 16 REFINED - took 0.07 s
+    - Mopac PM7 refinement: Structure 17 REFINED - took 0.14 s
+    - Mopac PM7 refinement: Structure 18 REFINED - took 0.07 s
+    - Mopac PM7 refinement: Structure 19 REFINED - took 2.94 s
+    - Mopac PM7 refinement: Structure 20 REFINED - took 0.52 s
+    - Mopac PM7 refinement: Structure 21 REFINED - took 4.03 s
+    - Mopac PM7 refinement: Structure 22 REFINED - took 3.08 s
+    - Mopac PM7 refinement: Structure 23 REFINED - took 2.75 s
+    - Mopac PM7 refinement: Structure 24 REFINED - took 4.61 s
+Mopac PM7 refinement took 81.31 s (~3.39 s per structure)
+Successfully refined 24/24 structures. Non-refined ones will not be discarded.
+
+--> Output: Wrote 24 rough TS structures to TSCoDe_TSs_guesses_May_31_16-56.xyz file - Total time 112.2 s
+
+--> Non-covalent interactions spotting
+No particular NCIs spotted for these structures
+
+--> Output: Wrote VMD TSCoDe_TSs_guesses_May_31_16-56.vmd file
+
+--> TSCoDe normal termination: total time 1 minutes 52.218 seconds 

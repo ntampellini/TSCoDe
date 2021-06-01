@@ -391,6 +391,7 @@ class Sp_or_carbene:
             self.type = 'bent carbene'
 
         self.allene = False
+        self.ketene = False
         if self.type == 'sp' and all([s == 'C' for s in self.neighbors_symbols]):
 
             neighbors_of_neighbors_indexes = (list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys()),
@@ -404,6 +405,31 @@ class Sp_or_carbene:
             if (len(side1) == len(side2) == 2 for side1, side2 in neighbors_of_neighbors_indexes):
                 self.allene = True
 
+        elif self.type == 'sp' and sorted(self.neighbors_symbols) in (['C', 'O'], ['C', 'S']):
+
+            self.ketene = True
+
+            neighbors_of_neighbors_indexes = (list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys()),
+                                              list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[1]][1].keys()))
+
+            neighbors_of_neighbors_indexes[0].remove(i)
+            neighbors_of_neighbors_indexes[1].remove(i)
+            neighbors_of_neighbors_indexes[0].remove(neighbors_indexes[0])
+            neighbors_of_neighbors_indexes[1].remove(neighbors_indexes[1])
+
+            if len(neighbors_of_neighbors_indexes[0]) == 2:
+                substituent = mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[0][0]]
+                ketene_atom = mol.atomcoords[atomcoords_index][neighbors_indexes[0]]
+                self.ketene_ref = substituent - ketene_atom
+
+            elif len(neighbors_of_neighbors_indexes[1]) == 2:
+                substituent = mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[1][0]]
+                ketene_atom = mol.atomcoords[atomcoords_index][neighbors_indexes[1]]
+                self.ketene_ref = substituent - ketene_atom
+
+            else:
+                self.ketene = False
+
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + self.type
@@ -415,28 +441,30 @@ class Sp_or_carbene:
         
             if self.type == 'sp':
                 
-                r = np.random.rand()
-                v0 = self.vectors[0][0]
-                v1 = self.vectors[0][1]
-                v2 = self.vectors[0][2]
-                pivot1 = np.array([r,r,-r*(v0+v1)/v2])
+                # r = np.random.rand()
+                # vx, vy, vz = self.vectors[0]
+                # pivot1 = np.array([r, r, -r*(vx+vy)/vz])
 
-                if self.allene:
-                    # if we have an allene, the generated pivot1 is aligned to
-                    # one allene substituent so that the resulting positions
+                v = np.random.rand(3)
+                pivot1 = v - ((v @ norm(self.vectors[0])) * self.vectors[0])
+
+                if self.allene or self.ketene:
+                    # if we have an allene or ketene, pivot1 is aligned to
+                    # one substituent so that the resulting positions
                     # for the four orbital centers make chemical sense.
 
-                    allene_axis = norm(self.others[0] - self.others[1])
+                    axis = norm(self.others[0] - self.others[1])
                     # versor connecting reactive atom neighbors
                     
-                    ref = (mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[0][0]] -
-                           mol.atomcoords[atomcoords_index][neighbors_indexes[0]])
+                    if self.allene:
+                        ref = (mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[0][0]] -
+                               mol.atomcoords[atomcoords_index][neighbors_indexes[0]])
+                    else:
+                        ref = self.ketene_ref
 
-                    ref = ref - ref @ allene_axis * allene_axis
-                    # projection of ref orthogonal to allene_axis (vector rejection)
+                    pivot1 = ref - ref @ axis * axis
+                    # projection of ref orthogonal to axis (vector rejection)
 
-                    pivot1 = R.align_vectors((allene_axis, ref),
-                                             (allene_axis, pivot1))[0].as_matrix() @ pivot1
 
                 pivot2 = norm(np.cross(pivot1, self.vectors[0]))
                         

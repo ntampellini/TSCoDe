@@ -72,7 +72,7 @@ class Spring:
     ASE Custom Constraint Class
     Adds an harmonic force between a pair of atoms.
     Spring constant is very high to achieve tight convergence,
-    but force is dampened so as not to ruin structure.
+    but force is dampened so as not to ruin structures.
     '''
     def __init__(self, i1, i2, d_eq, k=1000):
         self.i1, self.i2 = i1, i2
@@ -90,8 +90,8 @@ class Spring:
         spring_force = self.k * (np.linalg.norm(direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
-        spring_force = np.clip(spring_force, -100, 100)
-        # force is clipped at 100 eV/A
+        spring_force = np.clip(spring_force, -10, 10)
+        # force is clipped at 10 eV/A
 
         forces[self.i1] += (norm(direction) * spring_force)
         forces[self.i2] -= (norm(direction) * spring_force)
@@ -446,7 +446,7 @@ def dump(filename, images, atomnos):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
 
-def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max_newbonds=2):
+def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max_newbonds=0, traj=None):
     '''
     TODO - desc
     '''
@@ -456,11 +456,11 @@ def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max
     springs = []
     for i, dist in enumerate([dist for _, dist in self.pairings_dists]):
         i1, i2 = self.pairings[i]
-        springs.append(Spring(i1, i2, dist, k=100))
+        springs.append(Spring(i1, i2, dist))
 
     atoms.set_constraint(springs)
 
-    with LBFGS(atoms, maxstep=0.1, logfile=None) as opt:
+    with LBFGS(atoms, maxstep=0.1, logfile=None, trajectory=traj) as opt:
 
         opt.run(fmax=0.05, steps=100)
 
@@ -861,7 +861,7 @@ class OrbitalSpring:
     Adds an harmonic force between a pair of orbitals, that is
     virtual points "bonded" to a given atom.
     '''
-    def __init__(self, i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq, k=100):
+    def __init__(self, i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq, k=10):
         self.i1, self.i2 = i1, i2
         self.orb1, self.orb2 = orb1, orb2
         self.neighbors_of_1, self.neighbors_of_2 = neighbors_of_1, neighbors_of_2
@@ -881,8 +881,8 @@ class OrbitalSpring:
         spring_force = self.k * (np.linalg.norm(orb_direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
-        spring_force = np.clip(spring_force, -10, 10)
-        # force is clipped at 10 eV/A
+        spring_force = np.clip(spring_force, -5, 5)
+        # force is clipped at 5 eV/A
 
         force_direction1 = np.sign(spring_force) * norm(np.mean((norm(+orb_direction),
                                                                  norm(self.orb1-atoms.positions[self.i1])), axis=0))

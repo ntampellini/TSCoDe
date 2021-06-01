@@ -1,0 +1,9 @@
+display resetview
+mol new {C:\Users\Nik\Desktop\Coding\TSCoDe\Resources\antara\TSCoDe_TSs_guesses_May_31_16-56.xyz}
+mol selection index 0 10 2 8
+mol representation CPK 0.7 0.5 50 50
+mol color ColorID 7
+mol material Transparent
+mol addrep top
+label add Bonds 0/0 0/10
+label add Bonds 0/2 0/8

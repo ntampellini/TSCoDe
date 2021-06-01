@@ -1,9 +1,9 @@
 # TSCoDe - Transition State Conformational Docker
 
 
- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+ [![License: GNU GPL v3](https://img.shields.io/github/license/ntampellini/TSCoDe)](https://opensource.org/licenses/GPL-3.0)
 
-
+<img src="images/logo.png" alt="TSCoDe logo" class="center" width="500"/>
 <img src="images/tri.PNG" alt="TSCoDe Banner" class="center" width="500"/>
 
 TSCoDe is the first systematical conformational embedder for bimolecular and trimolecular chemical reactions. It is able to generate a comprehensive set of both regioisomeric and stereoisomeric poses for molecular arrangements, provided the atoms that will be reacting. It supports both open and cyclical transition states. By feeding the program conformational ensembles, it also generates all conformations combinations. It is thought as a tool to explore TS conformational space in a fast and systematical way, and yield a series of starting points for higher-level calculations.
@@ -63,7 +63,7 @@ Reactive atoms supported are `C, H, O, N, P, S, F, Cl, Br, I`. Reactions can be 
 - Two molecules, two reactive atoms each - "cyclical embed" (*i.e.* Diels-Alder reactions)
 - Three molecules, two reactive atoms each - "cycical embed" (*i.e.* reactions where two partners are bridged by a carboxylic acid)
 
-After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the oxygen of a peracid, like `4ab`.
+After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the oxygen atom of a peracid, like `4ab`.
   
 ### Keywords
 
