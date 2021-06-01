@@ -522,10 +522,10 @@ class Docker:
         if len(letters) == 1 and tuple(sorted(letters)) != ('a',):
             raise SyntaxError('The pairing letters specified are invalid. To only specify one label, use letter \'a\'.')
 
-        elif len(letters) == 2 and tuple(sorted(letters)) != ('a', 'b'):
+        if len(letters) == 2 and tuple(sorted(letters)) != ('a', 'b'):
             raise SyntaxError('The pairing letters specified are invalid. To specify two labels, use letters \'a\' and \'b\'.')
 
-        elif len(letters) == 3 and tuple(sorted(letters)) != ('a', 'b', 'c'):
+        if len(letters) == 3 and tuple(sorted(letters)) != ('a', 'b', 'c'):
             raise SyntaxError('The pairing letters specified are invalid. To only three labels, use letters \'a\', \'b\' and \'c\'.')
 
 
@@ -789,23 +789,23 @@ class Docker:
 
             oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
             couples = [[oriented[0][0], oriented[1][0]], [oriented[0][1], oriented[1][1]]]
+
             return couples
 
-        else:
+        swaps = [(0,0,0),
+                    (0,0,1),
+                    (0,1,0),
+                    (0,1,1),
+                    (1,0,0),
+                    (1,1,0),
+                    (1,0,1),
+                    (1,1,1)]
 
-            swaps = [(0,0,0),
-                     (0,0,1),
-                     (0,1,0),
-                     (0,1,1),
-                     (1,0,0),
-                     (1,1,0),
-                     (1,0,1),
-                     (1,1,1)]
+        oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
+        couples = [[oriented[0][1], oriented[1][0]], [oriented[1][1], oriented[2][0]], [oriented[2][1], oriented[0][0]]]
+        couples = [sorted(c) for c in couples]
 
-            oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
-            couples = [[oriented[0][1], oriented[1][0]], [oriented[1][1], oriented[2][0]], [oriented[2][1], oriented[0][0]]]
-            couples = [sorted(c) for c in couples]
-            return couples
+        return couples
 
     def _set_default_distances(self):
         '''
@@ -1154,7 +1154,7 @@ class Docker:
                                 self.structures = self.structures[mask]
                                 self.energies = self.energies[mask]
                                 self.exit_status = self.exit_status[mask]
-                                s = f'Discarded {len([i for i in mask if i == False])} unrefined structures'
+                                s = f'Discarded {len([i for i in mask if not i])} unrefined structures'
 
                             else:
                                 s = 'Non-refined ones will not be discarded.'

@@ -17,18 +17,23 @@ GNU General Public License for more details.
 
 import os
 import warnings
-import numpy as np
-from numpy.linalg import LinAlgError
-import networkx as nx
-from parameters import *
 from copy import deepcopy
-from cclib.io import ccread
-from reactive_atoms_classes import *
-from rmsd import kabsch
 warnings.simplefilter("ignore", UserWarning)
 
+import numpy as np
+import networkx as nx
+from rmsd import kabsch
+from cclib.io import ccread
+from numpy.linalg import LinAlgError
+
+from parameters import atom_type_dict
+from reactive_atoms_classes import pt
+
 class CCReadError(Exception):
-    pass
+    '''
+    Raised when CCRead cannot read
+    the provided filename.
+    '''
 
 def align_structures(structures, indexes=None):
     '''
@@ -40,7 +45,7 @@ def align_structures(structures, indexes=None):
 
     reference = structures[0]
     targets = structures[1:]
-    if type(indexes) == list:
+    if isinstance(indexes, list):
         indexes = np.array(indexes)
     indexes = indexes.ravel()
 
@@ -107,9 +112,8 @@ class Hypermolecule:
             if filename.endswith('.xyz'):
                 raise SyntaxError((f'Molecule {filename} cannot be read. Please check your syntax.'))
 
-            else:
-                raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
-                                    'If this looks like a keyword, it is probably faulted by a syntax error.'))
+            raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
+                                'If this looks like a keyword, it is probably faulted by a syntax error.'))
 
         self.rootname = filename.split('.')[0]
         self.name = filename
@@ -132,17 +136,20 @@ class Hypermolecule:
         self.rotation = np.identity(3)                  # used in Docker class - rotation matrix
 
         assert all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))])     # Checking that ensemble has constant length
-        if self.debug: print(f'DEBUG--> Initializing object {filename}\nDEBUG--> Found {len(coordinates)} structures with {len(coordinates[0])} atoms')
+        if self.debug:
+            print(f'DEBUG--> Initializing object {filename}\nDEBUG--> Found {len(coordinates)} structures with {len(coordinates[0])} atoms')
 
 
         self.centroid = np.sum(np.sum(coordinates, axis=0), axis=0) / (len(coordinates) * len(coordinates[0]))
-        if self.debug: print('DEBUG--> Centroid was', self.centroid)
+
+        if self.debug:
+            print('DEBUG--> Centroid was', self.centroid)
+
         self.atomcoords = coordinates - self.centroid
         self.graph = graphize(self.atomcoords[0], self.atomnos)
         # show_graph(self)
         self._inspect_reactive_atoms() # sets reactive atoms properties to rotate the ensemble correctly afterwards
 
-        
         self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
 
         for index, reactive_atom in self.reactive_atoms_classes_dict.items():   
@@ -150,7 +157,9 @@ class Hypermolecule:
             # update properties into reactive_atom class
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atomic positions
-        if self.debug: print(f'DEBUG--> Total of {len(self.atoms)} atoms')
+        
+        if self.debug:
+            print(f'DEBUG--> Total of {len(self.atoms)} atoms')
 
         # self._compute_hypermolecule()
 
@@ -222,9 +231,7 @@ class Hypermolecule:
         '''
         '''
 
-        BREADTH = 1e6
         self.energies = [0 for _ in self.atomcoords]
-        # TODO: remove?
 
         self.hypermolecule_atomnos = []
         clusters = {i:{} for i in range(len((self.atomnos)))}  # {atom_index:{cluster_number:[position,times_found]}}
@@ -236,7 +243,7 @@ class Hypermolecule:
             radii = pt[atom_number].covalent_radius
             for j, atom in enumerate(atoms_arrangement[1:]):
 
-                weight = np.exp(-self.energies[j+1] / BREADTH * 503.2475342795285 / self.T)
+                weight = np.exp(-self.energies[j+1] * 503.2475342795285 / self.T)
                 # print(f'Atom {i} in conf {j+1} weight is {weight} - rel. E was {self.energies[j+1]}')
 
                 for cluster_number, reference in deepcopy(clusters[i]).items():
@@ -332,4 +339,3 @@ if __name__ == '__main__':
 
         t._compute_hypermolecule()
         t.write_hypermolecule()
-
