@@ -21,18 +21,37 @@ Nicolo' Tampellini - nicolo.tampellini@yale.edu
 
 '''
 
-from hypermolecule_class import Hypermolecule, align_structures
-import numpy as np
-from copy import deepcopy
-from parameters import *
 import os
-import time
-from optimization_methods import *
-from utils import *
 import re
-from dataclasses import dataclass
+import time
+from copy import deepcopy
 from itertools import groupby
-from embeds import *
+
+import numpy as np
+from dataclasses import dataclass
+
+from parameters import MOPAC_COMMAND
+from embeds import string_embed, cyclical_embed
+from hypermolecule_class import Hypermolecule, align_structures
+from optimization_methods import (
+                                  ase_adjust_spacings,
+                                  get_nci,
+                                  hyperNEB,
+                                  mopac_opt,
+                                  MopacReadError,
+                                  openbabel_opt,
+                                  optimize,
+                                  scramble,
+                                  write_xyz
+                                  )
+from utils import (
+                   ase_view,
+                   cartesian_product,
+                   clean_directory,
+                   InputError,
+                   loadbar,
+                   ZeroCandidatesError
+                   )
 
 
 # try: 
@@ -45,7 +64,7 @@ from embeds import *
 # except ImportError:
 #     from _fallback import prune_conformers
 # If cython libraries are not present, load pure python ones.
-# TODO - eventually I will re-write cython libraries, for now pure python are fast enough
+# TODO - eventually I could re-write cython libraries, but for now pure python seem fast enough
 
 from _fallback import prune_conformers, compenetration_check
 
@@ -759,7 +778,7 @@ class Docker:
                                   mol.reactive_indexes[0]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)])] for mol in self.objects]
 
         def orient(i,ids,n):
-            if swaps[n][i] == True:
+            if swaps[n][i]:
                 return list(reversed(ids))
             else:
                 return ids
@@ -914,8 +933,8 @@ class Docker:
                     self.constrained_indexes = self.constrained_indexes[mask]
                     t_end = time.time()
 
-                    if np.any(mask == False):
-                        self.log(f'Discarded {len([b for b in mask if b == False])} candidates for compenetration ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                    if False in mask:
+                        self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
                     self.log()
                     # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
 
@@ -934,17 +953,17 @@ class Docker:
                             self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh, k=k)
                             self.constrained_indexes = self.constrained_indexes[mask]
                             t_end_int = time.time()
-                            self.log(f'    - similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+                            self.log(f'    - similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b])}/{len(mask)}')
                     
                     t_start_int = time.time()
                     self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
                     t_end = time.time()
-                    self.log(f'    - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b == True])}/{len(mask)}')
+                    self.log(f'    - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b])}/{len(mask)}')
 
                     self.constrained_indexes = self.constrained_indexes[mask]
 
-                    if np.any(mask == False):
-                        self.log(f'Discarded {before - len(np.where(mask == True)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                    if False in mask:
+                        self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
                     self.log()
 
                     ################################################# CHECKPOINT BEFORE MM OPTIMIZATION
@@ -989,8 +1008,8 @@ class Docker:
                         # self.constrained_indexes = self.constrained_indexes[mask]
                         # self.exit_status = self.exit_status[mask]
 
-                        if np.any(mask == False):
-                            self.log(f'Successfully refined {len(np.where(self.exit_status == True)[0])}/{len(self.structures)} candidates at UFF level. Non-refined structures are kept anyway.')
+                        if False in mask:
+                            self.log(f'Successfully refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at UFF level. Non-refined structures are kept anyway.')
                         
                         ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
 
@@ -1002,8 +1021,8 @@ class Docker:
                         self.exit_status = self.exit_status[mask]
                         t_end = time.time()
                         
-                        if np.any(mask == False):
-                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        if False in mask:
+                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
                         self.log()
 
                         ################################################# CHECKPOINT BEFORE MOPAC OPTIMIZATION
@@ -1070,8 +1089,8 @@ class Docker:
                         self.exit_status = self.exit_status[mask]
                         t_end = time.time()
                         
-                        if np.any(mask == False):
-                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        if False in mask:
+                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
                         self.log()
 
                         ################################################# REFINING: BONDING DISTANCES
@@ -1140,7 +1159,7 @@ class Docker:
                                 s = 'Non-refined ones will not be discarded.'
 
 
-                            self.log(f'Successfully refined {len([i for i in self.exit_status if i == True])}/{before} structures. {s}')
+                            self.log(f'Successfully refined {len([i for i in self.exit_status if i])}/{before} structures. {s}')
 
                         ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
 
@@ -1152,8 +1171,8 @@ class Docker:
                         self.energies = self.energies[mask]
                         t_end = time.time()
                         
-                        if np.any(mask == False):
-                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        if False in mask:
+                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
                         self.log()
 
 
@@ -1181,15 +1200,15 @@ class Docker:
                 self.constrained_indexes = scramble(self.constrained_indexes, sequence)
                 # sorting structures based on energy
 
-                if self.options.kcal_thresh != None:
+                if self.options.kcal_thresh is not None:
             
                     mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
                     self.structures = self.structures[mask]
                     self.energies = self.energies[mask]
                     self.exit_status = self.exit_status[mask]
 
-                    if np.any(mask == False):
-                        self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for energy (Threshold set to {self.options.kcal_thresh} kcal/mol)')
+                    if False in mask:
+                        self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy (Threshold set to {self.options.kcal_thresh} kcal/mol)')
 
 
             ################################################# XYZ GUESSES OUTPUT 
@@ -1248,7 +1267,7 @@ class Docker:
                     loadbar(1, 1, prefix=f'Performing NEB {len(self.structures)}/{len(self.structures)} ')
                     t_end = time.time()
                     self.log(f'Mopac {self.options.mopac_level} NEB optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
-                    self.log(f'NEB converged for {len([i for i in self.exit_status if i == True])}/{len(self.structures)} structures\n')
+                    self.log(f'NEB converged for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures\n')
 
                     mask = self.exit_status
                     self.structures = self.structures[mask]
@@ -1264,8 +1283,8 @@ class Docker:
                         self.energies = self.energies[mask]
                         t_end = time.time()
                         
-                        if np.any(mask == False):
-                            self.log(f'Discarded {len(np.where(mask == False)[0])} candidates for similarity ({len([b for b in mask if b == True])} left, {round(t_end-t_start, 2)} s)')
+                        if False in mask:
+                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
                         self.log()
 
                     ################################################# TS CHECK - FREQUENCY CALCULATION
@@ -1392,10 +1411,8 @@ class Docker:
 
             #### EXTRA
             
-            path = os.path.join(os.getcwd(), vmd_name)
-            print('Opening VMD...')
-            with suppress_stdout_stderr():
-                os.system(f'vmd -e {path}')
+            # path = os.path.join(os.getcwd(), vmd_name)
+            # os.system(f'vmd -e {path}')
 
             ################################################
 
@@ -1410,25 +1427,13 @@ if __name__ == '__main__':
 
     usage = '\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
 
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 2 or len(sys.argv[1].split('.')) == 1:
 
-        # filename = 'DA.txt'
-        filename = 'input.txt'
-        # os.chdir('Resources/bend')
-        # os.chdir('Resources/test')
-        os.chdir('Resources/antara')
-
-        # print(usage)
-        # quit()
+        print(usage)
+        quit()
     
-    else:
-        if len(sys.argv[1].split('.')) == 1:
-            print(usage)
-            quit()
-
-
-        filename = os.path.realpath(sys.argv[1])
-        os.chdir(os.path.dirname(filename))
+    filename = os.path.realpath(sys.argv[1])
+    os.chdir(os.path.dirname(filename))
 
     docker = Docker(filename)
     # initialize docker from input file

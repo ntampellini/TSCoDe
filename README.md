@@ -1,7 +1,7 @@
 # TSCoDe - Transition State Conformational Docker
 
 
- [![License: GNU GPL v3](https://img.shields.io/github/license/ntampellini/TSCoDe)](https://opensource.org/licenses/GPL-3.0)
+ [![License: GNU GPL v3](https://img.shields.io/github/license/ntampellini/TSCoDe)](https://opensource.org/licenses/GPL-3.0) [![CodeFactor Grade](https://img.shields.io/codefactor/grade/github/ntampellini/TSCoDe)](https://www.codefactor.io/repository/github/ntampellini/tscode)
 
 <img src="images/logo.png" alt="TSCoDe logo" class="center" width="500"/>
 
@@ -24,9 +24,21 @@ TSCoDe is written mostly in Python, with some libraries optionally boosted via C
 **Perfectly replicate TS structures at high levels of theory** - As the program exploits MOPAC to perform calculations, final geometries arise from constrained optimizations at a semiempirical level of theory (default is PM7). They are therefore not granted to perfectly replicate higher-level calculations. However, constrained optimizations through external programs are meant to be used to refine these structures and obtain TSs.
 
 
-## Installation
-### Windows 
-I you have Git installed, clone the repository: *(otherwise download the code and unpack it)*
+## Installation (Windows, Linux and Mac)
+
+Prerequisites: before downloading this repository, you should have installed both Openbabel (required for Force Field minimizations) and MOPAC2016 (required for semiempirical calculations).
+
+### Openbabel
+
+This is free software you can download from [the official website](http://openbabel.org/wiki/Category:Installation).
+
+### MOPAC2016
+
+This software is only free for academic use. If you qualify for this usage, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "mopac2016" command. To test this, the command `mopac2016` should return [this](https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d) message.
+
+### TSCoDe
+
+I you have Git installed, you can directly clone the repository: *(otherwise download the code and unpack it)*
 
     git clone https://github.com/ntampellini/TSCoDe
     
@@ -34,7 +46,11 @@ Open a command shell, move to the TSCoDe folder and install the requirements.
 
     pip install -r requirements.txt
 
-After these have been installed, if you haven't already, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "mopac2016" command. To test this, the command `mopac2016` should return [this](https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d) message.
+To test the installation, you can run the provided test in the test folder:
+
+    python test/test.py
+
+This should point out if any part of the installation is faulted.
 
 ## Usage
 
@@ -53,7 +69,6 @@ After these have been installed, if you haven't already, you should [request a l
     # hydrogen bonds bridging the two partners.
     
 <img src="images/tri.PNG" alt="Example input file" class="center" width="500"/>
-
 
 ### Input formatting
 The program input can be any text file.

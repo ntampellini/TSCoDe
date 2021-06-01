@@ -24,19 +24,19 @@ from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
 from hypermolecule_class import pt, graphize
 from parameters import MOPAC_COMMAND
-from utils import *
+from utils import norm, dihedral
 from subprocess import DEVNULL, STDOUT, check_call
 from parameters import nci_dict
 import itertools as it
 from rmsd import kabsch
 from openbabel import openbabel as ob
 from cclib.io import ccread
+from scipy.spatial.transform import Rotation as R
 
 class MopacReadError(Exception):
     '''
     Thrown when reading MOPAC output files fails for some reason.
     '''
-    pass
 
 class suppress_stdout_stderr(object):
     '''
@@ -211,12 +211,14 @@ def read_mop_out(filename):
                                     break
                             break
                     break
+
     coords = np.array(coords)
+
     if coords.shape[0] != 0:
         success = True
         return coords, energy, success
-    else:
-        raise MopacReadError(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
+    
+    raise MopacReadError(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
 
 def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='temp', read_output=True):
     '''
@@ -407,8 +409,8 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
     if len(delta_bonds) > max_newbonds:
         return False
-    else:
-        return True
+
+    return True
 
 def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=0) -> bool:
     '''
@@ -437,8 +439,8 @@ def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=0) -> boo
 
     if len(delta_bonds) > max_newbonds:
         return False
-    else:
-        return True
+
+    return True
 
 def dump(filename, images, atomnos):
     with open(filename, 'w') as f:
@@ -585,8 +587,8 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
         # return the freely optimized structure only if the reagents did not repel each other
         # during the optimization, otherwise return the last coords, where partners were close
             return newcoords
-        else:
-            return coords
+
+        return coords
 
     else:
     # trimolecular TSs: the approach is to bring the first pair of reactive
@@ -629,8 +631,8 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
         # return the freely optimized structure only if the reagents did not repel each other
         # during the optimization, otherwise return the last coords, where partners were close
             return newcoords
-        else:
-            return coords
+
+        return coords
 
 def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
@@ -701,8 +703,8 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         # return the freely optimized structure only if the reagents did not approached back each other
         # during the optimization, otherwise return the last coords, where partners were further away
             return newcoords
-        else:
-            return coords
+        
+        return coords
 
 def get_nci(coords, atomnos, constrained_indexes, ids):
     '''

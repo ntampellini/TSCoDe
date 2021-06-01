@@ -15,29 +15,33 @@ GNU General Public License for more details.
 
 '''
 
+import os
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-import os
 
 class ZeroCandidatesError(Exception):
-    pass
+    '''
+    Raised at any time during run if all
+    candidates are discarded.
+    '''
 
 class InputError(Exception):
-    pass
+    '''
+    Raised when reading the input file if
+    something is wrong.
+    '''
 
 class TriangleError(Exception):
     '''
     Raised from polygonize if it cannot build
     a triangle with the given side lengths.
     '''
-    pass
 
 class TooDifferentLengthsError(Exception):
     '''
     Raised from polygonize if bimolecular TSs have
     too different pivot lenghts.
     '''
-    pass
 
 def clean_directory():
     for f in os.listdir():
@@ -123,12 +127,12 @@ def rotation_matrix_from_vectors(vec1, vec2):
     
     else:
     # if the cross product is zero, then vecs must be parallel or perpendicular
+
         if np.linalg.norm(a + b) == 0:
             pointer = np.array([0,0,1])
             return rot_mat_from_pointer(pointer, 180)
             
-        else:
-            return np.eye(3)
+        return np.eye(3)
 
 def rot_mat_from_pointer(pointer, angle):
     '''
@@ -222,4 +226,3 @@ def ase_view(mol):
         images.append(Atoms(atomnos, positions=totalcoords))
     
     GUI(images=Images(images), show_bonds=True).run()
-
