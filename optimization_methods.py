@@ -666,45 +666,44 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
 
         return coords
 
-    else:
     # trimolecular TSs: the approach is to bring the first pair of reactive
     # atoms apart just enough to get a good approximation for reagents
 
-        index_to_be_moved = constrained_indexes[0,0]
-        reference = constrained_indexes[0,1]
-        moving_molecule_index = next(i for i,n in enumerate(np.cumsum(ids)) if index_to_be_moved < n)
-        bounds = [0] + [n+1 for n in np.cumsum(ids)]
-        moving_molecule_slice = slice(bounds[moving_molecule_index], bounds[moving_molecule_index+1])
-        threshold_dist = bond_factor*(pt[atomnos[constrained_indexes[0,0]]].covalent_radius +
-                                      pt[atomnos[constrained_indexes[0,1]]].covalent_radius)
+    index_to_be_moved = constrained_indexes[0,0]
+    reference = constrained_indexes[0,1]
+    moving_molecule_index = next(i for i,n in enumerate(np.cumsum(ids)) if index_to_be_moved < n)
+    bounds = [0] + [n+1 for n in np.cumsum(ids)]
+    moving_molecule_slice = slice(bounds[moving_molecule_index], bounds[moving_molecule_index+1])
+    threshold_dist = bond_factor*(pt[atomnos[constrained_indexes[0,0]]].covalent_radius +
+                                    pt[atomnos[constrained_indexes[0,1]]].covalent_radius)
 
-        motion = (coords[reference] - coords[index_to_be_moved])
-        # vector from the atom to be moved to the target reactive atom
+    motion = (coords[reference] - coords[index_to_be_moved])
+    # vector from the atom to be moved to the target reactive atom
 
-        displacement = norm(motion)*(threshold_dist-np.linalg.norm(motion))
-        # vector to be applied to the reactive atom to push it far just enough
+    displacement = norm(motion)*(threshold_dist-np.linalg.norm(motion))
+    # vector to be applied to the reactive atom to push it far just enough
 
-        for i, atom in enumerate(coords[moving_molecule_slice]):
-            dist = np.linalg.norm(atom - coords[index_to_be_moved])
-            # for any atom in the molecule, distance from the reactive atom
+    for i, atom in enumerate(coords[moving_molecule_slice]):
+        dist = np.linalg.norm(atom - coords[index_to_be_moved])
+        # for any atom in the molecule, distance from the reactive atom
 
-            coords[moving_molecule_slice][i] -= displacement*np.exp(-0.5*dist)
-            # the closer they are to the reactive atom, the further they are moved
+        coords[moving_molecule_slice][i] -= displacement*np.exp(-0.5*dist)
+        # the closer they are to the reactive atom, the further they are moved
 
-        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=np.array([constrained_indexes[0]]), method=method)
-        # when all atoms are moved, optimize the geometry with only the first of the previous constraints
+    coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=np.array([constrained_indexes[0]]), method=method)
+    # when all atoms are moved, optimize the geometry with only the first of the previous constraints
 
-        newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
-        # finally, when structures are close enough, do a free optimization to get the reaction product
+    newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
+    # finally, when structures are close enough, do a free optimization to get the reaction product
 
-        new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
+    new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
 
-        if new_reactive_dist > threshold_dist:
-        # return the freely optimized structure only if the reagents did not approached back each other
-        # during the optimization, otherwise return the last coords, where partners were further away
-            return newcoords
-        
-        return coords
+    if new_reactive_dist > threshold_dist:
+    # return the freely optimized structure only if the reagents did not approached back each other
+    # during the optimization, otherwise return the last coords, where partners were further away
+        return newcoords
+    
+    return coords
 
 def get_nci(coords, atomnos, constrained_indexes, ids):
     '''
@@ -1009,10 +1008,6 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
     docker._set_pivots(mol)
 
     return mol
-
-
-
-
 
 # def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
 #     '''

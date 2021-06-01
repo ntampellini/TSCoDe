@@ -780,8 +780,7 @@ class Docker:
         def orient(i,ids,n):
             if swaps[n][i]:
                 return list(reversed(ids))
-            else:
-                return ids
+            return ids
 
         if len(self.objects) == 2:
 
@@ -839,7 +838,9 @@ class Docker:
     def run(self):
         '''
         '''
-        global scramble
+
+        def scramble(array, sequence):
+            return np.array([array[s] for s in sequence])
 
         try:
 
