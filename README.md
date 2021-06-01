@@ -4,7 +4,6 @@
  [![License: GNU GPL v3](https://img.shields.io/github/license/ntampellini/TSCoDe)](https://opensource.org/licenses/GPL-3.0)
 
 <img src="images/logo.png" alt="TSCoDe logo" class="center" width="500"/>
-<img src="images/tri.PNG" alt="TSCoDe Banner" class="center" width="500"/>
 
 TSCoDe is the first systematical conformational embedder for bimolecular and trimolecular chemical reactions. It is able to generate a comprehensive set of both regioisomeric and stereoisomeric poses for molecular arrangements, provided the atoms that will be reacting. It supports both open and cyclical transition states. By feeding the program conformational ensembles, it also generates all conformations combinations. It is thought as a tool to explore TS conformational space in a fast and systematical way, and yield a series of starting points for higher-level calculations.
 
@@ -42,16 +41,24 @@ After these have been installed, if you haven't already, you should [request a l
     python tscode.py $PathToInputFolder/myinput.txt
 
 ### Example of `myinput.txt`
-    DIST(a=1.84, b=2.2012) SUPRAFAC NEB
-    nitrostyrene.xyz 0a 1b
-    diaminopentadiene.xyz 5a 8b
-    # Diels-Alder reaction
+
+    DIST(a=2.135,b=1.548,c=1.901) NEB
+    maleimide.xyz 0a 5b
+    HCOOH.xyz 4b 1c
+    dienamine.xyz 6a 23c
+
+    # Free number of comment lines!
+    # First pairing (a) is the C-C reactive distance
+    # Second and third pairings (b, c) are the
+    # hydrogen bonds bridging the two partners.
     
+<img src="images/tri.PNG" alt="Example input file" class="center" width="500"/>
+
 
 ### Input formatting
 The program input can be any text file.
 - Any blank line will be ignored
-- Any line starting with `#` will be ignored as a comment
+- Any line starting with `#` will be ignored
 - Keywords, if present, need to be on first non-blank, non-comment line
 - Then, two or three molecule files are specified, along with their reactive atoms indexes
 
@@ -64,48 +71,50 @@ Reactive atoms supported are `C, H, O, N, P, S, F, Cl, Br, I`. Reactions can be 
 - Three molecules, two reactive atoms each - "cycical embed" (*i.e.* reactions where two partners are bridged by a carboxylic acid)
 
 After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the oxygen atom of a peracid, like `4ab`.
+
+If a `NEB` calculation is to be performed on a trimolecular transition state, the reactive distance "scanned" is the first imposed (a). See `NEB` keyword in the keyword section.
   
 ### Keywords
 
 Keywords are divided by at least one blank space. Some of them are self-sufficient (*i.e.* `DEEP`), while some others require an additional input (*i.e.* `STEPS=10` or `DIST(a=1.8,b=2,c=1.34)`). In the latter case, whitespaces inside the parenthesis are NOT allowed. Floating point numbers are to be expressed with points like `3.14`, while commas are used to divide keyword arguments like in `DIST`.
 
-- **BYPASS** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
+- **`BYPASS`** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
 
-- **CHECK** - Visualize the input molecules through the ASE GUI, to check orbital positions or reading faults.
+- **`CHECK`** - Visualize the input molecules through the ASE GUI, to check orbital positions or reading faults.
 
-- **CLASHES** - Manually specify the max number of clashes and/or the distance threshold at which two atoms are considered clashing. The more forgiving, the more structures will reach the geometry optimization step. Syntax: `CLASHES(num=3,dist=1.2)`
+- **`CLASHES`** - Manually specify the max number of clashes and/or the distance threshold at which two atoms are considered clashing. The more forgiving, the more structures will reach the geometry optimization step. Syntax: `CLASHES(num=3,dist=1.2)`
   
-- **DEEP** - Performs a deeper search, retaining more starting points for calculations and smaller turning angles. Equivalent to `THRESH=0.3 STEPS=12 CLASHES=(num=5,dist=1)`
+- **`DEEP`** - Performs a deeper search, retaining more starting points for calculations and smaller turning angles. Equivalent to `THRESH=0.3 STEPS=12 CLASHES=(num=5,dist=1)`
 
-- **DIST** - Manually imposed distance between specified atom pairs, in Angstroms. Syntax uses parenthesis and commas: `DIST(a=2.345,b=3.67,c=2.1)`
+- **`DIST`** - Manually imposed distance between specified atom pairs, in Angstroms. Syntax uses parenthesis and commas: `DIST(a=2.345,b=3.67,c=2.1)`
 
-- **KCAL** - Trim output structures to a given value of relative energy. Syntax: `KCAL=n`, where n can be an integer or float.
+- **`KCAL`** - Trim output structures to a given value of relative energy. Syntax: `KCAL=n`, where n can be an integer or float.
 
-- **LET** - Overrides safety checks that prevent the program from running too large calculations.
+- **`LET`** - Overrides safety checks that prevent the program from running too large calculations.
 
-- **LEVEL** - Manually set the MOPAC theory level to be used, default is PM7. Syntax: `LEVEL=PM7`
+- **`LEVEL`** - Manually set the MOPAC theory level to be used, default is PM7. Syntax: `LEVEL=PM7`
 
-- **MMFF** - Use the Merck Molecular Force Field during the OpenBabel pre-optimization (default is UFF).
+- **`MMFF`** - Use the Merck Molecular Force Field during the OpenBabel pre-optimization (default is UFF).
 
-- **NEB** - Perform an automatical NEB TS search after the partial optimization step, inferring reagents and products. This option is only really usable for those reactions in which two (or three) molecules are bound together (or strongly interacting) after the TS, with no additional species involved. For example, cycloaddition reactions are great candidates while atom transfer reactions (*i.e.* epoxidations) are not.
+- **`NCI`** - Estimate and print non-covalent interactions present in the generated poses.
 
-- **NEWBONDS** - Manually specify the maximum number of "new bonds" that a TS structure can have to be retained and not to be considered scrambled. Default is 1. Syntax: `NEWBONDS=1`
+- **`NEB`** - Perform an automatical climbing image nudged elastic band (CI-NEB) TS search after the partial optimization step, inferring reagents and products for each generated TS pose. These are guessed by approaching the reactive atoms until they are at the right distance, and then partially constrained (reagents) or free (products) optimizations are carried out to get the start and end points for a CI-NEB TS search. For trimolecular transition states, only the first imposed pairing (a) is approached - *i.e.* the C-C reactive distance in the example above. This `NEB` option is only really usable for those reactions in which two (or three) molecules are bound together (or strongly interacting) after the TS, with no additional species involved. For example, cycloaddition reactions are great candidates while atom transfer reactions (*i.e.* epoxidations) are not. Of course this implementation is not always reliable, and it is provided more as an experimenting tool than a definitive feature.
 
-- **NONCI** - Avoid estimating and printing non-covalent interactions.
+- **`NEWBONDS`** - Manually specify the maximum number of "new bonds" that a TS structure can have to be retained and not to be considered scrambled. Default is 1. Syntax: `NEWBONDS=1`
 
-- **NOOPT** - Skip the optimization steps, directly writing structures to file.
+- **`NOOPT`** - Skip the optimization steps, directly writing structures to file.
 
-- **ONLYREFINED** - Discard structures that do not successfully refine bonding distances.
+- **`ONLYREFINED`** - Discard structures that do not successfully refine bonding distances.
 
-- **RIGID** - Does not apply to "string" embeds. Avoid bending structures to better build TSs.
+- **`RIGID`** - Does not apply to "string" embeds. Avoid bending structures to better build TSs.
 
-- **ROTRANGE**  - Does not apply to "string" embeds. Manually specify the rotation range to be explored around the structure pivot. Default is 45. Syntax: `ROTRANGE=45`
+- **`ROTRANGE`**  - Does not apply to "string" embeds. Manually specify the rotation range to be explored around the structure pivot. Default is 45. Syntax: `ROTRANGE=45`
 
-- **STEPS** -  Manually specify the number of steps to be taken in scanning rotations. For string embeds, the range to be explored is the full 360°, and the default `STEPS=24` will perform 15° turns. For cyclical and chelotropic embeds, the rotation range to be explored is +-`ROTRANGE` degrees and it is scanned in `2*STEPS+1` steps. Therefore, the default value of `STEPS=6` will perform 7.5 degrees turns. 
+- **`STEPS`** -  Manually specify the number of steps to be taken in scanning rotations. For string embeds, the range to be explored is the full 360°, and the default `STEPS=24` will perform 15° turns. For cyclical and chelotropic embeds, the rotation range to be explored is +-`ROTRANGE` degrees and it is scanned in `2*STEPS+1` steps. Therefore, the default value of `STEPS=6` will perform 7.5 degrees turns. 
 
-- **SUPRAFAC** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
+- **`SUPRAFAC`** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 
-- **THRESH** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures. Default is 0.5 A. Syntax: `THRESH=n`, where n is a number.
+- **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures. Default is 0.5 A. Syntax: `THRESH=n`, where n is a number.
 
   
 <!--stackedit_data:

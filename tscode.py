@@ -113,20 +113,27 @@ class Options:
                     'MMFF'            # Use the Merck Molecular Force Field during the
                                       # OpenBabel pre-optimization (default is UFF).
 
-                    'NEB',            # Perform an automatical NEB TS search after the partial
-                                      # optimization step, inferring reagents and products.
-                                      # This option is only really usable for those reactions
-                                      # in which two (or three) molecules are bound together
-                                      # (or strongly interacting) after the TS, with no additional
-                                      # species involved. For example, cycloaddition reactions are
-                                      # great candidates while atom transfer reactions
-                                      # (*i.e.* epoxidations) are not.
+                    'NCI',            # Estimate and print non-covalent interactions present in the generated poses.
+
+                    'NEB',            # Perform an automatical climbing image nudged elastic band (CI-NEB)
+                                      # TS search after the partial optimization step, inferring reagents
+                                      # and products for each generated TS pose. These are guessed by
+                                      # approaching the reactive atoms until they are at the right distance,
+                                      # and then partially constrained (reagents) or free (products) optimizations
+                                      # are carried out to get the start and end points for a CI-NEB TS search.
+                                      # For trimolecular transition states, only the first imposed pairing (a) 
+                                      # is approached - i.e. the C-C reactive distance in the example above.
+                                      # This NEB option is only really usable for those reactions in which two
+                                      # (or three) molecules are bound together (or strongly interacting) after
+                                      # the TS, with no additional species involved. For example, cycloaddition
+                                      # reactions are great candidates while atom transfer reactions
+                                      # (i.e. epoxidations) are not. Of course this implementation is not
+                                      # always reliable, and it is provided more as an experimenting tool
+                                      # than a definitive feature.
 
                     'NEWBONDS',       # Manually specify the maximum number of "new bonds" that a
                                       # TS structure can have to be retained and not to be considered
                                       # scrambled. Default is 1. Syntax: `NEWBONDS=1`
-
-                    'NONCI',          # Avoid estimating and printing non-covalent interactions.
 
                     'NOOPT',          # Skip the optimization steps, directly writing structures to file.
 
@@ -171,7 +178,7 @@ class Options:
     mopac_level = 'PM7'
     openbabel_level = 'UFF'
     suprafacial = False
-    nci = True
+    nci = False
     only_refined = False
 
     kcal_thresh = None

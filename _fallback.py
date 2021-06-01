@@ -22,7 +22,7 @@ import numpy as np
 from math import sqrt
 import networkx as nx
 from rmsd import kabsch_rmsd
-from spyrmsd.rmsd import symmrmsd
+# from spyrmsd.rmsd import symmrmsd
 
 def norm_of(v):
     s = v[0]*v[0] + v[1]*v[1] + v[2]*v[2]
@@ -156,84 +156,84 @@ def prune_conformers(structures, k = 1, max_rmsd = 1.):
 
     return structures[mask], mask
 
-def prune_conformers_symmetry(structures, atomnos, adjacency_matrix, k = 1, max_rmsd = 1.):
+# def prune_conformers_symmetry(structures, atomnos, adjacency_matrix, k = 1, max_rmsd = 1.):
 
-    if k != 1:
+#     if k != 1:
 
-        r = np.arange(structures.shape[0])
-        sequence = np.random.permutation(r)
-        inv_sequence = np.array([np.where(sequence == i)[0][0] for i in r], dtype=int)
+#         r = np.arange(structures.shape[0])
+#         sequence = np.random.permutation(r)
+#         inv_sequence = np.array([np.where(sequence == i)[0][0] for i in r], dtype=int)
 
-        structures = scramble(structures, sequence)
-        # energies = scramble_mask(energies, sequence)
-        # scrambling array before splitting, so to improve efficiency when doing
-        # multiple runs of group pruning
+#         structures = scramble(structures, sequence)
+#         # energies = scramble_mask(energies, sequence)
+#         # scrambling array before splitting, so to improve efficiency when doing
+#         # multiple runs of group pruning
 
-    mask_out = []
-    d = len(structures) // k
+#     mask_out = []
+#     d = len(structures) // k
 
-    for step in range(k):
-        if step == k-1:
-            structures_subset = structures[d*step:]
-            # energies_subset = energies[d*step:]
-        else:
-            structures_subset = structures[d*step:d*(step+1)]
-            # energies_subset = energies[d*step:d*(step+1)]
+#     for step in range(k):
+#         if step == k-1:
+#             structures_subset = structures[d*step:]
+#             # energies_subset = energies[d*step:]
+#         else:
+#             structures_subset = structures[d*step:d*(step+1)]
+#             # energies_subset = energies[d*step:d*(step+1)]
 
-        l = structures_subset.shape[0]
-        rmsd_mat = np.zeros((l, l))
-        rmsd_mat[:] = max_rmsd
+#         l = structures_subset.shape[0]
+#         rmsd_mat = np.zeros((l, l))
+#         rmsd_mat[:] = max_rmsd
 
-        # t0 = time()
+#         # t0 = time()
 
-        for i in range(l):
-            for j in range(i+1,l):
-                val = symmrmsd(structures_subset[i],
-                               structures_subset[j],
-                               atomnos, atomnos,
-                               adjacency_matrix,
-                               adjacency_matrix,
-                               center=True, minimize=True)
+#         for i in range(l):
+#             for j in range(i+1,l):
+#                 val = symmrmsd(structures_subset[i],
+#                                structures_subset[j],
+#                                atomnos, atomnos,
+#                                adjacency_matrix,
+#                                adjacency_matrix,
+#                                center=True, minimize=True)
                 
-                rmsd_mat[i, j] = val
-                if val < max_rmsd:
-                    break
+#                 rmsd_mat[i, j] = val
+#                 if val < max_rmsd:
+#                     break
 
 
-        # t1 = time()
+#         # t1 = time()
 
-        where = np.where(rmsd_mat < max_rmsd)
-        matches = [(i,j) for i,j in zip(where[0], where[1])]
+#         where = np.where(rmsd_mat < max_rmsd)
+#         matches = [(i,j) for i,j in zip(where[0], where[1])]
 
-        g = nx.Graph(matches)
+#         g = nx.Graph(matches)
 
-        subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
-        groups = [tuple(graph.nodes) for graph in subgraphs]
+#         subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+#         groups = [tuple(graph.nodes) for graph in subgraphs]
 
-        best_of_cluster = [group[0] for group in groups]
-        # re-do with energies?
+#         best_of_cluster = [group[0] for group in groups]
+#         # re-do with energies?
 
-        rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
-        rejects = []
-        for s in rejects_sets:
-            for i in s:
-                rejects.append(i)
+#         rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+#         rejects = []
+#         for s in rejects_sets:
+#             for i in s:
+#                 rejects.append(i)
 
-        mask = np.array([True for _ in range(l)], dtype=bool)
-        for i in rejects:
-            mask[i] = False
+#         mask = np.array([True for _ in range(l)], dtype=bool)
+#         for i in rejects:
+#             mask[i] = False
 
-        mask_out.append(mask)
+#         mask_out.append(mask)
     
-    mask = np.concatenate(mask_out)
+#     mask = np.concatenate(mask_out)
 
-    if k != 1:
-        mask = scramble_mask(mask, inv_sequence)
-        structures = scramble(structures, inv_sequence)
-        # undoing the previous shuffling, therefore preserving the input order
+#     if k != 1:
+#         mask = scramble_mask(mask, inv_sequence)
+#         structures = scramble(structures, inv_sequence)
+#         # undoing the previous shuffling, therefore preserving the input order
 
-    # t2 = time()
-    # print(f'First step: {round(t1-t0, 2)} s\nSecond step: {round(t2-t1, 2)} s')
-    # sys.stdout.flush()
+#     # t2 = time()
+#     # print(f'First step: {round(t1-t0, 2)} s\nSecond step: {round(t2-t1, 2)} s')
+#     # sys.stdout.flush()
 
-    return structures[mask], mask
+#     return structures[mask], mask

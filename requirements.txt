@@ -1,9 +1,9 @@
-cclib==1.7
-dataclasses==0.8
-networkx==2.5
+matplotlib==3.3.2
 periodictable==1.5.3
-ase==3.21.1
-scipy==1.5.4
-rmsd==1.4
+networkx==2.5
 numpy==1.19.5
+scipy==1.5.4
+dataclasses==0.8
+rmsd==1.4
+cclib==1.7
 openbabel==3.1.1.1
