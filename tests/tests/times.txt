@@ -1,0 +1,6 @@
+    chelotropic.txt          -65.641 s
+    cyclical.txt             -11.639 s
+    string.txt               -3.097 s
+    trimolecular.txt         -205.316 s
+
+TSCoDe tests completed with no errors. (287.24 s)
