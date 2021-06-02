@@ -94,11 +94,11 @@ Reactive atoms supported are `C, H, O, N, P, S, F, Cl, Br, I`. Reactions can be 
 - **Two molecules, one reactive atom each** - "string embed" (*i.e.* SN2 reactions)
 - **Two molecules, one with a single reactive atom and the other with two reactive atoms** - "chelotropic embed" (*i.e.* epoxidations)
 - **Two molecules, two reactive atoms each** - "cyclical embed" (*i.e.* Diels-Alder reactions)
-- **Three molecules, two reactive atoms each** - "cycical embed" (*i.e.* reactions where two partners are bridged by a carboxylic acid)
+- **Three molecules, two reactive atoms each** - "cyclical embed" (*i.e.* reactions where two partners are bridged by a carboxylic acid like the example above)
 
 After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the oxygen atom of a peracid, like `4ab`.
 
-If a `NEB` calculation is to be performed on a trimolecular transition state, the reactive distance "scanned" is the first imposed (a). See `NEB` keyword in the keyword section.
+If a `NEB` calculation is to be performed on a trimolecular transition state, the reactive distance "scanned" is the first imposed (`a`). See `NEB` keyword in the keyword section.
   
 ### Good practice and suggested options
 
@@ -116,7 +116,7 @@ When modeling a reaction through TSCoDe, I suggest following this guidelines:
 
 - By default, TSCoDe parameters are optimized to yield good results without specifying any keyword nor atom pairing. However, I strongly encourage to specify all the desired pairings and use the `DIST` keyword in order to speed up the calculation and achieve better results, respectively. For example, the trimolecular reaction in the example above is described with all three atomic pairings (`a`, `b` and `c`) and their distances. These can come from a previous higher-level calculation or can be inferred by similar reactions. If they are not provided, a guess is performed by reading the `parameters.py` file.
 
-- If the reaction involves big molecules, or if there are a lot of conformations, a preliminar calculation using the NOOPT keyword may be a good idea to see how many structures are generated and would require MOPAC optimization in a standard run.
+- If the reaction involves big molecules, or if there are a lot of conformations, a preliminar calculation using the `NOOPT` keyword may be a good idea to see how many structures are generated and would require MOPAC optimization in a standard run.
 
 - If TSCoDe does not find enough suitable candidates (or any at all) for the given reacion, most of the times this is because of compenetration pruning. This mean that a lot of structures are generated, but all of them have some atoms compenetrating one into the other, and are therefore discarded. A solution could be to loosen the compenetration rejection citeria (`CLASHES` keyword, not recommended) or to use the `SHRINK` keyword (recommended, see keywords section). Note that `SHRINK` calculations will be loger, as MOPAC/ASE distance-refining optimizations will require more iterations to reach target distances.
 
@@ -130,7 +130,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`CLASHES`** - Manually specify the max number of clashes and/or the distance threshold at which two atoms are considered clashing. The more forgiving, the more structures will reach the geometry optimization step. Syntax: `CLASHES(num=3,dist=1.2)`
   
-- **`DEEP`** - Performs a deeper search, retaining more starting points for calculations and smaller turning angles. Equivalent to `THRESH=0.3 STEPS=12 CLASHES=(num=5,dist=1)`
+- **`DEEP`** - Performs a deeper search, retaining more starting points for calculations and smaller turning angles. Equivalent to `THRESH=0.3 STEPS=24 CLASHES=(num=3,dist=1.2)`. Use with care!
 
 - **`DIST`** - Manually imposed distance between specified atom pairs, in Angstroms. Syntax uses parenthesis and commas: `DIST(a=2.345,b=3.67,c=2.1)`
 

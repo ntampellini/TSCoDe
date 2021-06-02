@@ -355,10 +355,10 @@ class Docker:
                     self.options.suprafacial = True
 
                 if 'DEEP' in keywords_list:
-                    self.options.pruning_thresh = 0.2
-                    self.options.rotation_steps = 12
-                    self.options.max_clashes = 5
-                    self.options.clash_thresh = 1
+                    self.options.pruning_thresh = 0.3
+                    self.options.rotation_steps = 24
+                    self.options.max_clashes = 3
+                    self.options.clash_thresh = 1.2
 
                 if 'ROTRANGE' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('ROTRANGE')]
