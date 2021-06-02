@@ -17,15 +17,15 @@ TSCoDe is the first systematical conformational embedder for bimolecular and tri
 **NOTE: structures obtained from TSCoDe are not proper transition states (most of the times) but are often quite close. The program is intended to yield and rank poses, not TSs. In this way, the computational chemist can skip the error-prone phase of molecular embedding and proceed to the most appropriate higher-level calculation step.**
 
 ### Required packages and tools
-TSCoDe is written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, the OpenBabel software for performing force field optimization and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of manipulation on the provided structures through the semiempirical [MOPAC2016](http://openmopac.net/MOPAC2016.html) calculator. While the former is free software, the latter is only free for academic use, and a license must be requested via the MOPAC website (see *Installation*).
+TSCoDe is written mostly in Python, with some libraries optionally boosted via Cython. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, the OpenBabel software for performing force field optimization and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of structure manipulations through the semiempirical [MOPAC2016](http://openmopac.net/MOPAC2016.html) calculator. While the former is free software, the latter is only free for academic use, and a license must be requested via the MOPAC website (see *Installation*).
 
 ## :green_circle: What the program can do (well)
-**Generate accurately spaced poses** for bimolecular and trimolecular transition states of organic molecules by various manipulations, including structural deformation. If a transition state is already in hand, the distance between reactive atoms can be specified, so as to obtain all the stereo/regioisomeric analogs with precise molecular spacings.
+**Generate accurately spaced poses** for bimolecular and trimolecular transition states of organic molecules, also considering structural deformation. If a transition state is already in hand, the distance between reactive atoms can be specified, so as to obtain all the stereo/regioisomeric analogs with precise molecular spacings. TSCoDe is best suited for modelizations that involve many transition state regio- and stereoisomers, where the combination of reagents conformations is an important aspect in transition state building. The program yields many atomic arrangements that can be evaluated by the computational chemist, aiding them in exploring all conformational and regio/stereochemical reaction space.
 
 ## :yellow_circle: What the program can do (sometimes)
-**Infer differential NCIs** - After the poses generation, the program will try to infer the non-covalent interactions (NCIs) between all generated structures, and if a particular NCI is not shared by all of them, that is reported in the program output. I a particularly strong NCI is present only in a given TS, this can be a handy indicator of the source of selectivity in a given chemical reaction.
+**Infer differential NCIs** - After the poses generation, the program can be told to infer the non-covalent interactions (NCIs) between all generated structures (`NCI` keyword). If a particular NCI is not shared by all structures, that is reported. If a particularly strong NCI is present only in a few TSs, this function can be a handy tool for tracing the source of selectivity in a given chemical reaction.
 
-**Generate transition state structures** (semiempirical level) - After poses generation, these can be used to try to directly obtain transition state structures at the semiempirical level chosen. This is not a default behavior, and it is invoked by the `NEB` keyword. A climbing image nudged elastic band (CI-NEB) transition state search is performed after inferring both reagents and products for each individual pose. This entire process is of course challenging to automate completely, and can be prone to failures. Associative reactions, where two (or three) molecules are bound together (or strongly interacting) after the TS, with no additional species involved, tend to give good results. For example, cycloaddition reactions are great candidates while atom transfer reactions (*i.e.* epoxidations) are not.
+**Generate proper transition state structures** (semiempirical level) - After poses generation, these structures can be used to try to directly obtain transition state structures at the semiempirical level chosen. This is not a default behavior, and it is invoked by the `NEB` keyword. A climbing image nudged elastic band (CI-NEB) transition state search is performed after inferring both reagents and products for each individual pose. This entire process is of course challenging to automate completely, and can be prone to failures. Associative reactions, where two (or three) molecules are bound together (or strongly interacting) after the TS, with no additional species involved, tend to give good results. For example, cycloaddition reactions are great candidates while atom transfer reactions (*i.e.* epoxidations) are not.
 
 ## :red_circle: What the program cannot do
 **Perfectly replicate TS structures at high levels of theory** - As the program exploits MOPAC to perform calculations, final geometries arise from constrained optimizations at a semiempirical level of theory (default is PM7). They are therefore not granted to perfectly replicate higher-level calculations. However, constrained optimizations through external programs are meant to be used to refine these structures and obtain TSs.
@@ -55,9 +55,9 @@ Open a command shell, move to the TSCoDe folder and install the requirements.
 
 To test the installation, you can run the provided test in the test folder:
 
-    python test/test.py
+    python tests/run_tests.py
 
-This should point out if any part of the installation is faulted.
+This should take less than 10 minutes on a modern laptop and point out if any part of the installation is faulted.
 
 ## Usage
 
@@ -100,9 +100,29 @@ After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) 
 
 If a `NEB` calculation is to be performed on a trimolecular transition state, the reactive distance "scanned" is the first imposed (a). See `NEB` keyword in the keyword section.
   
+### Good practice and suggested options
+
+When modeling a reaction through TSCoDe, I suggest following this guidelines:
+
+- Assess that the reaction is supported by TSCoDe. See Input formatting: monomolecular reactions are not yet supported.
+
+- Obtain molecular structures in .xyz format. If more conformers are to be used, they must be in a multimolecular .xyz file, and atom ordering must be consistent throughout all structures. I suggest using a maximum of five conformers for each structure (ideally less) as these calculations have a steep combinatorial scaling.
+
+- If, in a trimolecular TS, two molecules are interacting but the TS is not cyclical (*i.e.* thiourea-like organocatalytic carbonyl activations) then TSCoDe input needs to be a bimolecular TS, where the first molecule is the interaction complex (*i.e.* ketone + thiourea) and the second one is the nucleophile.
+
+- Understand what atoms are reacting for each structure and record their index (**starting from 0!**). If you are unsure of reactive atomic indexes, you can run a test input without indexes, and the program will ask you to manually specify them from the ASE GUI by clicking. This is not possible if you are running TSCoDe from a command line interface (CLI). When choosing this option, it is not possible to specify atom pairings. Therefore, I suggest using this option only to check the reactive atoms indexes and then building a standard input file.
+
+- Optionally, after specifying reactive indexes, the `CHECK` keyword can be used. A series of pop-up ASE GUI windows will be displayed, showing each molecule with a series of red dots around the reactive atoms chosen. This can be used to check "orbital" positions or conformer reading faults (scroll through conformers with page-up and down buttons). Program will terminate after the last visualization is closed.
+
+- By default, TSCoDe parameters are optimized to yield good results without specifying any keyword nor atom pairing. However, I strongly encourage to specify all the desired pairings and use the `DIST` keyword in order to speed up the calculation and achieve better results, respectively. For example, the trimolecular reaction in the example above is described with all three atomic pairings (`a`, `b` and `c`) and their distances. These can come from a previous higher-level calculation or can be inferred by similar reactions. If they are not provided, a guess is performed by reading the `parameters.py` file.
+
+- If the reaction involves big molecules, or if there are a lot of conformations, a preliminar calculation using the NOOPT keyword may be a good idea to see how many structures are generated and would require MOPAC optimization in a standard run.
+
+- If TSCoDe does not find enough suitable candidates (or any at all) for the given reacion, most of the times this is because of compenetration pruning. This mean that a lot of structures are generated, but all of them have some atoms compenetrating one into the other, and are therefore discarded. A solution could be to loosen the compenetration rejection citeria (`CLASHES` keyword, not recommended) or to use the `SHRINK` keyword (recommended, see keywords section). Note that `SHRINK` calculations will be loger, as MOPAC/ASE distance-refining optimizations will require more iterations to reach target distances.
+
 ### Keywords
 
-Keywords are divided by at least one blank space. Some of them are self-sufficient (*i.e.* `DEEP`), while some others require an additional input (*i.e.* `STEPS=10` or `DIST(a=1.8,b=2,c=1.34)`). In the latter case, whitespaces inside the parenthesis are NOT allowed. Floating point numbers are to be expressed with points like `3.14`, while commas are used to divide keyword arguments like in `DIST`.
+Keywords are divided by at least one blank space. Some of them are self-sufficient (*i.e.* `NCI`), while some others require an additional input (*i.e.* `STEPS=10` or `DIST(a=1.8,b=2,c=1.34)`). In the latter case, whitespaces inside the parenthesis are NOT allowed. Floating point numbers are to be expressed with points like `3.14`, while commas are used to divide keyword arguments where more than one are accepted, like in `DIST`.
 
 - **`BYPASS`** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
 
