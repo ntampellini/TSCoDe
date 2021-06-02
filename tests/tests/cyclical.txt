@@ -1,0 +1,3 @@
+DIST(a=2.2,b=2.3)
+C2H4.xyz 0a 3b
+C2H4.xyz 0b 3a

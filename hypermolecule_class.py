@@ -26,8 +26,7 @@ from rmsd import kabsch
 from cclib.io import ccread
 from numpy.linalg import LinAlgError
 
-from parameters import atom_type_dict
-from reactive_atoms_classes import pt
+from reactive_atoms_classes import pt, atom_type_dict
 
 class CCReadError(Exception):
     '''
@@ -226,6 +225,15 @@ class Hypermolecule:
 
             if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
             # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
+
+    def _scale_orbs(self, value):
+        '''
+        Scale each orbital dimension according to value.
+        '''
+        for index, atom in self.reactive_atoms_classes_dict.items():
+            orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
+            atom.init(self, index, update=True, orb_dim=orb_dim*value)
+
 
     def _compute_hypermolecule(self):
         '''

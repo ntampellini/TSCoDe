@@ -61,7 +61,7 @@ This should point out if any part of the installation is faulted.
 
 ## Usage
 
-    python tscode.py $PathToInputFolder/myinput.txt
+    python tscode.py ./myinput.txt [custom_title]
 
 ### Example of `myinput.txt`
 
@@ -134,9 +134,11 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`RIGID`** - Does not apply to "string" embeds. Avoid bending structures to better build TSs.
 
-- **`ROTRANGE`**  - Does not apply to "string" embeds. Manually specify the rotation range to be explored around the structure pivot. Default is 45. Syntax: `ROTRANGE=45`
+- **`ROTRANGE`** - Does not apply to "string" embeds. Manually specify the rotation range to be explored around the structure pivot. Default is 120. Syntax: `ROTRANGE=120`
 
-- **`STEPS`** -  Manually specify the number of steps to be taken in scanning rotations. For string embeds, the range to be explored is the full 360°, and the default `STEPS=24` will perform 15° turns. For cyclical and chelotropic embeds, the rotation range to be explored is +-`ROTRANGE` degrees and it is scanned in `2*STEPS+1` steps. Therefore, the default value of `STEPS=6` will perform 7.5 degrees turns. 
+- **`SHRINK`** - Exaggerate orbital dimensions during embed, scaling them by a factor of one and a half. This makes it easier to perform the embed without having molecules clashing one another. Then, the correct distance between reactive atom pairs is achieved as for standard runs by spring constraints during MOPAC optimization.
+
+- **`STEPS`** -  Manually specify the number of steps to be taken in scanning rotations. For string embeds, the range to be explored is the full 360°, and the default `STEPS=24` will perform 15° turns. For cyclical and chelotropic embeds, the rotation range to be explored is +-`ROTRANGE` degrees. Therefore, the default value of `ROTRANGE=120 STEPS=12` will perform twelve 20 degrees turns.
 
 - **`SUPRAFAC`** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 

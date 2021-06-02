@@ -90,7 +90,7 @@ class Spring:
         spring_force = self.k * (np.linalg.norm(direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
-        spring_force = np.clip(spring_force, -10, 10)
+        # spring_force = np.clip(spring_force, -10, 10)
         # force is clipped at 10 eV/A
 
         forces[self.i1] += (norm(direction) * spring_force)

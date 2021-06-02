@@ -291,9 +291,9 @@ def cyclical_embed(self):
             
     self.log(f'\n--> Performing {self.embed} embed ({self.candidates} candidates)')
 
-    steps = self.options.rotation_steps + 1
+    steps = self.options.rotation_steps
     angle_range = self.options.rotation_range
-    systematic_angles = cartesian_product(*[range(steps) for _ in self.objects]) * 2*angle_range/steps - angle_range
+    systematic_angles = cartesian_product(*[range(steps+1) for _ in self.objects]) * 2*angle_range/steps - angle_range
 
     pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
     # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -332,33 +332,40 @@ def cyclical_embed(self):
 
                 index = deltas.index(max(deltas))
                 mol = thread_objects[index]
-                pivot = pivots[index]
 
-                # ase_view(mol)
-                maxval = norms[index-1] + norms[index-2]
-                bent_mol = ase_bend(self, mol, pivot, 0.9*maxval)
-                # ase_view(bent_mol)
+                if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
+                    # do not try to bend molecules where the two reactive indices are bonded
 
-                ###################################### DEBUGGING PURPOSES
+                    pivot = pivots[index]
 
-                # for p in bent_mol.pivots:
-                #     if p.index == pivot.index:
-                #         new_pivot = p
-                # now = np.linalg.norm(new_pivot.pivot)
-                # self.log(f'Corrected Triangle: Side was {round(norms[index], 3)} A, now it is {round(now, 3)}, {round(now/maxval, 3)} % of maximum value for triangle creation', p=False)
-                
-                #########################################################
+                    # ase_view(mol)
+                    maxval = norms[index-1] + norms[index-2]
+                    bent_mol = ase_bend(self, mol, pivot, 0.9*maxval)
+                    # ase_view(bent_mol)
 
-                thread_objects[index] = bent_mol
+                    ###################################### DEBUGGING PURPOSES
 
-                pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
-                # updating the active pivot for each molecule for this run
-                
-                norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
-                # updating the pivots norms to feed into the polygonize function
+                    # for p in bent_mol.pivots:
+                    #     if p.index == pivot.index:
+                    #         new_pivot = p
+                    # now = np.linalg.norm(new_pivot.pivot)
+                    # self.log(f'Corrected Triangle: Side was {round(norms[index], 3)} A, now it is {round(now, 3)}, {round(now/maxval, 3)} % of maximum value for triangle creation', p=False)
+                    
+                    #########################################################
 
-                polygon_vectors = polygonize(norms)
-                # repeating the failed polygon creation
+                    thread_objects[index] = bent_mol
+
+                    pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+                    # updating the active pivot for each molecule for this run
+                    
+                    norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
+                    # updating the pivots norms to feed into the polygonize function
+
+                    polygon_vectors = polygonize(norms)
+                    # repeating the failed polygon creation
+
+                else:
+                    continue
 
             else:
                 continue
@@ -393,7 +400,7 @@ def cyclical_embed(self):
                         # do not try to bend molecules where the two reactive indices are bonded
 
                             bent_mol = ase_bend(self, mol, pivots[i], target_length, method=f'{self.options.mopac_level}')
-                            # ase_view(bent_mol) TODO - remove traj
+                            # ase_view(bent_mol)
                             thread_objects[i] = bent_mol
 
                 # Repeating the previous polygonization steps with the bent molecules
@@ -467,7 +474,7 @@ def cyclical_embed(self):
                         # numeric errors in the next function.
                             
                         alignment_rotation = R.align_vectors((end-start, directions[i]),
-                                                                (pivots[i].pivot, mol_direction))[0].as_matrix()
+                                                             (pivots[i].pivot, mol_direction))[0].as_matrix()
                         # this rotation superimposes the molecular orbitals active in this run (pivots[i].pivot
                         # goes to end-start) and also aligns the molecules so that they face each other
                         # (mol_direction goes to directions[i])

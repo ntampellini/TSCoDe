@@ -1,0 +1,3 @@
+DIST(a=2.5)
+CH3Cl.xyz 0a
+HCOOH.xyz 3a

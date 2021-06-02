@@ -161,16 +161,22 @@ class Options:
                     'RIGID',          # Does not apply to "string" embeds. Avoid
                                       # bending structures to better build TSs.
 
-                    'ROTRANGE'        # Does not apply to "string" embeds. Manually specify the rotation
+                    'ROTRANGE',       # Does not apply to "string" embeds. Manually specify the rotation
                                       # range to be explored around the structure pivot.
-                                      # Default is 45. Syntax: `ROTRANGE=45`
+                                      # Default is 120. Syntax: `ROTRANGE=120`
+
+                    'SHRINK',         # Exaggerate orbital dimensions during embed, scaling them by a factor
+                                      # of one and a half. This makes it easier to perform the embed without
+                                      # having molecules clashing one another. Then, the correct distance between
+                                      # reactive atom pairs is achieved as for standard runs by spring constraints
+                                      # during MOPAC optimization.
 
                     'STEPS',          # Manually specify the number of steps to be taken in scanning rotations.
                                       # For string embeds, the range to be explored is the full 360°, and the
                                       # default `STEPS=24` will perform 15° turns. For cyclical and chelotropic
-                                      # embeds, the rotation range to be explored is +-`ROTRANGE` degrees and
-                                      # it is scanned in `2*STEPS+1` steps. Therefore, the default value of
-                                      # `STEPS=6` will perform 7.5 degrees turns. 
+                                      # embeds, the rotation range to be explored is +-`ROTRANGE` degrees.
+                                      # Therefore, the default value of `ROTRANGE=120 STEPS=12` will perform
+                                      # twelve 20 degrees turns.
 
                     'SUPRAFAC',       # Only retain suprafacial orbital configurations in cyclical TSs.
                                       # Thought for Diels-Alder and other cycloaddition reactions.
@@ -182,13 +188,13 @@ class Options:
                     
     # list of keyword names to be used in the first line of program input
 
-    rotation_range = 45
+    rotation_range = 120
     rotation_steps = None # This is set later by the _setup() function, based on embed type
     pruning_thresh = 0.5
     rigid = False
     
     max_clashes = 0
-    clash_thresh = 1.5
+    clash_thresh = 1.3
 
     max_newbonds = 0
 
@@ -199,6 +205,7 @@ class Options:
     suprafacial = False
     nci = False
     only_refined = False
+    shrink = False
 
     kcal_thresh = None
     bypass = False
@@ -217,16 +224,25 @@ class Options:
         return '\n'.join([f'{var}{" "*(16-len(var))}: {d[var]}' for var in d])
 
 class Docker:
-    def __init__(self, filename):
+    def __init__(self, filename, stamp=None):
         '''
         Initialize the Docker object by reading the input filename (.txt).
         Sets the Option dataclass properties to default and then updates them
         with the user-requested keywords, if there are any.
 
         '''
+        if stamp is None:
+            self.stamp = time.ctime().replace(' ','_').replace(':','-')[4:-8]
+            # replaced ctime yields 'Sun_May_23_18-53-47_2021', only keeping 'May_23_18-53'
 
-        self.stamp = time.ctime().replace(' ','_').replace(':','-')[4:-8]
-        # replaced ctime yields 'Sun_May_23_18-53-47_2021', only keeping 'May_23_18-53'
+        else:
+            self.stamp = stamp
+
+        try:
+            os.remove(f'TSCoDe_{self.stamp}.log')
+
+        except FileNotFoundError:
+            pass
 
         self.logfile = open(f'TSCoDe_{self.stamp}.log', 'a', buffering=1)
 
@@ -329,7 +345,9 @@ class Docker:
             if any(k in self.options.__keywords__ for k in keywords):
 
                 if not all(k in self.options.__keywords__ for k in keywords):
-                    raise SyntaxError(f'One (or more) keywords were not understood. Please check your syntax. ({keywords})')
+                    for k in keywords:
+                        if k not in self.options.__keywords__:
+                            raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
                 keywords_list = [word.upper() for word in lines[0].split()]
 
@@ -415,6 +433,9 @@ class Docker:
                 if 'KCAL' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('KCAL')]
                     self.options.kcal_thresh = float(kw.split('=')[1])
+
+                if 'SHRINK' in keywords_list:
+                    self.options.shrink = True
 
         except SyntaxError as e:
             raise e
@@ -692,13 +713,13 @@ class Docker:
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
                     # be always generated too close to each other for how the cyclical embed works          
 
-                self.options.rotation_steps = 6
+                self.options.rotation_steps = 12
 
                 if hasattr(self.options, 'custom_rotation_steps'):
                 # if user specified a custom value, use it.
                     self.options.rotation_steps = self.options.custom_rotation_steps
 
-                self.candidates = (self.options.rotation_steps+1)**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+                self.candidates = (self.options.rotation_steps)**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
                 
                 if len(self.objects) == 3:
                     self.candidates *= 8
@@ -708,6 +729,11 @@ class Docker:
                 # while 2 is the disposition of two vectors (parallel, antiparallel). This ends here if
                 # no parings are to be respected. If there are any, each one reduces the number of
                 # candidates to be computed, and we divide self.candidates number in the next section.
+
+                if self.options.shrink:
+                    for molecule in self.objects:
+                        molecule._scale_orbs(1.5)
+                    self.options.only_refined = True
 
                 for molecule in self.objects:
                     self._set_pivots(molecule)
@@ -831,7 +857,6 @@ class Docker:
                 dist2 = np.linalg.norm(r_atom2.center[0] - r_atom2.coord)
 
                 self.pairings_dists.append((letter, dist1+dist2))
-
 
 ######################################################################################################### RUN
 
@@ -1180,8 +1205,10 @@ class Docker:
                 except ZeroCandidatesError:
                     t_end_run = time.time()
                     s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
-                         '    - Enlarging the search space by specifying a larger "steps" value with the keyword STEPS=n\n' +
-                         '    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.\n')
+                         '    - Enlarging the spacing between atom pairs with the DIST keyword\n' +
+                         '    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.\n' +
+                         '    - If the transition state is trimolecular, the SHRINK keyword may help (see documentation).\n')
+
                     self.log(f'\n--> Program termination: No candidates found - Total time {round(t_end_run-t_start_run, 2)} s')
                     self.log(s)
                     clean_directory()
@@ -1213,7 +1240,6 @@ class Docker:
 
 
             ################################################# XYZ GUESSES OUTPUT 
-
 
                 outname = f'TSCoDe_TSs_guesses_{self.stamp}.xyz'
                 with open(outname, 'w') as f:        
@@ -1370,23 +1396,25 @@ class Docker:
 
             ################################################# VMD OUTPUT
 
-            vmd_name = outname.split('.')[0] + '.vmd'
-            path = os.path.join(os.getcwd(), vmd_name)
-            with open(path, 'w') as f:
-                s = ('display resetview\n' +
-                    'mol new {%s.xyz}\n' % (path.strip('.vmd')) +
-                    'mol selection index %s\n' % (' '.join([str(i) for i in self.constrained_indexes[0].ravel()])) +
-                    'mol representation CPK 0.7 0.5 50 50\n' +
-                    'mol color ColorID 7\n' +
-                    'mol material Transparent\n' +
-                    'mol addrep top\n')
+            if not self.options.bypass:
 
-                for a, b in self.pairings:
-                    s += f'label add Bonds 0/{a} 0/{b}\n'
+                vmd_name = outname.split('.')[0] + '.vmd'
+                path = os.path.join(os.getcwd(), vmd_name)
+                with open(path, 'w') as f:
+                    s = ('display resetview\n' +
+                        'mol new {%s.xyz}\n' % (path.strip('.vmd')) +
+                        'mol selection index %s\n' % (' '.join([str(i) for i in self.constrained_indexes[0].ravel()])) +
+                        'mol representation CPK 0.7 0.5 50 50\n' +
+                        'mol color ColorID 7\n' +
+                        'mol material Transparent\n' +
+                        'mol addrep top\n')
 
-                f.write(s)
+                    for a, b in self.pairings:
+                        s += f'label add Bonds 0/{a} 0/{b}\n'
 
-            self.log(f'--> Output: Wrote VMD {vmd_name} file\n')
+                    f.write(s)
+
+                self.log(f'--> Output: Wrote VMD {vmd_name} file\n')
             
             ################################################# END: CLEAN ALL TEMP FILES AND CLOSE LOG
 
@@ -1428,7 +1456,7 @@ if __name__ == '__main__':
 
     usage = '\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
 
-    if len(sys.argv) != 2 or len(sys.argv[1].split('.')) == 1:
+    if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
 
         print(usage)
         quit()
@@ -1436,7 +1464,13 @@ if __name__ == '__main__':
     filename = os.path.realpath(sys.argv[1])
     os.chdir(os.path.dirname(filename))
 
-    docker = Docker(filename)
+    if len(sys.argv) == 3:
+        stamp = sys.argv[2]
+
+    else:
+        stamp = None
+
+    docker = Docker(filename, stamp)
     # initialize docker from input file
 
     docker.run()

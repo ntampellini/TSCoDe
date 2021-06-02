@@ -26,9 +26,9 @@ orb_dim_dict = {
     'O Single Bond' : 1,
     'N Single Bond' : 1,
     'F Single Bond' : 1,
-    'Cl Single Bond' : 1,
-    'Br Single Bond' : 1,
-    'I Single Bond' : 1,
+    'Cl Single Bond' : 1.5,
+    'Br Single Bond' : 1.5,
+    'I Single Bond' : 2,
 
     'C sp' : 1,
     'N sp' : 1,
