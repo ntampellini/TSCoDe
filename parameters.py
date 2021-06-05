@@ -17,6 +17,14 @@ GNU General Public License for more details.
 
 # Calculators parameters
 
+from ase.calculators.mopac import MOPAC
+
+
+MOPAC_OPT_BOOL = True
+# whether to run Force Field minimization with
+# Openbabel prior to the MOPAC semiempirical one.
+# (set to False if no Openbabel Python bindings are available)
+
 MOPAC_COMMAND = 'mopac2016'
 # command with which mopac will be called from the command line
 
@@ -58,7 +66,7 @@ nci_dict={
     'HO':(2,'O-H hydrogen bond'),
     'HN':(2,'N-H hydrogen bond'),
     'HPh':(2.8,'H-Ar non-conventional hydrogen bond'), # taken from https://doi.org/10.1039/C1CP20404A
-    'PhPh':(3.8, 'π-stacking interaction'),            # guessed from https://doi.org/10.1039/C2SC20045G
+    'PhPh':(3.8, 'pi-stacking interaction'),            # guessed from https://doi.org/10.1039/C2SC20045G
     # TODO - halogen bonds, π bonds interactions
 }
 # non covalent interaction threshold and types for atomic pairs

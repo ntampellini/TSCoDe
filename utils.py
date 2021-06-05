@@ -50,6 +50,27 @@ def clean_directory():
         elif f.startswith('temp_ob'):
             os.remove(f)
 
+def time_to_string(total_time: float, verbose=False):
+    '''
+    Converts totaltime (float) to a timestring
+    with hours, minutes and seconds.
+    '''
+    timestring = ''
+
+    names = ('hours', 'minutes', 'seconds') if verbose else ('h', 'm', 's')
+
+    if total_time > 3600:
+        h = total_time // 3600
+        timestring += f'{int(h)} {names[0]} '
+        total_time %= 3600
+    if total_time > 60:
+        m = total_time // 60
+        timestring += f'{int(m)} {names[1]} '
+        total_time %= 60
+    timestring += f'{round(total_time, 3)} {names[2]}'
+
+    return timestring
+
 def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
     percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
     filledLength = int(length * iteration // total)

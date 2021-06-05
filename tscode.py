@@ -30,7 +30,7 @@ from itertools import groupby
 import numpy as np
 from dataclasses import dataclass
 
-from parameters import MOPAC_COMMAND
+from parameters import MOPAC_OPT_BOOL
 from embeds import string_embed, cyclical_embed
 from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
@@ -41,7 +41,6 @@ from optimization_methods import (
                                   MopacReadError,
                                   openbabel_opt,
                                   optimize,
-                                  scramble,
                                   write_xyz
                                   )
 from utils import (
@@ -50,6 +49,7 @@ from utils import (
                    clean_directory,
                    InputError,
                    loadbar,
+                   time_to_string,
                    ZeroCandidatesError
                    )
 
@@ -206,6 +206,7 @@ class Options:
     nci = False
     only_refined = False
     shrink = False
+    mopac_opt = MOPAC_OPT_BOOL
 
     kcal_thresh = None
     bypass = False
@@ -935,7 +936,7 @@ class Docker:
             # cleaning the old, general data on indexes that ignored conformations
 
             t_end = time.time()
-            self.log(f'Generated {len(self.structures)} transition state candidates ({round(t_end-t_start_run, 2)} s)\n')
+            self.log(f'Generated {len(self.structures)} transition state candidates ({time_to_string(t_end-t_start_run)})\n')
 
             if not self.options.bypass:
                 try:
@@ -960,7 +961,7 @@ class Docker:
                     t_end = time.time()
 
                     if False in mask:
-                        self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
+                        self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
                     self.log()
                     # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
 
@@ -979,17 +980,17 @@ class Docker:
                             self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh, k=k)
                             self.constrained_indexes = self.constrained_indexes[mask]
                             t_end_int = time.time()
-                            self.log(f'    - similarity pre-processing   (k={k}) - {round(t_end_int-t_start_int, 2)} s - kept {len([b for b in mask if b])}/{len(mask)}')
+                            self.log(f'    - similarity pre-processing   (k={k}) - {time_to_string(t_end_int-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
                     
                     t_start_int = time.time()
                     self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
                     t_end = time.time()
-                    self.log(f'    - similarity final processing (k=1) - {round(t_end-t_start_int, 2)} s - kept {len([b for b in mask if b])}/{len(mask)}')
+                    self.log(f'    - similarity final processing (k=1) - {time_to_string(t_end-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
 
                     self.constrained_indexes = self.constrained_indexes[mask]
 
                     if False in mask:
-                        self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
+                        self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
                     self.log()
 
                     ################################################# CHECKPOINT BEFORE MM OPTIMIZATION
@@ -1005,59 +1006,60 @@ class Docker:
                     if len(self.structures) == 0:
                         raise ZeroCandidatesError()
 
-                    t_start = time.time()
                     if self.options.optimization:
 
-                        self.log(f'--> Structure optimization ({self.options.openbabel_level} level)')
-                        self.exit_status = np.zeros(len(self.structures), dtype=bool)
-                        t_start = time.time()
+                        if self.options.mopac_opt:
 
-                        for i, structure in enumerate(deepcopy(self.structures)):
-                            loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
-                            try:
-                                new_structure, self.exit_status[i] = openbabel_opt(structure, atomnos, self.constrained_indexes[i], graphs, method=self.options.openbabel_level)
+                            self.log(f'--> Structure optimization ({self.options.openbabel_level} level)')
+                            self.exit_status = np.zeros(len(self.structures), dtype=bool)
+                            t_start = time.time()
 
-                                if self.exit_status[i]:
-                                    self.structures[i] = new_structure
+                            for i, structure in enumerate(deepcopy(self.structures)):
+                                loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
+                                try:
+                                    new_structure, self.exit_status[i] = openbabel_opt(structure, atomnos, self.constrained_indexes[i], graphs, method=self.options.openbabel_level)
 
-                            except Exception as e:
-                                raise e
+                                    if self.exit_status[i]:
+                                        self.structures[i] = new_structure
 
-                        loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
-                        t_end = time.time()
-                        self.log(f'Openbabel {self.options.openbabel_level} optimization took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
-                        
-                        ################################################# DIFFERENTIATING: EXIT STATUS
+                                except Exception as e:
+                                    raise e
 
-                        # mask = self.exit_status
-                        # self.structures = self.structures[mask]
-                        # self.constrained_indexes = self.constrained_indexes[mask]
-                        # self.exit_status = self.exit_status[mask]
+                            loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
+                            t_end = time.time()
+                            self.log(f'Openbabel {self.options.openbabel_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+                            
+                            ################################################# DIFFERENTIATING: EXIT STATUS
 
-                        if False in mask:
-                            self.log(f'Successfully refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at UFF level. Non-refined structures are kept anyway.')
-                        
-                        ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
+                            # mask = self.exit_status
+                            # self.structures = self.structures[mask]
+                            # self.constrained_indexes = self.constrained_indexes[mask]
+                            # self.exit_status = self.exit_status[mask]
 
-                        if len(self.structures) == 0:
-                            raise ZeroCandidatesError()
+                            if False in mask:
+                                self.log(f'Successfully refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at UFF level. Non-refined structures are kept anyway.')
+                            
+                            ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
 
-                        t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
-                        self.exit_status = self.exit_status[mask]
-                        t_end = time.time()
-                        
-                        if False in mask:
-                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
-                        self.log()
+                            if len(self.structures) == 0:
+                                raise ZeroCandidatesError()
 
-                        ################################################# CHECKPOINT BEFORE MOPAC OPTIMIZATION
+                            t_start = time.time()
+                            self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
+                            self.exit_status = self.exit_status[mask]
+                            t_end = time.time()
+                            
+                            if False in mask:
+                                self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+                            self.log()
 
-                        with open(outname, 'w') as f:        
-                            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                                exit_str = f'{self.options.openbabel_level} REFINED' if self.exit_status[i] else 'RAW'
-                                write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before MOPAC optimization')
-                        self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {outname} file before MOPAC optimization.\n')
+                            ################################################# CHECKPOINT BEFORE MOPAC OPTIMIZATION
+
+                            with open(outname, 'w') as f:        
+                                for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                                    exit_str = f'{self.options.openbabel_level} REFINED' if self.exit_status[i] else 'RAW'
+                                    write_xyz(structure, atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before MOPAC optimization')
+                            self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {outname} file before MOPAC optimization.\n')
                         
                         ################################################# GEOMETRY OPTIMIZATION - SEMIEMPIRICAL
 
@@ -1098,11 +1100,11 @@ class Docker:
                                 raise e
 
                             t_end_opt = time.time()
-                            self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                            self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
-                        self.log(f'Mopac {self.options.mopac_level} optimization took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                        self.log(f'Mopac {self.options.mopac_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
                         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
@@ -1116,7 +1118,7 @@ class Docker:
                         t_end = time.time()
                         
                         if False in mask:
-                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
+                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
                         self.log()
 
                         ################################################# REFINING: BONDING DISTANCES
@@ -1167,11 +1169,11 @@ class Docker:
 
                                 finally:
                                     t_end_opt = time.time()
-                                    self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {round(t_end_opt-t_start_opt, 2)} s', p=False)
+                                    self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
                             
                             loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
                             t_end = time.time()
-                            self.log(f'Mopac {self.options.mopac_level} refinement took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                            self.log(f'Mopac {self.options.mopac_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
                             before = len(self.structures)
                             if self.options.only_refined:
@@ -1198,7 +1200,7 @@ class Docker:
                         t_end = time.time()
                         
                         if False in mask:
-                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
+                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
                         self.log()
 
 
@@ -1209,7 +1211,7 @@ class Docker:
                          '    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.\n' +
                          '    - If the transition state is trimolecular, the SHRINK keyword may help (see documentation).\n')
 
-                    self.log(f'\n--> Program termination: No candidates found - Total time {round(t_end_run-t_start_run, 2)} s')
+                    self.log(f'\n--> Program termination: No candidates found - Total time {time_to_string(t_end_run-t_start_run)}')
                     self.log(s)
                     clean_directory()
                     raise ZeroCandidatesError(s)
@@ -1253,7 +1255,7 @@ class Docker:
                 # since we have the refined structures, we can get rid of the unrefined ones
 
                 t_end_run = time.time()
-                self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {outname} file - Total time {round(t_end_run-t_start_run, 2)} s\n')
+                self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {outname} file - Total time {time_to_string(t_end_run-t_start_run)}\n')
 
             ################################################# TS SEEKING: IRC + NEB
 
@@ -1289,11 +1291,11 @@ class Docker:
 
                         t_end_opt = time.time()
 
-                        self.log(f'    - Mopac {self.options.mopac_level} NEB optimization: Structure {i+1} - {exit_str} - ({round(t_end_opt-t_start_opt, 2)} s)', p=False)
+                        self.log(f'    - Mopac {self.options.mopac_level} NEB optimization: Structure {i+1} - {exit_str} - ({time_to_string(t_end_opt-t_start_opt)})', p=False)
 
                     loadbar(1, 1, prefix=f'Performing NEB {len(self.structures)}/{len(self.structures)} ')
                     t_end = time.time()
-                    self.log(f'Mopac {self.options.mopac_level} NEB optimization took {round(t_end-t_start, 2)} s ({round((t_end-t_start)/len(self.structures), 2)} s per structure)')
+                    self.log(f'Mopac {self.options.mopac_level} NEB optimization took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
                     self.log(f'NEB converged for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures\n')
 
                     mask = self.exit_status
@@ -1311,7 +1313,7 @@ class Docker:
                         t_end = time.time()
                         
                         if False in mask:
-                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {round(t_end-t_start, 2)} s)')
+                            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
                         self.log()
 
                     ################################################# TS CHECK - FREQUENCY CALCULATION
@@ -1332,7 +1334,7 @@ class Docker:
 
                         loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
                         t_end = time.time()
-                        self.log(f'Mopac {self.options.mopac_level} frequency calculation took {round(t_end-t_start, 2)} s (~{round((t_end-t_start)/len(self.structures), 2)} s per structure)\n')
+                        self.log(f'Mopac {self.options.mopac_level} frequency calculation took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)\n')
 
                     ################################################# NEB XYZ OUTPUT
 
@@ -1421,20 +1423,8 @@ class Docker:
             clean_directory()
 
             t_end_run = time.time()
-            total_time = t_end_run - t_start_run
 
-            timestring = ''
-            if total_time > 3600:
-                h = total_time // 3600
-                timestring += f'{int(h)} hours '
-                total_time %= 3600
-            if total_time > 60:
-                m = total_time // 60
-                timestring += f'{int(m)} minutes '
-                total_time %= 60
-            timestring += f'{round(total_time, 3)} seconds '
-
-            self.log(f'--> TSCoDe normal termination: total time {timestring}')
+            self.log(f'--> TSCoDe normal termination: total time {time_to_string(t_end_run - t_start_run, verbose=True)}.')
 
             self.logfile.close()
 

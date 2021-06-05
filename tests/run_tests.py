@@ -2,11 +2,20 @@ import os
 import time
 from subprocess import check_output
 
+os.chdir(os.path.dirname(os.path.realpath(__file__)))
+os.chdir(os.path.dirname(os.getcwd()))
+
+import sys
+sys.path.append(os.getcwd())
+
 from parameters import MOPAC_COMMAND
+
+
+os.chdir('tests')
+
 
 t_start_run = time.time()
 
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
 ##########################################################################
 
