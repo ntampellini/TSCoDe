@@ -42,7 +42,6 @@ from optimization_methods import (
                                   MopacReadError,
                                   openbabel_opt,
                                   optimize,
-                                  suppress_stdout_stderr,
                                   write_xyz
                                   )
 from utils import (
@@ -51,6 +50,7 @@ from utils import (
                    clean_directory,
                    InputError,
                    loadbar,
+                   suppress_stdout_stderr,
                    time_to_string,
                    ZeroCandidatesError
                    )
@@ -390,7 +390,7 @@ class Docker:
 
                 if 'mopac>' in filename:
 
-                    filename = filename[7:]
+                    filename = filename[6:]
                     self.log(f'--> Performing MOPAC optimization optimization on {filename} before running TSCoDe')
 
                     from cclib.io import ccread
