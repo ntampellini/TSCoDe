@@ -1343,15 +1343,17 @@ class Docker:
 
                 except ZeroCandidatesError:
                     t_end_run = time.time()
-                    s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes were correct? If so, try these tips:\n' + 
-                         '    - Enlarging the spacing between atom pairs with the DIST keyword\n' +
-                         '    - Imposing less strict rejection criteria with the DEEP or CLASHES keyword.\n' +
-                         '    - If the transition state is trimolecular, the SHRINK keyword may help (see documentation).\n')
+                    s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes and pairings were correct? If so, try these tips:\n'
+                         '    - If no structure passes the compenetration check, the SHRINK keyword may help (see documentation).\n'
+                         '    - Similarly, enlarging the spacing between atom pairs with the DIST keyword facilitates the embed.\n'
+                         '    - Impose less strict compenetration rejection criteria with the CLASHES keyword.\n'
+                         '    - Generate more structures with higher STEPS and ROTRANGE values.\n'
+                    )
 
                     self.log(f'\n--> Program termination: No candidates found - Total time {time_to_string(t_end_run-t_start_run)}')
                     self.log(s)
                     clean_directory()
-                    raise ZeroCandidatesError(s)
+                    quit()
 
             else:
                 self.energies = np.zeros(len(self.structures))
