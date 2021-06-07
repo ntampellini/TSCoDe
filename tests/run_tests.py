@@ -1,6 +1,6 @@
 import os
 import time
-from subprocess import run
+from subprocess import check_call, DEVNULL, STDOUT
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.chdir(os.path.dirname(os.getcwd()))
@@ -20,7 +20,7 @@ t_start_run = time.time()
 
 ##########################################################################
 
-run(f'{MOPAC_COMMAND} HCOOH.mop > HCOOH.cmdlog 2>&1', shell=True, check=True)
+check_call(f'{MOPAC_COMMAND} HCOOH.mop > HCOOH.cmdlog 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
     
 ##########################################################################
 
@@ -44,7 +44,7 @@ os.chdir(os.path.dirname(os.getcwd()))
 # Back to ./TSCoDe
 
 from utils import loadbar
-from optimization_methods import suppress_stdout_stderr
+from utils import suppress_stdout_stderr
 
 times = []
 for i, f in enumerate(tests):
@@ -53,8 +53,8 @@ for i, f in enumerate(tests):
     
     t_start = time.time()
     with suppress_stdout_stderr():
-        run(f'python tscode.py {f} {name}', shell=True, check=True)
-        
+        check_call(f'python tscode.py {f} {name}'.split(), stdout=DEVNULL, stderr=STDOUT)
+                
     t_end = time.time()
     times.append(t_start-t_end)
 

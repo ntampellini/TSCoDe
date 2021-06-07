@@ -29,7 +29,7 @@ from copy import deepcopy
 from itertools import groupby
 
 import numpy as np
-from subprocess import run
+from subprocess import check_call, STDOUT, DEVNULL
 
 from parameters import OPENBABEL_OPT_BOOL, orb_dim_dict
 from embeds import string_embed, cyclical_embed
@@ -358,7 +358,7 @@ class Docker:
                     confname = filename[:-4] + '_confs.xyz'
 
                     with suppress_stdout_stderr():
-                        run(f'obabel {filename} -O {confname} --confab --rcutoff 1 --original', shell=True, check=True)
+                        check_call(f'obabel {filename} -O {confname} --confab --rcutoff 1 --original'.split(), stdout=DEVNULL, stderr=STDOUT)
 
                     data = ccread(confname)
                     conformers = data.atomcoords

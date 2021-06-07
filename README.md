@@ -126,7 +126,7 @@ Molecule files can be preceded by *operators*, like `csearch>molecule.xyz`. They
   
 ### Good practice and suggested options
 
-When modeling a reaction through TSCoDe, I suggest following this guidelines:
+When modeling a reaction through TSCoDe, I suggest following these guidelines:
 
 - Assess that the reaction is supported by TSCoDe. See Input formatting: monomolecular reactions are not yet supported.
 
@@ -150,11 +150,11 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`BYPASS`** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
 
-- **`CHECK`** - Visualize the input molecules through the ASE GUI, to check orbital positions or reading faults.
+- **`CHECK`** - Visualize the input molecules through the ASE GUI, to check orbital positions or conformers reading faults. *(not available from CLI)*
 
 - **`CLASHES`** - Manually specify the max number of clashes and/or the distance threshold at which two atoms are considered clashing. The more forgiving, the more structures will reach the geometry optimization step. Syntax: `CLASHES(num=3,dist=1.2)`
   
-- **`DEEP`** - Performs a deeper search, retaining more starting points for calculations and smaller turning angles. Equivalent to `THRESH=0.3 STEPS=24 CLASHES=(num=3,dist=1.2)`. Use with care!
+- **`DEEP`** - Performs a deeper search, retaining more starting points for calculations and smaller turning angles. Equivalent to `THRESH=0.3 STEPS=24 CLASHES=(num=3,dist=1.2)`. **Use with care!**
 
 - **`DIST`** - Manually imposed distance between specified atom pairs, in Angstroms. Syntax uses parenthesis and commas: `DIST(a=2.345,b=3.67,c=2.1)`
 
@@ -170,7 +170,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`NEB`** - Perform an automatical climbing image nudged elastic band (CI-NEB) TS search after the partial optimization step, inferring reagents and products for each generated TS pose. These are guessed by approaching the reactive atoms until they are at the right distance, and then partially constrained (reagents) or free (products) optimizations are carried out to get the start and end points for a CI-NEB TS search. For trimolecular transition states, only the first imposed pairing (a) is approached - *i.e.* the C-C reactive distance in the example above. This `NEB` option is only really usable for those reactions in which two (or three) molecules are bound together (or strongly interacting) after the TS, with no additional species involved. For example, cycloaddition reactions are great candidates while atom transfer reactions (*i.e.* epoxidations) are not. Of course this implementation is not always reliable, and it is provided more as an experimenting tool than a definitive feature.
 
-- **`NEWBONDS`** - Manually specify the maximum number of "new bonds" that a TS structure can have to be retained and not to be considered scrambled. Default is 1. Syntax: `NEWBONDS=1`
+- **`NEWBONDS`** - Manually specify the maximum number of "new bonds" that a TS structure can have to be retained and not to be considered scrambled. Default is 0. Syntax: `NEWBONDS=0`
 
 - **`NOOPT`** - Skip the optimization steps, directly writing structures to file.
 
@@ -186,4 +186,4 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`SUPRAFAC`** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 
-- **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures. Default is 0.5 A. Syntax: `THRESH=n`, where n is a number.
+- **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures. Default is 1 A. Syntax: `THRESH=n`, where n is a number.

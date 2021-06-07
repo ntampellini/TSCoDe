@@ -989,4 +989,3 @@ if OPENBABEL_OPT_BOOL:
         success = scramble_check(opt_coords, atomnos, graphs)
 
         return opt_coords, success
-
