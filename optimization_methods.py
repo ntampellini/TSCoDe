@@ -962,37 +962,6 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
 
     return mol
 
-# def write_orca(coords:np.array, atomnos:np.array, output, head='! PM3 Opt'):
-#     '''
-#     output is of _io.TextIOWrapper type
-
-#     '''
-#     assert atomnos.shape[0] == coords.shape[0]
-#     assert coords.shape[1] == 3
-#     head += '\n# Orca input from TSCoDe\n\n* xyz 0 1'
-#     for i, atom in enumerate(coords):
-#         head += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
-#     head += '*'
-#     output.write(head)
-
-# def write_orca_neb(coords1, coords2, atomnos, title='temp', method='PM3'):
-
-#     assert coords1.shape == coords2.shape
-#     assert atomnos.shape[0] == coords1.shape[0]
-#     assert coords1.shape[1] == 3
-
-#     with open(f'{title}_start.xyz', 'w') as f:
-#         write_xyz(coords1, atomnos, f, title)
-
-#     with open(f'{title}_end.xyz', 'w') as f:
-#         write_xyz(coords2, atomnos, f, title)
-
-#     with open(f'{title}_neb.inp', 'w') as output:
-#         head = f'! {method} NEB-TS\n\n'
-#         head += f'%neb\nNEB_End_XYZFile "{title}_end.xyz"\nNimages 6\nend\n\n'
-#         head += f'# Orca NEB input from TSCoDe\n\n* xyzfile 0 1 {title}_start.xyz'
-#         output.write(head)
-
 from parameters import OPENBABEL_OPT_BOOL
 
 if OPENBABEL_OPT_BOOL:

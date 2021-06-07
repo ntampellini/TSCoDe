@@ -332,17 +332,64 @@ class Docker:
 
                 reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
 
-                if filename[0:5] == 'conf>':
-                    filename = filename[5:]
+                if filename[0:8] == 'csearch>':
+
+                    self.log(f'--> Performing conformational search and optimization on {filename}')
+
+                    from cclib.io import ccread
+                    from hypermolecule_class import graphize
+                    from networkx import connected_components
+
+                    t_start = time.time()
+
+                    filename = filename[8:]
+
+                    data = ccread(filename)
+
+                    if len(data.atomcoords) > 1:
+                        raise InputError(f'Requested conformational search on file {filename} that already contains more than one structure.')
+
+                    if len(tuple(connected_components(graphize(data.atomcoords[0], data.atomnos)))) > 1:
+                        raise InputError((f'Requested conformational search on a multimolecular file ({filename}). '
+                                           'This is probably a bad idea, as the OpenBabel conformational search '
+                                           'algorithm implemented here is quite basic and is not suited for this '
+                                           'task. A much better idea is to generate conformations for this complex '
+                                           'by a more sophisticated third party software.'))
+                                                
                     confname = filename[:-4] + '_confs.xyz'
 
                     with suppress_stdout_stderr():
                         run(f'obabel {filename} -O {confname} --confab --rcutoff 1 --original', shell=True, check=True)
 
-                    filename = confname
-                    # redirect the input file to the new one with the conformers
+                    data = ccread(confname)
+                    conformers = data.atomcoords
+                    energies = []
+
+                    for i, conformer in enumerate(deepcopy(conformers)):
+                        opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
+
+                        if success:
+                            conformers[i] = opt_coords
+                            energies.append(energy)
+
+                        else:
+                            energies.append(np.inf)
+                    # optimize the generated conformers
+
+                    energies = np.array(energies) - np.min(energies)
+                    energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
+                    # sorting structures based on energy
+
+                    os.remove(confname)
+                    with open(confname, 'w') as f:
+                        for i, conformer in enumerate(conformers):
+                            write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
+
+                    self.log(f'Completed ({time_to_string(time.time()-t_start)}). Will use the best {min((len(conformers), 5))} conformers for TSCoDe embed.\n')
 
                 inp.append((filename, reactive_indexes))
+
+            self.log()
 
             return inp
             
@@ -1252,6 +1299,8 @@ class Docker:
                             self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
                         self.log()
 
+                    else:
+                        clean_directory()
 
                 except ZeroCandidatesError:
                     t_end_run = time.time()
