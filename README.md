@@ -33,15 +33,19 @@ TSCoDe is written in pure Python, ~~with some libraries optionally boosted via C
 
 ## Installation (Windows, Linux and Mac)
 
+This program is written in pure Python and it is intended to use with Python version 3.8.10. The use of a dedicated conda virtual environment is highly suggested.
+
 Prerequisites: before downloading this repository, you should have installed both Openbabel (required for Force Field minimizations) and MOPAC2016 (required for semiempirical calculations).
 
 ### Openbabel
 
-This is free software you can download from [the official website](http://openbabel.org/wiki/Category:Installation).
+This is free software you can download from [the official website](http://openbabel.org/wiki/Category:Installation). After you have installed the software, make sure to install its Python bindings. You can manually compile these by following the [website guidelines](https://openbabel.org/docs/dev/Installation/install.html#compile-bindings), but *by far* the easiest procedure is just using conda:
+
+    conda install -c conda-forge openbabel
 
 ### MOPAC2016
 
-This software is only free for academic use. If you qualify for this usage, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "mopac2016" command. To test this, the command `mopac2016` should return [this](https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d) message.
+This software is only free for academic use. If you qualify for this usage, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "MOPAC2016.exe" command. To test this, the command `MOPAC2016.exe` should return [this](https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d) message.
 
 ### TSCoDe
 
@@ -49,7 +53,9 @@ I you have Git installed, you can directly clone the repository: *(otherwise dow
 
     git clone https://github.com/ntampellini/TSCoDe
     
-Open a command shell, move to the TSCoDe folder and install the requirements.
+Open a command shell, move to the ./TSCoDe folder and install the requirements.
+
+    cd TSCoDe
 
     pip install -r requirements.txt
 
@@ -61,7 +67,15 @@ This should take less than 10 minutes on a modern laptop and point out if any pa
 
 ## Usage
 
-    python tscode.py ./myinput.txt [custom_title]
+The program can be run from terminal, both from the TSCoDe folder
+
+    python tscode.py <path_to_input_folder>/myinput.txt [custom_title]
+
+or from the input folder.
+
+    python <path_to_TSCoDe_folder>/tscode.py myinput.txt [custom_title]
+
+A custom title for the run can be optionally provided, otherwise a time stamp will be used.
 
 ### Example of `myinput.txt`
 
@@ -154,18 +168,12 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`RIGID`** - Does not apply to "string" embeds. Avoid bending structures to better build TSs.
 
-- **`ROTRANGE`** - Does not apply to "string" embeds. Manually specify the rotation range to be explored around the structure pivot. Default is 120. Syntax: `ROTRANGE=120`
+- **`ROTRANGE`** - Does not apply to "string" embeds. Manually specify the rotation range to be explored around the structure pivot. Default is 90. Syntax: `ROTRANGE=90`
 
-- **`SHRINK`** - Exaggerate orbital dimensions during embed, scaling them by a factor of one and a half. This makes it easier to perform the embed without having molecules clashing one another. Then, the correct distance between reactive atom pairs is achieved as for standard runs by spring constraints during MOPAC optimization.
+- **`SHRINK`** - Exaggerate orbital dimensions during embed, scaling them by a specified factor. If used as a single keyword (`SHRINK`), orbital dimensions are scaled by a factor of one and a half. A syntax like `SHRINK=3.14` allows for custom scaling. This scaling makes it easier to perform the embed without having molecules clashing one into the other. Then, the correct distance between reactive atom pairs is achieved as for standard runs by spring constraints during MOPAC optimization. The larger the scaling, the more the program is likely to find at least some transition state poses, but the more time-consuming the step of distance refinement.
 
-- **`STEPS`** -  Manually specify the number of steps to be taken in scanning rotations. For string embeds, the range to be explored is the full 360°, and the default `STEPS=24` will perform 15° turns. For cyclical and chelotropic embeds, the rotation range to be explored is +-`ROTRANGE` degrees. Therefore, the default value of `ROTRANGE=120 STEPS=12` will perform twelve 20 degrees turns.
+- **`STEPS`** -  Manually specify the number of steps to be taken in scanning rotations. For string embeds, the range to be explored is the full 360°, and the default `STEPS=24` will perform 15° turns. For cyclical and chelotropic embeds, the rotation range to be explored is +-`ROTRANGE` degrees. Therefore the default values, equivalent to `ROTRANGE=90 STEPS=9`, will perform nine 20 degrees turns.
 
 - **`SUPRAFAC`** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 
 - **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures. Default is 0.5 A. Syntax: `THRESH=n`, where n is a number.
-
-  
-<!--stackedit_data:
-eyJoaXN0b3J5IjpbNzcyMTgwMDgwLDYwMDI4NzMwNyw1NDcxMT
-I3OTksLTY3MjExODU2MF19
--->

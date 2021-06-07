@@ -15,17 +15,12 @@ GNU General Public License for more details.
 
 '''
 
-# Calculators parameters
-
-from ase.calculators.mopac import MOPAC
-
-
-MOPAC_OPT_BOOL = True
+OPENBABEL_OPT_BOOL = True
 # whether to run Force Field minimization with
 # Openbabel prior to the MOPAC semiempirical one.
 # (set to False if no Openbabel Python bindings are available)
 
-MOPAC_COMMAND = 'mopac2016'
+MOPAC_COMMAND = 'MOPAC2016.exe'
 # command with which mopac will be called from the command line
 
 orb_dim_dict = {
@@ -62,11 +57,17 @@ orb_dim_dict = {
 # Half-lenght of the transition state bonding distance involving a given atom
 
 nci_dict={
+    # tag in alphabetical order
     'FF':(3.5,'F-F interaction'),
     'HO':(2,'O-H hydrogen bond'),
     'HN':(2,'N-H hydrogen bond'),
     'HPh':(2.8,'H-Ar non-conventional hydrogen bond'), # taken from https://doi.org/10.1039/C1CP20404A
     'PhPh':(3.8, 'pi-stacking interaction'),            # guessed from https://doi.org/10.1039/C2SC20045G
-    # TODO - halogen bonds, π bonds interactions
+    'FPh':(0.0, 'F-Ar halogen-bonding interaction'),
+    'ClPh':(0.0, 'Cl-Ar halogen-bonding interaction'),
+    'BrPh':(0.0, 'Br-Ar halogen-bonding interaction'),
+    'IPh':(0.0, 'I-Ar halogen-bonding interaction'),
+
+    # TODO - halogen bonds, pi bonds interactions
 }
 # non covalent interaction threshold and types for atomic pairs

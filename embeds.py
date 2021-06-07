@@ -291,10 +291,6 @@ def cyclical_embed(self):
             
     self.log(f'\n--> Performing {self.embed} embed ({self.candidates} candidates)')
 
-    steps = self.options.rotation_steps
-    angle_range = self.options.rotation_range
-    systematic_angles = cartesian_product(*[range(steps+1) for _ in self.objects]) * 2*angle_range/steps - angle_range
-
     pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
     # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
     
@@ -436,7 +432,7 @@ def cyclical_embed(self):
                     # just a general first approximation that needs to be corrected
                     # for the specific case through another algorithm.
                     
-                for angles in systematic_angles:
+                for angles in self.systematic_angles:
 
                     threads.append([deepcopy(obj) for obj in thread_objects])
                     thread = threads[-1]

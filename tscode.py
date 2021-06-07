@@ -1,6 +1,7 @@
+# coding=utf-8
 '''
 
-TSCODE: Transition State Conformational Docker
+TSCoDe: Transition State Conformational Docker
 Copyright (C) 2021 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
@@ -28,9 +29,9 @@ from copy import deepcopy
 from itertools import groupby
 
 import numpy as np
-from dataclasses import dataclass
+from subprocess import run
 
-from parameters import MOPAC_OPT_BOOL
+from parameters import OPENBABEL_OPT_BOOL, orb_dim_dict
 from embeds import string_embed, cyclical_embed
 from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
@@ -41,6 +42,7 @@ from optimization_methods import (
                                   MopacReadError,
                                   openbabel_opt,
                                   optimize,
+                                  suppress_stdout_stderr,
                                   write_xyz
                                   )
 from utils import (
@@ -64,6 +66,7 @@ from utils import (
 # except ImportError:
 #     from _fallback import prune_conformers
 # If cython libraries are not present, load pure python ones.
+
 # TODO - eventually I could re-write cython libraries, but for now pure python seem fast enough
 
 from _fallback import prune_conformers, compenetration_check
@@ -97,7 +100,6 @@ class Pivot:
     def __repr__(self):
         return f'Pivot object - index {self.index}, norm {round(np.linalg.norm(self.pivot), 3)}, meanpoint {self.meanpoint}'
 
-@dataclass
 class Options:
 
     __keywords__ = [
@@ -188,7 +190,7 @@ class Options:
                     
     # list of keyword names to be used in the first line of program input
 
-    rotation_range = 120
+    rotation_range = 90
     rotation_steps = None # This is set later by the _setup() function, based on embed type
     pruning_thresh = 0.5
     rigid = False
@@ -206,7 +208,7 @@ class Options:
     nci = False
     only_refined = False
     shrink = False
-    mopac_opt = MOPAC_OPT_BOOL
+    mopac_opt = OPENBABEL_OPT_BOOL
 
     kcal_thresh = None
     bypass = False
@@ -220,9 +222,14 @@ class Options:
         d.pop('bypass')
         d.pop('let')
         d.pop('check_structures')
+
         if self.kcal_thresh == None:
             d.pop('kcal_thresh')
-        return '\n'.join([f'{var}{" "*(16-len(var))}: {d[var]}' for var in d])
+
+        if not OPENBABEL_OPT_BOOL:
+            d.pop('openbabel_level')
+
+        return '\n'.join([f'{var}{" "*(18-len(var))}: {d[var]}' for var in d])
 
 class Docker:
     def __init__(self, filename, stamp=None):
@@ -249,7 +256,7 @@ class Docker:
 
 
         s ='\n*************************************************************\n'
-        s += '*      TSCODE: Transition State Conformational Docker       *\n'
+        s += '*      TSCoDe: Transition State Conformational Docker       *\n'
         s += '*************************************************************\n'
         s += '*                 Version 0.00 - Test pre-release           *\n'
         s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
@@ -319,9 +326,22 @@ class Docker:
             inp = []
             for line in lines:
                 filename, *reactive_atoms = line.split()
+
                 if len(reactive_atoms) > 2:
                     raise SyntaxError(f'Too many reactive atoms specified for {filename} ({len(reactive_atoms)})')
+
                 reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
+
+                if filename[0:5] == 'conf>':
+                    filename = filename[5:]
+                    confname = filename[:-4] + '_confs.xyz'
+
+                    with suppress_stdout_stderr():
+                        run(f'obabel {filename} -O {confname} --confab --rcutoff 1 --original', shell=True, check=True)
+
+                    filename = confname
+                    # redirect the input file to the new one with the conformers
+
                 inp.append((filename, reactive_indexes))
 
             return inp
@@ -437,6 +457,12 @@ class Docker:
 
                 if 'SHRINK' in keywords_list:
                     self.options.shrink = True
+                    self.options.shrink_multiplier = 1.5
+
+                elif 'SHRINK' in [k.split('=')[0] for k in keywords_list]:
+                    self.options.shrink = True
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('SHRINK')]
+                    self.options.shrink_multiplier = float(kw.split('=')[1])
 
         except SyntaxError as e:
             raise e
@@ -714,13 +740,15 @@ class Docker:
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
                     # be always generated too close to each other for how the cyclical embed works          
 
-                self.options.rotation_steps = 12
+                self.options.rotation_steps = 9
 
                 if hasattr(self.options, 'custom_rotation_steps'):
                 # if user specified a custom value, use it.
                     self.options.rotation_steps = self.options.custom_rotation_steps
 
-                self.candidates = (self.options.rotation_steps)**len(self.objects)*np.prod([len(mol.atomcoords) for mol in self.objects])
+                self.systematic_angles = cartesian_product(*[range(self.options.rotation_steps+1) for _ in self.objects]) * 2*self.options.rotation_range/self.options.rotation_steps - self.options.rotation_range
+
+                self.candidates = len(self.systematic_angles)*np.prod([len(mol.atomcoords) for mol in self.objects])
                 
                 if len(self.objects) == 3:
                     self.candidates *= 8
@@ -733,7 +761,7 @@ class Docker:
 
                 if self.options.shrink:
                     for molecule in self.objects:
-                        molecule._scale_orbs(1.5)
+                        molecule._scale_orbs(self.options.shrink_multiplier)
                     self.options.only_refined = True
 
                 for molecule in self.objects:
@@ -834,30 +862,54 @@ class Docker:
 
         return couples
 
-    def _set_default_distances(self):
+    def _set_target_distances(self):
         '''
-        Called before TS refinement if user did not specify all
-        (or any) of bonding distances with the DIST keyword.
+        Called before TS refinement to compute all
+        target bonding distances.
+
+        Is this function badly written? Yup.
+        Should i do something more elegant? Yup.
+        Am I satisfied with it working as it is? Probably yup.
+        TODO
         '''
-        if not hasattr(self, 'pairings_dists'):
-            self.pairings_dists = []
+        self.target_distances = {}
 
         r_atoms = np.array([list(mol.reactive_atoms_classes_dict.values()) for mol in self.objects]).ravel()
+        pairings = self.constrained_indexes.ravel()
+        pairings = pairings.reshape(int(pairings.shape[0]/2), 2)
+        pairings = {tuple(sorted((a,b))) for a, b in pairings}
 
-        for letter, indexes in self.pairings_table.items():
-            index1, index2 = indexes
+        for index1, index2 in pairings:
+
+            if [index1, index2] in self.pairings_table.values() and hasattr(self, 'pairings_dists'):
+                letter = list(self.pairings_table.keys())[list(self.pairings_table.values()).index([index1, index2])]
+                if letter in [l for l, _ in self.pairings_dists]:
+                    target_dist = self.pairings_dists[[l for l, _ in self.pairings_dists].index(letter)][1]
+                    self.target_distances[(index1, index2)] = target_dist
+                    continue
+            # if target distance has been specified by user, read that, otherwise compute it
+
             for r_atom in r_atoms:
+
                 if index1 == r_atom.cumnum:
                     r_atom1 = r_atom
+
                 if index2 == r_atom.cumnum:
                     r_atom2 = r_atom
 
-            if letter not in [letter for letter, _ in self.pairings_dists]:
+            try:
+                dist1 = orb_dim_dict[r_atom1.symbol + ' ' + str(r_atom1)]
+            except KeyError:
+                dist1 = orb_dim_dict['Fallback']
 
-                dist1 = np.linalg.norm(r_atom1.center[0] - r_atom1.coord)
-                dist2 = np.linalg.norm(r_atom2.center[0] - r_atom2.coord)
+            try:
+                dist2 = orb_dim_dict[r_atom2.symbol + ' ' + str(r_atom2)]
+            except KeyError:
+                dist2 = orb_dim_dict['Fallback']
 
-                self.pairings_dists.append((letter, dist1+dist2))
+            target_dist = dist1 + dist2
+
+            self.target_distances[(index1, index2)] = target_dist
 
 ######################################################################################################### RUN
 
@@ -880,7 +932,7 @@ class Docker:
                 t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
                 head += f'    {i+1}. {mol.name}:\n        {t}\n'
 
-            self.log('--> Input structures, reactive indexes and reactive atoms TSCODE type and orbital dimensions:\n' + head)
+            self.log('--> Input structures, reactive indexes and reactive atoms TSCoDe type and orbital dimensions:\n' + head)
             self.log(f'--> Calculation options used were:')
             for line in str(self.options).split('\n'):
                 if self.embed == 'string':
@@ -1070,18 +1122,18 @@ class Docker:
 
                         t_start = time.time()
 
-                        self.log(f'--> Structure optimization ({self.options.mopac_level} level)')
+                        self.log(f'--> Structure optimization ({self.options.mopac_level} MOZYME level)')
 
                         for i, structure in enumerate(deepcopy(self.structures)):
                             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
                             try:
                                 t_start_opt = time.time()
                                 new_structure, self.energies[i], self.exit_status[i] = optimize(structure,
-                                                                                                     atomnos,
-                                                                                                     graphs,
-                                                                                                     self.constrained_indexes[i],
-                                                                                                     method=f'{self.options.mopac_level} GEO-OK CYCLES=500',
-                                                                                                     max_newbonds=self.options.max_newbonds)
+                                                                                                atomnos,
+                                                                                                graphs,
+                                                                                                self.constrained_indexes[i],
+                                                                                                method=f'{self.options.mopac_level} GEO-OK CYCLES=500 MOZYME',
+                                                                                                max_newbonds=self.options.max_newbonds)
 
                                 if self.exit_status[i]:
                                     self.structures[i] = new_structure
@@ -1100,11 +1152,11 @@ class Docker:
                                 raise e
 
                             t_end_opt = time.time()
-                            self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+                            self.log(f'    - Mopac {self.options.mopac_level} MOZYME optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
-                        self.log(f'Mopac {self.options.mopac_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+                        self.log(f'Mopac {self.options.mopac_level} MOZYME optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
                         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
@@ -1123,71 +1175,68 @@ class Docker:
 
                         ################################################# REFINING: BONDING DISTANCES
 
-                        if self.pairings != []:
-                        # We can only refine structures if user specified at least one pairing
+                        self.log(f'--> Refining bonding distances for TSs ({self.options.mopac_level} level)')
 
-                            self.log(f'--> Refining bonding distances for TSs ({self.options.mopac_level} level)')
+                        # backing up structures before refinement
+                        outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
+                        with open(outname, 'w') as f:        
+                            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                                write_xyz(structure, atomnos, f, title=f'Structure {i+1} - NOT REFINED')
 
-                            # backing up structures before refinement
-                            outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
-                            with open(outname, 'w') as f:        
-                                for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                                    write_xyz(structure, atomnos, f, title=f'Structure {i+1} - NOT REFINED')
+                        os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
+                        # We don't need the pre-optimized structures anymore
 
-                            os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
-                            # We don't need the pre-optimized structures anymore
+                        self._set_target_distances()
 
-                            if not hasattr(self, 'pairings_dists') or len(self.pairings) > len(self.pairings_dists):
-                            # if user did not specify all (or any) of the distances
-                            # between imposed pairings, default values will be used
-                                self._set_default_distances()
+                        for i, structure in enumerate(deepcopy(self.structures)):
+                            loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                            try:
+                                t_start_opt = time.time()
+                                new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
+                                                                                                        structure,
+                                                                                                        atomnos,
+                                                                                                        self.constrained_indexes[i],
+                                                                                                        graphs,
+                                                                                                        method=self.options.mopac_level,
+                                                                                                        max_newbonds=self.options.max_newbonds
+                                                                                                    #  traj=f'adjust_{i}.traj'
+                                                                                                        )
 
-                            for i, structure in enumerate(deepcopy(self.structures)):
-                                loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-                                try:
-                                    t_start_opt = time.time()
-                                    new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
-                                                                                                         structure,
-                                                                                                         atomnos,
-                                                                                                         graphs,
-                                                                                                        #  traj=f'adjust_{i}.traj'
-                                                                                                         )
+                                if self.exit_status[i]:
+                                    self.structures[i] = new_structure
+                                    self.energies[i] = new_energy
+                                    exit_str = 'REFINED'
+                                else:
+                                    exit_str = 'SCRAMBLED'
+                                                                                                                                        
+                            except ValueError as e:
+                                # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                                # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                                # The easiest solution is to reject the structure and go on. TODO-check
+                                self.log(e)
+                                self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
 
-                                    if self.exit_status[i]:
-                                        self.structures[i] = new_structure
-                                        self.energies[i] = new_energy
-                                        exit_str = 'REFINED'
-                                    else:
-                                        exit_str = 'SCRAMBLED'
-                                                                                                                                            
-                                except ValueError as e:
-                                    # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
-                                    # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                                    # The easiest solution is to reject the structure and go on. TODO-check
-                                    self.log(e)
-                                    self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
+                            finally:
+                                t_end_opt = time.time()
+                                self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+                        
+                        loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                        t_end = time.time()
+                        self.log(f'Mopac {self.options.mopac_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
-                                finally:
-                                    t_end_opt = time.time()
-                                    self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
-                            
-                            loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-                            t_end = time.time()
-                            self.log(f'Mopac {self.options.mopac_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+                        before = len(self.structures)
+                        if self.options.only_refined:
+                            mask = self.exit_status
+                            self.structures = self.structures[mask]
+                            self.energies = self.energies[mask]
+                            self.exit_status = self.exit_status[mask]
+                            s = f'Discarded {len([i for i in mask if not i])} unrefined structures'
 
-                            before = len(self.structures)
-                            if self.options.only_refined:
-                                mask = self.exit_status
-                                self.structures = self.structures[mask]
-                                self.energies = self.energies[mask]
-                                self.exit_status = self.exit_status[mask]
-                                s = f'Discarded {len([i for i in mask if not i])} unrefined structures'
-
-                            else:
-                                s = 'Non-refined ones will not be discarded.'
+                        else:
+                            s = 'Non-refined ones will not be discarded.'
 
 
-                            self.log(f'Successfully refined {len([i for i in self.exit_status if i])}/{before} structures. {s}')
+                        self.log(f'Successfully refined {len([i for i in self.exit_status if i])}/{before} structures. {s}')
 
                         ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
 
@@ -1444,17 +1493,17 @@ if __name__ == '__main__':
 
     import sys
 
-    usage = '\n\tTSCODE correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
+    usage = '\n\tTSCoDe correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
 
     if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
 
         print(usage)
         quit()
-    
+
     filename = os.path.realpath(sys.argv[1])
     os.chdir(os.path.dirname(filename))
 
-    if len(sys.argv) == 3:
+    if len(sys.argv) > 2:
         stamp = sys.argv[2]
 
     else:

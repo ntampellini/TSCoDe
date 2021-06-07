@@ -1,9 +1,8 @@
-matplotlib==3.3.2
-periodictable==1.5.3
-networkx==2.5
-numpy==1.19.5
-scipy==1.5.4
-dataclasses==0.8
+matplotlib==3.4.2
+periodictable==1.6.0
+networkx==2.5.1
+numpy==1.20.3
+scipy==1.6.3
 rmsd==1.4
 cclib==1.7
-openbabel==3.1.1.1
+ase==3.21.1

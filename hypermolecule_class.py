@@ -127,6 +127,10 @@ class Hypermolecule:
 
         coordinates = np.array(ccread_object.atomcoords)
 
+        if coordinates.shape[0] > 5:
+            coordinates = coordinates[0:5]
+        # Do not keep more than 5 conformations
+
         self.reactive_indexes = np.array(reactive_atoms)
         # alignment_indexes = self._alignment_indexes(ccread_object.atomcoords[0], ccread_object.atomnos, self.reactive_indexes)
         
@@ -233,7 +237,6 @@ class Hypermolecule:
         for index, atom in self.reactive_atoms_classes_dict.items():
             orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
             atom.init(self, index, update=True, orb_dim=orb_dim*value)
-
 
     def _compute_hypermolecule(self):
         '''

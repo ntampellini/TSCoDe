@@ -29,9 +29,9 @@ from subprocess import DEVNULL, STDOUT, check_call
 from parameters import nci_dict
 import itertools as it
 from rmsd import kabsch
-from openbabel import openbabel as ob
 from cclib.io import ccread
 from scipy.spatial.transform import Rotation as R
+
 
 class MopacReadError(Exception):
     '''
@@ -113,57 +113,6 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
     for i, atom in enumerate(coords):
         string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
     output.write(string)
-
-def openbabel_opt(structure, atomnos, constrained_indexes, graphs, method='UFF'):
-        '''
-        return : MM-optimized structure (UFF/MMFF)
-        '''
-
-        filename='temp_ob_in.xyz'
-
-        with open(filename, 'w') as f:
-            write_xyz(structure, atomnos, f)
-
-        outname = 'temp_ob_out.xyz'
-
-        # Standard openbabel molecule load
-        conv = ob.OBConversion()
-        conv.SetInAndOutFormats('xyz','xyz')
-        mol = ob.OBMol()
-        more = conv.ReadFile(mol, filename)
-        i = 0
-
-        # Define constraints
-        constraints = ob.OBFFConstraints()
-
-        for a, b in constrained_indexes:
-
-            first_atom = mol.GetAtom(int(a+1))
-            length = first_atom.GetDistance(int(b+1))
-
-            constraints.AddDistanceConstraint(int(a+1), int(b+1), length)       # Angstroms
-            # constraints.AddAngleConstraint(1, 2, 3, 120.0)      # Degrees
-            # constraints.AddTorsionConstraint(1, 2, 3, 4, 180.0) # Degrees
-
-        # Setup the force field with the constraints
-        forcefield = ob.OBForceField.FindForceField(method)
-        forcefield.Setup(mol, constraints)
-        forcefield.SetConstraints(constraints)
-
-        # Do a 500 steps conjugate gradient minimization
-        # (or less if converges) and save the coordinates to mol.
-        forcefield.ConjugateGradients(500)
-        forcefield.GetCoordinates(mol)
-
-        # Write the mol to a file
-        conv.WriteFile(mol,outname)
-        conv.CloseOutFile()
-
-        opt_coords = ccread(outname).atomcoords[0]
-
-        success = scramble_check(opt_coords, atomnos, graphs)
-
-        return opt_coords, success
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
@@ -448,7 +397,7 @@ def dump(filename, images, atomnos):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
 
-def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max_newbonds=0, traj=None):
+def ase_adjust_spacings(self, structure, atomnos, constrained_indexes, mols_graphs, method='PM7', max_newbonds=0, traj=None):
     '''
     TODO - desc
     '''
@@ -456,9 +405,13 @@ def ase_adjust_spacings(self, structure, atomnos, mols_graphs, method='PM7', max
     atoms.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1', method=method)
     
     springs = []
-    for i, dist in enumerate([dist for _, dist in self.pairings_dists]):
-        i1, i2 = self.pairings[i]
-        springs.append(Spring(i1, i2, dist))
+    # for i, dist in enumerate([dist for _, dist in self.pairings_dists]):
+    #     i1, i2 = self.pairings[i]
+    #     springs.append(Spring(i1, i2, dist))
+
+    for i1, i2 in constrained_indexes:
+        pair = tuple(sorted((i1, i2)))
+        springs.append(Spring(i1, i2, self.target_distances[pair]))
 
     atoms.set_constraint(springs)
 
@@ -1039,3 +992,61 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
 #         head += f'%neb\nNEB_End_XYZFile "{title}_end.xyz"\nNimages 6\nend\n\n'
 #         head += f'# Orca NEB input from TSCoDe\n\n* xyzfile 0 1 {title}_start.xyz'
 #         output.write(head)
+
+from parameters import OPENBABEL_OPT_BOOL
+
+if OPENBABEL_OPT_BOOL:
+    
+    from openbabel import openbabel as ob
+
+    def openbabel_opt(structure, atomnos, constrained_indexes, graphs, method='UFF'):
+        '''
+        return : MM-optimized structure (UFF/MMFF)
+        '''
+
+        filename='temp_ob_in.xyz'
+
+        with open(filename, 'w') as f:
+            write_xyz(structure, atomnos, f)
+
+        outname = 'temp_ob_out.xyz'
+
+        # Standard openbabel molecule load
+        conv = ob.OBConversion()
+        conv.SetInAndOutFormats('xyz','xyz')
+        mol = ob.OBMol()
+        more = conv.ReadFile(mol, filename)
+        i = 0
+
+        # Define constraints
+        constraints = ob.OBFFConstraints()
+
+        for a, b in constrained_indexes:
+
+            first_atom = mol.GetAtom(int(a+1))
+            length = first_atom.GetDistance(int(b+1))
+
+            constraints.AddDistanceConstraint(int(a+1), int(b+1), length)       # Angstroms
+            # constraints.AddAngleConstraint(1, 2, 3, 120.0)      # Degrees
+            # constraints.AddTorsionConstraint(1, 2, 3, 4, 180.0) # Degrees
+
+        # Setup the force field with the constraints
+        forcefield = ob.OBForceField.FindForceField(method)
+        forcefield.Setup(mol, constraints)
+        forcefield.SetConstraints(constraints)
+
+        # Do a 500 steps conjugate gradient minimization
+        # (or less if converges) and save the coordinates to mol.
+        forcefield.ConjugateGradients(500)
+        forcefield.GetCoordinates(mol)
+
+        # Write the mol to a file
+        conv.WriteFile(mol,outname)
+        conv.CloseOutFile()
+
+        opt_coords = ccread(outname).atomcoords[0]
+
+        success = scramble_check(opt_coords, atomnos, graphs)
+
+        return opt_coords, success
+
