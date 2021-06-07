@@ -192,7 +192,7 @@ class Options:
 
     rotation_range = 90
     rotation_steps = None # This is set later by the _setup() function, based on embed type
-    pruning_thresh = 0.5
+    pruning_thresh = 1
     rigid = False
     
     max_clashes = 0
@@ -1029,13 +1029,13 @@ class Docker:
                     for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
                         if 5*k < len(self.structures):
                             t_start_int = time.time()
-                            self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh, k=k)
+                            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh, k=k)
                             self.constrained_indexes = self.constrained_indexes[mask]
                             t_end_int = time.time()
                             self.log(f'    - similarity pre-processing   (k={k}) - {time_to_string(t_end_int-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
                     
                     t_start_int = time.time()
-                    self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
+                    self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                     t_end = time.time()
                     self.log(f'    - similarity final processing (k=1) - {time_to_string(t_end-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
 
@@ -1097,7 +1097,7 @@ class Docker:
                                 raise ZeroCandidatesError()
 
                             t_start = time.time()
-                            self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
+                            self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                             self.exit_status = self.exit_status[mask]
                             t_end = time.time()
                             
@@ -1122,7 +1122,7 @@ class Docker:
 
                         t_start = time.time()
 
-                        self.log(f'--> Structure optimization ({self.options.mopac_level} MOZYME level)')
+                        self.log(f'--> Structure optimization ({self.options.mopac_level} level)')
 
                         for i, structure in enumerate(deepcopy(self.structures)):
                             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
@@ -1132,7 +1132,7 @@ class Docker:
                                                                                                 atomnos,
                                                                                                 graphs,
                                                                                                 self.constrained_indexes[i],
-                                                                                                method=f'{self.options.mopac_level} GEO-OK CYCLES=500 MOZYME',
+                                                                                                method=f'{self.options.mopac_level} GEO-OK CYCLES=500',
                                                                                                 max_newbonds=self.options.max_newbonds)
 
                                 if self.exit_status[i]:
@@ -1152,11 +1152,11 @@ class Docker:
                                 raise e
 
                             t_end_opt = time.time()
-                            self.log(f'    - Mopac {self.options.mopac_level} MOZYME optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+                            self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
 
                         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
                         t_end = time.time()
-                        self.log(f'Mopac {self.options.mopac_level} MOZYME optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+                        self.log(f'Mopac {self.options.mopac_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
                         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
@@ -1164,7 +1164,7 @@ class Docker:
                             raise ZeroCandidatesError()
 
                         t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
+                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                         self.energies = self.energies[mask]
                         self.exit_status = self.exit_status[mask]
                         t_end = time.time()
@@ -1244,7 +1244,7 @@ class Docker:
                             raise ZeroCandidatesError()
 
                         t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
+                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                         self.energies = self.energies[mask]
                         t_end = time.time()
                         
@@ -1357,7 +1357,7 @@ class Docker:
                     if len(self.structures) != 0:
 
                         t_start = time.time()
-                        self.structures, mask = prune_conformers(self.structures, max_rmsd=self.options.pruning_thresh)
+                        self.structures, mask = prune_conformers(self.structures, atomnos, max_rmsd=self.options.pruning_thresh)
                         self.energies = self.energies[mask]
                         t_end = time.time()
                         
