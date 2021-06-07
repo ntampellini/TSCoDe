@@ -332,8 +332,9 @@ class Docker:
 
                 reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
 
-                if filename[0:8] == 'csearch>':
+                if 'csearch>' in filename:
 
+                    filename = filename[8:]
                     self.log(f'--> Performing conformational search and optimization on {filename}')
 
                     from cclib.io import ccread
@@ -341,8 +342,6 @@ class Docker:
                     from networkx import connected_components
 
                     t_start = time.time()
-
-                    filename = filename[8:]
 
                     data = ccread(filename)
 
@@ -385,7 +384,47 @@ class Docker:
                         for i, conformer in enumerate(conformers):
                             write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
 
+                    filename = confname
+
                     self.log(f'Completed ({time_to_string(time.time()-t_start)}). Will use the best {min((len(conformers), 5))} conformers for TSCoDe embed.\n')
+
+                if 'mopac>' in filename:
+
+                    filename = filename[7:]
+                    self.log(f'--> Performing MOPAC optimization optimization on {filename} before running TSCoDe')
+
+                    from cclib.io import ccread
+
+                    t_start = time.time()
+
+                    data = ccread(filename)
+                                                
+                    conformers = data.atomcoords
+                    energies = []
+
+                    for i, conformer in enumerate(deepcopy(conformers)):
+                        opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
+
+                        if success:
+                            conformers[i] = opt_coords
+                            energies.append(energy)
+
+                        else:
+                            energies.append(np.inf)
+                    # optimize the generated conformers
+
+                    energies = np.array(energies) - np.min(energies)
+                    energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
+                    # sorting structures based on energy
+
+                    optname = filename[:-4] + '_opt.xyz'
+                    with open(optname, 'w') as f:
+                        for i, conformer in enumerate(conformers):
+                            write_xyz(conformer, data.atomnos, f, title=f'Optimized conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
+
+                    self.log(f'Completed optimization on {len(conformers)} conformers. ({time_to_string(time.time()-t_start)}). Will use the best {len(conformers)} conformers for TSCoDe embed.\n')
+
+                    filename = optname
 
                 inp.append((filename, reactive_indexes))
 

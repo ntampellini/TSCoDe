@@ -81,13 +81,17 @@ A custom title for the run can be optionally provided, otherwise a time stamp wi
 
     DIST(a=2.135,b=1.548,c=1.901) NEB
     maleimide.xyz 0a 5b
-    HCOOH.xyz 4b 1c
-    dienamine.xyz 6a 23c
+    mopac>HCOOH.xyz 4b 1c
+    csearch>dienamine.xyz 6a 23c
 
     # Free number of comment lines!
+
     # First pairing (a) is the C-C reactive distance
     # Second and third pairings (b, c) are the
     # hydrogen bonds bridging the two partners.
+
+    # Structure of HCOOH.xyz will be optimized with MOPAC before running TSCoDe
+    # A conformational analysis will be performed on dienamine.xyz before running TSCoDe
     
 <p align="center">
 
@@ -100,7 +104,7 @@ The program input can be any text file.
 - Any blank line will be ignored
 - Any line starting with `#` will be ignored
 - Keywords, if present, need to be on first non-blank, non-comment line
-- Then, two or three molecule files are specified, along with their reactive atoms indexes
+- Then, two or three molecule files are specified, along with their reactive atoms indexes, and eventually their pairings
 
 TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. **The reactive indexes specified are counted starting from zero!** If the molecules are specified without reactive indexes, a pop-up ASE GUI window will guide the user into manually specifying the reactive atoms after running the program.
  
@@ -113,6 +117,12 @@ Reactive atoms supported are `C, H, O, N, P, S, F, Cl, Br, I`. Reactions can be 
 After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect those atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the oxygen atom of a peracid, like `4ab`.
 
 If a `NEB` calculation is to be performed on a trimolecular transition state, the reactive distance "scanned" is the first imposed (`a`). See `NEB` keyword in the keyword section.
+
+Molecule files can be preceded by *operators*, like `csearch>molecule.xyz`. They operate on the input file before it is fed to TSCoDe. It is important not to include any space character between the operator and the molecule name.
+
+- **`mopac>`** - Performs a MOPAC optimization of the structure(s) before using it in TSCoDe. Generates a new `molecule_opt.xyz` file with the optimized coordinates.
+
+- **`csearch>`** - Performs a simple Openbabel conformational search and optimizes all conformers with MOPAC. Then, a maximum of five best conformers are used to run TSCoDe. Generates a new `molecule_confs.xyz` file with all optimized conformers.
   
 ### Good practice and suggested options
 
