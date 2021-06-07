@@ -223,7 +223,7 @@ class Options:
         d.pop('let')
         d.pop('check_structures')
 
-        if self.kcal_thresh == None:
+        if self.kcal_thresh is None:
             d.pop('kcal_thresh')
 
         if not OPENBABEL_OPT_BOOL:
@@ -668,7 +668,7 @@ class Docker:
             if len(ids) == 1:
                 raise SyntaxError(f'Letter \'{letter}\' is only specified once. Please flag the second reactive atom.')
 
-            elif len(ids) > 2:
+            if len(ids) > 2:
                 raise SyntaxError(f'Letter \'{letter}\' is specified more than two times. Please remove the unwanted letters.')
 
         if not all([len(mol.reactive_indexes) == 1 for mol in self.objects]): # if not self.embed == 'string', but we that is set afterward by _setup()
@@ -1604,4 +1604,3 @@ if __name__ == '__main__':
 
     docker.run()
     # run the program
-
