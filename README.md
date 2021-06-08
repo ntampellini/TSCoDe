@@ -186,4 +186,4 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`SUPRAFAC`** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 
-- **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures (default is 1 A). For particularly small and rigid structures, a value of 0.5 is probably better suited. Syntax: `THRESH=n`, where n is a number.
+- **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures (default is 1 A). For particularly small structures, a value of 0.5 is probably better suited, and indeed it is set by default for TSs with less than 50 atoms. Syntax: `THRESH=n`, where n is a number.

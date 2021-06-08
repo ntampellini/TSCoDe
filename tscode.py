@@ -851,6 +851,10 @@ class Docker:
                         molecule._scale_orbs(self.options.shrink_multiplier)
                     self.options.only_refined = True
 
+                if sum(self.ids) < 50:
+                    self.options.pruning_thresh = 0.5
+                # small molecules need smaller RMSD threshold
+
                 for molecule in self.objects:
                     self._set_pivots(molecule)
 
