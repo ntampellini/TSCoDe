@@ -158,6 +158,8 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`DIST`** - Manually imposed distance between specified atom pairs, in Angstroms. Syntax uses parenthesis and commas: `DIST(a=2.345,b=3.67,c=2.1)`
 
+- **`ENANTIOMERS`** - Do not discard enantiomeric structures.
+
 - **`KCAL`** - Trim output structures to a given value of relative energy. Syntax: `KCAL=n`, where n can be an integer or float.
 
 - **`LET`** - Overrides safety checks that prevent the program from running too large calculations.

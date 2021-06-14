@@ -18,6 +18,11 @@ GNU General Public License for more details.
 import os
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+from periodictable import core, covalent_radius, mass
+pt = core.PeriodicTable(table="H=1")
+covalent_radius.init(pt)
+mass.init(pt)
+
 
 class suppress_stdout_stderr(object):
     '''
@@ -276,3 +281,21 @@ def ase_view(mol):
         images.append(Atoms(atomnos, positions=totalcoords))
     
     GUI(images=Images(images), show_bonds=True).run()
+
+def center_of_mass(coords, atomnos):
+    '''
+    Returns the center of mass for the atomic system.
+    '''
+    return (np.sum([coords[i]*pt[atomnos[i]].mass for i in range(len(atomnos))], axis=0) /
+            np.sum([pt[atomnos[i]].mass for i in range(len(atomnos))]))
+
+def kronecker_delta(i, j):
+    if i == j:
+        return 1
+    return 0
+
+def diagonalize(A):
+    eigenvalues_of_A, eigenvectors_of_A = np.linalg.eig(A)
+    B = eigenvectors_of_A[:,abs(eigenvalues_of_A).argsort()]   
+    diagonal_matrix= np.dot(np.linalg.inv(B), np.dot(A, B))
+    return diagonal_matrix

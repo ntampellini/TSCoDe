@@ -42,8 +42,9 @@ from optimization_methods import (
                                   MopacReadError,
                                   openbabel_opt,
                                   optimize,
+                                  prune_enantiomers,
                                   scramble,
-                                  write_xyz
+                                  write_xyz,
                                   )
 from utils import (
                    ase_view,
@@ -122,6 +123,8 @@ class Options:
                     'DIST',           # Manually imposed distance between specified atom pairs,
                                       # in Angstroms. Syntax uses parenthesis and commas:
                                       # `DIST(a=2.345,b=3.67,c=2.1)`
+
+                    'ENANTIOMERS'     # Do not discard enantiomeric structures.
 
                     'KCAL',           # Trim output structures to a given value of relative energy.
                                       # Syntax: `KCAL=n`, where n can be an integer or float.
@@ -210,6 +213,7 @@ class Options:
     only_refined = False
     shrink = False
     openbabel_opt = OPENBABEL_OPT_BOOL
+    keep_enantiomers = False
 
     kcal_thresh = None
     bypass = False
@@ -429,8 +433,6 @@ class Docker:
 
                 inp.append((filename, reactive_indexes))
 
-            self.log()
-
             return inp
             
         except Exception as e:
@@ -550,6 +552,9 @@ class Docker:
                     self.options.shrink = True
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('SHRINK')]
                     self.options.shrink_multiplier = float(kw.split('=')[1])
+
+                if 'ENANTIOMERS' in keywords_list:
+                    self.options.keep_enantiomers = True
 
         except SyntaxError as e:
             raise e
@@ -674,7 +679,7 @@ class Docker:
 
         if not all([len(mol.reactive_indexes) == 1 for mol in self.objects]): # if not self.embed == 'string', but we that is set afterward by _setup()
             if self.pairings == []:
-                s = '--> No atom pairings imposed. Computing all possible dispositions.'
+                s = '--> No atom pairings imposed. Computing all possible dispositions.\n'
             else:
                 s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
             self.log(s)
@@ -1033,6 +1038,7 @@ class Docker:
         else:
             embedded_structures = string_embed(self)
 
+        clean_directory() # removing temporary files from ase_bend
 
         self.atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
         # cumulative list of atomic numbers associated with coordinates
@@ -1068,72 +1074,90 @@ class Docker:
         t_end = time.time()
         self.log(f'Generated {len(self.structures)} transition state candidates ({time_to_string(t_end-self.t_start_run)})\n')
 
-        if not self.options.bypass:
-            
-            ################################################# COMPENETRATION CHECK
-            
-            self.log('--> Checking structures for compenetrations')
+    def compenetration_refining(self):
+        '''
+        Performing a sanity check for excessive compenetration
+        on generated structures, discarding the ones that look too bad.
+        '''
+        self.log('--> Checking structures for compenetrations')
 
-            self.graphs = [mol.graph for mol in self.objects]
+        self.graphs = [mol.graph for mol in self.objects]
 
-            t_start = time.time()
-            mask = np.zeros(len(self.structures), dtype=bool)
-            num = len(self.structures)
-            for s, structure in enumerate(self.structures):
-                p = True if num > 100 and s % (num // 100) == 0 else False
-                if p:
-                    loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
-                mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
+        t_start = time.time()
+        mask = np.zeros(len(self.structures), dtype=bool)
+        num = len(self.structures)
+        for s, structure in enumerate(self.structures):
+            p = True if num > 100 and s % (num // 100) == 0 else False
+            if p:
+                loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
+            mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
 
-            loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
-            self.structures = self.structures[mask]
-            self.constrained_indexes = self.constrained_indexes[mask]
-            t_end = time.time()
+        loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
+        self.structures = self.structures[mask]
+        self.constrained_indexes = self.constrained_indexes[mask]
+        t_end = time.time()
 
-            if False in mask:
-                self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
-            self.log()
-            # Performing a sanity check for excessive compenetration on generated structures, discarding the ones that look too bad
+        if False in mask:
+            self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+        self.log()
 
-            ################################################# PRUNING: SIMILARITY
+        self.zero_candidates_check()
 
-            self.zero_candidates_check()
+        self.energies = np.zeros(len(self.structures))
+        self.exit_status = np.zeros(len(self.structures), dtype=bool)
 
+    def similarity_refining(self, verbose=False):
+        '''
+        Remove structures that are too similar to each other (RMSD-based).
+        If not self.optimization.keep_enantiomers, removes duplicates
+        (principal moments of inertia-based).
+        '''
+
+        if verbose:
             self.log('--> Similarity Processing')
-            t_start = time.time()
 
-            before = len(self.structures)
-            for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
-                if 5*k < len(self.structures):
-                    t_start_int = time.time()
-                    self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh, k=k)
-                    self.constrained_indexes = self.constrained_indexes[mask]
-                    t_end_int = time.time()
+        t_start = time.time()
+
+        before = len(self.structures)
+
+        for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
+            if 5*k < len(self.structures):
+                t_start_int = time.time()
+                self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh, k=k)
+                self.constrained_indexes = self.constrained_indexes[mask]
+                self.exit_status = self.exit_status[mask]
+                self.energies = self.energies[mask]
+                t_end_int = time.time()
+
+                if verbose:
                     self.log(f'    - similarity pre-processing   (k={k}) - {time_to_string(t_end_int-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
-            
-            t_start_int = time.time()
-            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
-            t_end = time.time()
+        
+        t_start_int = time.time()
+        self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
+        t_end = time.time()
+
+        if verbose:
             self.log(f'    - similarity final processing (k=1) - {time_to_string(t_end-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
 
+        self.constrained_indexes = self.constrained_indexes[mask]
+        self.energies = self.energies[mask]
+        self.exit_status = self.exit_status[mask]
+
+        if False in mask:
+            self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+
+        if not self.options.keep_enantiomers:
+
+            t_start = time.time()
+            self.structures, mask = prune_enantiomers(self.structures, self.atomnos)
+            self.energies = self.energies[mask]
+            self.exit_status = self.exit_status[mask]
             self.constrained_indexes = self.constrained_indexes[mask]
-
+            t_end = time.time()
+            
             if False in mask:
-                self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+                self.log(f'Discarded {len([b for b in mask if not b])} enantiomeric structures ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
             self.log()
-
-            ################################################# CHECKPOINT BEFORE MM OPTIMIZATION
-
-            self.outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
-            with open(self.outname, 'w') as f:        
-                for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                    write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - Checkpoint before MM optimization')
-            self.log(f'--> Checkpoint output - Wrote {len(self.structures)} TS structures to {self.outname} file before MM optimization.\n')
-
-            ################################################# GEOMETRY OPTIMIZATION - FORCE FIELD
-
-        else:
-            self.energies = np.zeros(len(self.structures))
 
     def openbabel_refining(self):
         '''
@@ -1142,8 +1166,17 @@ class Docker:
         MM optimization are updated, while others are kept as they are.
         '''
 
+        ################################################# CHECKPOINT BEFORE MM OPTIMIZATION
+
+        self.outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
+        with open(self.outname, 'w') as f:        
+            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - Checkpoint before MM optimization')
+        self.log(f'--> Checkpoint output - Wrote {len(self.structures)} TS structures to {self.outname} file before MM optimization.\n')
+
+        ################################################# GEOMETRY OPTIMIZATION - FORCE FIELD
+
         self.log(f'--> Structure optimization ({self.options.openbabel_level} level)')
-        self.exit_status = np.zeros(len(self.structures), dtype=bool)
         t_start = time.time()
 
         for i, structure in enumerate(deepcopy(self.structures)):
@@ -1161,28 +1194,15 @@ class Docker:
         t_end = time.time()
         self.log(f'Openbabel {self.options.openbabel_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
         
-        ################################################# DIFFERENTIATING: EXIT STATUS
+        ################################################# EXIT STATUS
 
-        mask = self.exit_status
-        # self.structures = self.structures[mask]
-        # self.constrained_indexes = self.constrained_indexes[mask]
-        # self.exit_status = self.exit_status[mask]
-
-        if False in mask:
+        if False in self.exit_status:
             self.log(f'Successfully refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at UFF level. Non-refined structures are kept anyway.')
         
         ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
 
         self.zero_candidates_check()
-
-        t_start = time.time()
-        self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
-        self.exit_status = self.exit_status[mask]
-        t_end = time.time()
-        
-        if False in mask:
-            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
-        self.log()
+        self.similarity_refining()
 
         ################################################# CHECKPOINT BEFORE MOPAC OPTIMIZATION
 
@@ -1197,7 +1217,6 @@ class Docker:
         Refines structures by constrained optimizations with the MOPAC calculator,
         discarding similar ones and scrambled ones.
         '''
-        self.energies = np.zeros(len(self.structures))
 
         t_start = time.time()
 
@@ -1240,16 +1259,7 @@ class Docker:
         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
         self.zero_candidates_check()
-
-        t_start = time.time()
-        self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
-        self.energies = self.energies[mask]
-        self.exit_status = self.exit_status[mask]
-        t_end = time.time()
-        
-        if False in mask:
-            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
-        self.log()
+        self.similarity_refining()
 
         ################################################# REFINING: BONDING DISTANCES
 
@@ -1277,7 +1287,7 @@ class Docker:
                                                                                         self.graphs,
                                                                                         method=self.options.mopac_level,
                                                                                         max_newbonds=self.options.max_newbonds
-                                                                                    #  traj=f'adjust_{i}.traj'
+                                                                                        #  traj=f'adjust_{i}.traj'
                                                                                         )
 
                 if self.exit_status[i]:
@@ -1319,15 +1329,7 @@ class Docker:
         ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
 
         self.zero_candidates_check()
-
-        t_start = time.time()
-        self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
-        self.energies = self.energies[mask]
-        t_end = time.time()
-        
-        if False in mask:
-            self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
-        self.log()
+        self.similarity_refining()
 
         ################################################# PRUNING: ENERGY (POST REFINEMENT)
 
@@ -1362,8 +1364,7 @@ class Docker:
         os.remove(f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz')
         # since we have the refined structures, we can get rid of the unrefined ones
 
-        t_end_run = time.time()
-        self.log(f'--> Output: Wrote {len(self.structures)} rough TS structures to {self.outname} file - Total time {time_to_string(t_end_run-self.t_start_run)}\n')
+        self.log(f'--> Output - Wrote {len(self.structures)} rough TS structures to {self.outname} file.\n')
 
     def hyperneb(self):
         '''
@@ -1458,7 +1459,7 @@ class Docker:
                 for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
                     write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
-            self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {self.outname} file')
+            self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {self.outname} file\n')
 
     def print_nci(self):
         '''
@@ -1544,6 +1545,15 @@ class Docker:
 
         self.log(f'--> Output: Wrote VMD {vmd_name} file\n')
 
+    def write_unoptimized_structures(self):
+        '''
+        '''
+        self.outname = f'TSCoDe_unoptimized_{self.stamp}.xyz'
+        with open(self.outname, 'w') as f:        
+            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - Unoptimized')
+        self.log(f'--> Output - Wrote {len(self.structures)} unoptimized TS structures to {self.outname} file.\n')
+
     def run(self):
         '''
         Run the TSCoDe program.
@@ -1562,16 +1572,17 @@ class Docker:
                 self.t_start_run = time.time()
 
                 self.generate_candidates()
-                self.zero_candidates_check()
+
+                if not self.options.bypass:
+                    self.compenetration_refining()
+                    self.similarity_refining(verbose=True)
 
                 if self.options.optimization:
                     self.openbabel_refining()
                     self.mopac_refining()
-                    
                 else:
-                    clean_directory()
+                    self.write_unoptimized_structures()
 
-                self.zero_candidates_check()
 
             except ZeroCandidatesError:
                 t_end_run = time.time()

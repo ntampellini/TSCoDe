@@ -26,7 +26,8 @@ from rmsd import kabsch
 from cclib.io import ccread
 from numpy.linalg import LinAlgError
 
-from reactive_atoms_classes import pt, atom_type_dict
+from utils import pt
+from reactive_atoms_classes import atom_type_dict
 
 class CCReadError(Exception):
     '''

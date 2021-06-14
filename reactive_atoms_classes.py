@@ -16,13 +16,8 @@ GNU General Public License for more details.
 '''
 
 import numpy as np
-from parameters import *
-from scipy.spatial.transform import Rotation as R
-from utils import *
-from periodictable import core, covalent_radius
-
-pt = core.PeriodicTable(table="H=1")
-covalent_radius.init(pt)
+from parameters import orb_dim_dict
+from utils import pt, norm, rot_mat_from_pointer, vec_angle
 
 
 class Single:

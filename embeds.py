@@ -14,9 +14,23 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-
-from utils import *
 from copy import deepcopy
+
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+
+from utils import (
+                   cartesian_product,
+                   loadbar,
+                   norm,
+                   polygonize,
+                   rot_mat_from_pointer,
+                   rotation_matrix_from_vectors,
+                   TooDifferentLengthsError,
+                   TriangleError,
+                   vec_angle,
+                  )
+
 from optimization_methods import ase_bend
 
 def string_embed(self):
@@ -376,13 +390,15 @@ def cyclical_embed(self):
                 else:
                     maxgap = 3 # in Angstrom
                     gap = abs(norms[0]-norms[1])
-                    r = 0.5 + 0.5*(gap/maxgap)
-                    r = np.clip(5, 0.5, 1)
-                    # r is the ratio for the target_length based on the gap
-                    # that deformations will need to cover.
-                    # It ranges from 0.5 to 1 and if shifted more toward
+                    r = 0.3 + 0.5*(gap/maxgap)
+                    r = np.clip(5, 0.5, 0.8)
+
+                    # r is the ratio for calculating target_length based
+                    # on the gap that deformations will need to cover.
+                    # It ranges from 0.5 to 0.8 and is shifted more toward
                     # the shorter norm as the gap rises. For gaps of more
-                    # than 3 Angstroms, basically only the molecule
+                    # than maxgap Angstroms, the target length is very close
+                    # to the shortest molecule, and only the molecule 
                     # with the longest pivot is bent.
 
                     target_length = min(norms)*r + max(norms)*(1-r)
@@ -395,7 +411,13 @@ def cyclical_embed(self):
                         if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
                         # do not try to bend molecules where the two reactive indices are bonded
 
-                            bent_mol = ase_bend(self, mol, pivots[i], target_length, method=f'{self.options.mopac_level}')
+                            bent_mol = ase_bend(self,
+                                                mol,
+                                                pivots[i],
+                                                target_length,
+                                                method=f'{self.options.mopac_level}',
+                                                # traj=f'traj_{p}_{i}.traj'
+                                                )
                             # ase_view(bent_mol)
                             thread_objects[i] = bent_mol
 
@@ -407,9 +429,8 @@ def cyclical_embed(self):
                 norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
                 # updating the pivots norms to feed into the polygonize function
 
-                
-                polygon_vectors = polygonize(norms, override=True)
-                # repeating the failed polygon creation
+            polygon_vectors = polygonize(norms, override=True)
+            # repeating the failed polygon creation
 
 
 

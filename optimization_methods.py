@@ -15,23 +15,31 @@ GNU General Public License for more details.
 
 '''
 
-from copy import deepcopy
 import os
+import itertools as it
+from copy import deepcopy
+from subprocess import DEVNULL, STDOUT, check_call
+
 import numpy as np
 from ase import Atoms
-from ase.calculators.mopac import MOPAC
-from ase.dyneb import DyNEB
-from ase.optimize import BFGS, LBFGS
-from hypermolecule_class import pt, graphize
-from parameters import MOPAC_COMMAND
-from utils import norm, dihedral
-from subprocess import DEVNULL, STDOUT, check_call
-from parameters import nci_dict
-import itertools as it
+import networkx as nx
 from rmsd import kabsch
 from cclib.io import ccread
+from ase.dyneb import DyNEB
+from ase.optimize import BFGS, LBFGS
+from ase.calculators.mopac import MOPAC
 from scipy.spatial.transform import Rotation as R
 
+from parameters import MOPAC_COMMAND, nci_dict
+from hypermolecule_class import pt, graphize
+from utils import (
+                   norm,
+                   dihedral,
+                   pt,
+                   center_of_mass,
+                   kronecker_delta,
+                   diagonalize
+                   )
 
 class MopacReadError(Exception):
     '''
@@ -386,14 +394,15 @@ def ase_adjust_spacings(self, structure, atomnos, constrained_indexes, mols_grap
 
     atoms.set_constraint(springs)
 
-    with LBFGS(atoms, maxstep=0.1, logfile=None, trajectory=traj) as opt:
+    with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
 
-        opt.run(fmax=0.05, steps=100)
+        opt.run(fmax=0.05, steps=500)
 
+    new_structure = atoms.get_positions()
 
-    success = scramble_check(structure, atomnos, mols_graphs, max_newbonds=max_newbonds)
+    success = scramble_check(new_structure, atomnos, mols_graphs, max_newbonds=max_newbonds)
 
-    return atoms.get_positions(), atoms.get_total_energy(), success
+    return new_structure, atoms.get_total_energy(), success
 
 def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS, logfile=None):
     '''
@@ -783,8 +792,13 @@ def is_phenyl(coords):
 class OrbitalSpring:
     '''
     ASE Custom Constraint Class
-    Adds an harmonic force between a pair of orbitals, that is
+    Adds a series of forces based on a pair of orbitals, that is
     virtual points "bonded" to a given atom.
+
+    :params i1, i2: indexes of reactive atoms
+    :params orb1, orb2: 3D coordinates of orbitals
+    :params neighbors_of_1, neighbors_of_2: lists of indexes for atoms bonded to i1/i2
+    :params d_eq: equilibrium target distance between orbital centers
     '''
     def __init__(self, i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq, k=10):
         self.i1, self.i2 = i1, i2
@@ -798,7 +812,12 @@ class OrbitalSpring:
 
     def adjust_forces(self, atoms, forces):
 
-        # First, add the force between reactive atoms i1, i2
+        # First, assess if we have to move atoms 1 and 2 at all
+
+        sum_of_distances = (np.linalg.norm(atoms.positions[self.i1] - self.orb1) +
+                            np.linalg.norm(atoms.positions[self.i2] - self.orb2) + self.d_eq)
+
+        reactive_atoms_distance = np.linalg.norm(atoms.positions[self.i1] - atoms.positions[self.i2])
 
         orb_direction = self.orb2 - self.orb1
         # vector connecting orb1 to orb2
@@ -806,42 +825,62 @@ class OrbitalSpring:
         spring_force = self.k * (np.linalg.norm(orb_direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
-        spring_force = np.clip(spring_force, -5, 5)
+        # spring_force = np.clip(spring_force, -5, 5)
         # force is clipped at 5 eV/A
 
-        force_direction1 = np.sign(spring_force) * norm(np.mean((norm(+orb_direction),
-                                                                 norm(self.orb1-atoms.positions[self.i1])), axis=0))
+        if np.abs(sum_of_distances - reactive_atoms_distance) > 0.2:
 
-        force_direction2 = np.sign(spring_force) * norm(np.mean((norm(-orb_direction),
-                                                                 norm(self.orb2-atoms.positions[self.i2])), axis=0))
+            force_direction1 = np.sign(spring_force) * norm(np.mean((norm(+orb_direction),
+                                                                     norm(self.orb1-atoms.positions[self.i1])), axis=0))
 
-        # versors specifying the direction at which forces act, that is on the
-        # bisector of the angle between vector connecting atom to orbital and
-        # vector connecting the two orbitals
+            force_direction2 = np.sign(spring_force) * norm(np.mean((norm(-orb_direction),
+                                                                     norm(self.orb2-atoms.positions[self.i2])), axis=0))
 
-        forces[self.i1] += (force_direction1 * spring_force)
-        forces[self.i2] += (force_direction2 * spring_force)
-        # applying harmonic force to each atom, directed toward the other one
+            # versors specifying the direction at which forces act, that is on the
+            # bisector of the angle between vector connecting atom to orbital and
+            # vector connecting the two orbitals
 
-        # Now applying to neighbors the force derived by torque, scaled to half the spring force
+            forces[self.i1] += (force_direction1 * spring_force)
+            forces[self.i2] += (force_direction2 * spring_force)
+            # applying harmonic force to each atom, directed toward the other one
 
-        torque1 = np.cross(self.orb1 - atoms.positions[self.i1], forces[self.i1])
+        # Now applying to neighbors the force derived by torque, scaled to match the spring_force
+
+        torque1 = np.cross(self.orb1 - atoms.positions[self.i1], force_direction1)
         for i in self.neighbors_of_1:
-            forces[i] += norm(np.cross(torque1, atoms.positions[i] - atoms.positions[self.i1])) * spring_force/2
+            forces[i] += norm(np.cross(torque1, atoms.positions[i] - atoms.positions[self.i1])) * spring_force
 
-        torque2 = np.cross(self.orb2 - atoms.positions[self.i2], forces[self.i2])
+        torque2 = np.cross(self.orb2 - atoms.positions[self.i2], force_direction2)
         for i in self.neighbors_of_2:
-            forces[i] += norm(np.cross(torque2, atoms.positions[i] - atoms.positions[self.i2])) * spring_force/2
+            forces[i] += norm(np.cross(torque2, atoms.positions[i] - atoms.positions[self.i2])) * spring_force
 
 def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp', traj=None):
     '''
     threshold: float (A)
     '''
-    # from ase.io.trajectory import Trajectory
-    # def orbitalized(atoms, orbitals):
-    #     positions = np.concatenate((atoms.positions, orbitals))
-    #     symbols = str(atoms.symbols) + 'n'*len(orbitals)
-    #     return Atoms(symbols, positions=positions)
+
+    if traj is not None:
+
+        from ase.io.trajectory import Trajectory
+        # from optimization_methods import write_xyz
+
+        # def write_xyz_orb(atoms, orbitals):
+        #     positions = np.concatenate((atoms.positions, orbitals))
+        #     symbols = np.concatenate((atoms.numbers, [2 for _ in range(len(orbitals))]))
+            
+        #     with open(traj, 'a') as f:
+        #         write_xyz(positions, symbols, f)
+
+        def orbitalized(atoms, orbitals):
+            positions = np.concatenate((atoms.positions, orbitals))
+            symbols = list(atoms.numbers) + [0 for _ in range(len(orbitals))]
+            new_atoms = Atoms(symbols, positions=positions)
+            return new_atoms
+
+        try:
+            os.remove(traj)
+        except FileNotFoundError:
+            pass
 
     mol = deepcopy(original_mol)
 
@@ -863,9 +902,13 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
     for conf in range(len(mol.atomcoords)):
 
         atoms = Atoms(mol.atomnos, positions=mol.atomcoords[conf], calculator=MOPAC(label=title, command=f'{MOPAC_COMMAND} {title}.mop > {title}.cmdlog 2>&1', method=method))
-        # traj = Trajectory(traj, mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])))
+        
+        if traj is not None:
+            traj_obj = Trajectory(traj, mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])))
+            traj_obj.write()
+            # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
-        for iteration in range(100):
+        for iteration in range(200):
 
             atoms.positions = mol.atomcoords[conf]
 
@@ -876,12 +919,15 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             c = OrbitalSpring(i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq=threshold)
             atoms.set_constraint(c)
 
-            opt = BFGS(atoms, maxstep=0.1, logfile=None)
+            opt = BFGS(atoms, maxstep=0.2, logfile=None,
+                       trajectory=None
+                      )
 
             opt.run(fmax=0.5, steps=1)
 
-            # traj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
-            # traj.write()
+            traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
+            traj_obj.write()
+            # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
             mol.atomcoords[conf] = atoms.get_positions()
 
@@ -903,6 +949,10 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
 
             if abs(dist - threshold) < 0.1:
                 break
+            # else:
+                # print('delta is ', round(dist - threshold, 3))
+
+        # print(iteration)
 
         if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[conf], mol.atomnos, max_newbonds=1):
             mol.atomcoords[conf] = original_mol.atomcoords[conf]
@@ -932,6 +982,66 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
     docker._set_pivots(mol)
 
     return mol
+
+def get_inertia_moments(coords, atomnos):
+    '''
+    Returns the diagonal of the diagonalized inertia tensor, that is
+    a shape (3,) array with the moments of inertia along the main axes.
+    (I_x, I_y and largest I_z last)
+    '''
+
+    coords -= center_of_mass(coords, atomnos)
+    inertia_moment_matrix = np.zeros((3,3))
+
+    for i in range(3):
+        for j in range(3):
+            k = kronecker_delta(i,j)
+            inertia_moment_matrix[i][j] = np.sum([pt[atomnos[n]].mass*((np.linalg.norm(coords[n])**2)*k - coords[n][i]*coords[n][j]) for n in range(len(atomnos))])
+
+    inertia_moment_matrix = diagonalize(inertia_moment_matrix)
+
+    return np.diag(inertia_moment_matrix)
+
+def prune_enantiomers(structures, atomnos, max_delta=10):
+    '''
+    Remove duplicate (enantiomeric) structures based on the
+    moments of inertia on principal axes. If all three MOI
+    are within max_delta from another structure, they are
+    classified as enantiomers and therefore only one of them
+    is kept.
+    '''
+
+    l = len(structures)
+    mat = np.zeros((l,l), dtype=int)
+    for i in range(l):
+        for j in range(i+1,l):
+            im_i = get_inertia_moments(structures[i], atomnos)
+            im_j = get_inertia_moments(structures[j], atomnos)
+            delta = np.abs(im_i - im_j)
+            mat[i,j] = 1 if np.all(delta < max_delta) else 0
+
+        where = np.where(mat == 1)
+        matches = [(i,j) for i,j in zip(where[0], where[1])]
+
+        g = nx.Graph(matches)
+
+        subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+        groups = [tuple(graph.nodes) for graph in subgraphs]
+
+        best_of_cluster = [group[0] for group in groups]
+
+        rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+        rejects = []
+        for s in rejects_sets:
+            for i in s:
+                rejects.append(i)
+
+        mask = np.array([True for _ in range(l)], dtype=bool)
+        for i in rejects:
+            mask[i] = False
+
+    return structures[mask], mask
+
 
 from parameters import OPENBABEL_OPT_BOOL
 
