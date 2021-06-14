@@ -31,7 +31,7 @@ from ase.calculators.mopac import MOPAC
 from scipy.spatial.transform import Rotation as R
 
 from parameters import MOPAC_COMMAND, nci_dict
-from hypermolecule_class import pt, graphize
+from hypermolecule_class import graphize
 from utils import (
                    norm,
                    dihedral,
