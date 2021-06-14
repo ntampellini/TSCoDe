@@ -862,14 +862,14 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
     if traj is not None:
 
         from ase.io.trajectory import Trajectory
-        # from optimization_methods import write_xyz
+        from optimization_methods import write_xyz
 
-        # def write_xyz_orb(atoms, orbitals):
-        #     positions = np.concatenate((atoms.positions, orbitals))
-        #     symbols = np.concatenate((atoms.numbers, [2 for _ in range(len(orbitals))]))
+        def write_xyz_orb(atoms, orbitals):
+            positions = np.concatenate((atoms.positions, orbitals))
+            symbols = np.concatenate((atoms.numbers, [2 for _ in range(len(orbitals))]))
             
-        #     with open(traj, 'a') as f:
-        #         write_xyz(positions, symbols, f)
+            with open(traj, 'a') as f:
+                write_xyz(positions, symbols, f)
 
         def orbitalized(atoms, orbitals):
             positions = np.concatenate((atoms.positions, orbitals))
@@ -925,9 +925,10 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
 
             opt.run(fmax=0.5, steps=1)
 
-            traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
-            traj_obj.write()
-            # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
+            if traj is not None:
+                traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
+                traj_obj.write()
+                # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
             mol.atomcoords[conf] = atoms.get_positions()
 
