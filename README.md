@@ -66,7 +66,7 @@ Open a command shell, move to the ./TSCoDe folder and install the requirements.
 
     pip install -r requirements.txt
 
-Assert all commands and parameters are consistent with your system and desired usage of TSCoDe by modifying the [parameters.py](https://github.com/ntampellini/TSCoDe/blob/master/parameters.py) file.
+Assert all commands and settings are consistent with your system and desired usage of TSCoDe by modifying the [settings.py](https://github.com/ntampellini/TSCoDe/blob/master/settings.py) file.
 - By default, the used calculator is MOPAC, so if you wish to use ORCA set `CALCULATOR = 'ORCA'`
 - By default, OpenBabel usage is turned off. To activate it, set `OPENBABEL_OPT_BOOL = False` 
 
@@ -149,7 +149,7 @@ When modeling a reaction through TSCoDe, I suggest following these guidelines:
 
 - Optionally, after specifying reactive indexes, the `CHECK` keyword can be used. A series of pop-up ASE GUI windows will be displayed, showing each molecule with a series of red dots around the reactive atoms chosen. This can be used to check "orbital" positions or conformer reading faults (scroll through conformers with page-up and down buttons). Program will terminate after the last visualization is closed.
 
-- By default, TSCoDe parameters are optimized to yield good results without specifying any keyword nor atom pairing. However, I strongly encourage to specify all the desired pairings and use the `DIST` keyword in order to speed up the calculation and achieve better results, respectively. For example, the trimolecular reaction in the example above is described with all three atomic pairings (`a`, `b` and `c`) and their distances. These can come from a previous higher-level calculation or can be inferred by similar reactions. If they are not provided, a guess is performed by reading the `parameters.py` file.
+- By default, TSCoDe parameters are optimized to yield good results without specifying any keyword nor atom pairing. However, I strongly encourage to specify all the desired pairings and use the `DIST` keyword in order to speed up the calculation and achieve better results, respectively. For example, the trimolecular reaction in the example above is described with all three atomic pairings (`a`, `b` and `c`) and their distances. These can come from a previous higher-level calculation or can be inferred by similar reactions. If they are not provided, a guess is performed by reading the `settings.py` file.
 
 - If the reaction involves big molecules, or if there are a lot of conformations, a preliminar calculation using the `NOOPT` keyword may be a good idea to see how many structures are generated and would require MOPAC/ORCA optimization in a standard run.
 

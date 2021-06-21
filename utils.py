@@ -23,7 +23,6 @@ pt = core.PeriodicTable(table="H=1")
 covalent_radius.init(pt)
 mass.init(pt)
 
-
 class suppress_stdout_stderr(object):
     '''
     A context manager for doing a "deep suppression" of stdout and stderr in 

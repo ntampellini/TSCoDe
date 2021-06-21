@@ -29,10 +29,10 @@ from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
-from rmsd.calculate_rmsd import get_inertia_tensor
 from scipy.spatial.transform import Rotation as R
 
-from parameters import MOPAC_COMMAND, ORCA_COMMAND, ORCA_PROCS, nci_dict
+from settings import MOPAC_COMMAND, ORCA_COMMAND, ORCA_PROCS
+from parameters import nci_dict
 from hypermolecule_class import graphize
 from utils import (
                    center_of_mass,
@@ -1186,8 +1186,7 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
 
     return structures[mask], mask
 
-
-from parameters import OPENBABEL_OPT_BOOL
+from settings import OPENBABEL_OPT_BOOL
 
 if OPENBABEL_OPT_BOOL:
     

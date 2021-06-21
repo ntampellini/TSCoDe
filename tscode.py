@@ -31,9 +31,15 @@ from itertools import groupby
 import numpy as np
 from subprocess import check_call, STDOUT, DEVNULL
 
-from openbabel.openbabel import Ca
+from settings import (
+                      CALCULATOR,
+                      MOPAC_DEFAULT_LEVEL,
+                      OPENBABEL_OPT_BOOL,
+                      ORCA_DEFAULT_LEVEL,
+                      ORCA_PROCS,
+                      )
 
-from parameters import OPENBABEL_OPT_BOOL, CALCULATOR, ORCA_PROCS, orb_dim_dict
+from parameters import orb_dim_dict
 from embeds import string_embed, cyclical_embed
 from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
@@ -943,11 +949,10 @@ class Docker:
         if self.options.theory_level is None:
 
             if self.options.calculator == 'MOPAC':
-                self.options.theory_level = 'PM7'
+                self.options.theory_level = MOPAC_DEFAULT_LEVEL
 
             elif self.options.calculator == 'ORCA':
-                # self.options.theory_level = 'GFN2-xTB'
-                self.options.theory_level = 'PM3'
+                self.options.theory_level = ORCA_DEFAULT_LEVEL
 
         # Setting up ORCA parallelization 
         if self.options.calculator == 'ORCA':
