@@ -39,6 +39,9 @@ from settings import (
                       ORCA_PROCS,
                       )
 
+if OPENBABEL_OPT_BOOL:
+    from optimization_methods import openbabel_opt
+
 from parameters import orb_dim_dict
 from embeds import string_embed, cyclical_embed
 from hypermolecule_class import Hypermolecule, align_structures
@@ -48,7 +51,6 @@ from optimization_methods import (
                                   hyperNEB,
                                   mopac_opt,
                                   MopacReadError,
-                                  openbabel_opt,
                                   optimize,
                                   orca_opt,
                                   prune_enantiomers,
@@ -1312,11 +1314,11 @@ class Docker:
                 raise e
 
             t_end_opt = time.time()
-            self.log(f'    - Mopac {self.options.theory_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+            self.log(f'    - {self.options.calculator} {self.options.theory_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
 
         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
         t_end = time.time()
-        self.log(f'Mopac {self.options.theory_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'{self.options.calculator} {self.options.theory_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
@@ -1371,11 +1373,11 @@ class Docker:
 
             finally:
                 t_end_opt = time.time()
-                self.log(f'    - Mopac {self.options.theory_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+                self.log(f'    - {self.options.calculator} {self.options.theory_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
         
         loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
         t_end = time.time()
-        self.log(f'Mopac {self.options.theory_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'{self.options.calculator} {self.options.theory_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
         before = len(self.structures)
         if self.options.only_refined:
@@ -1465,11 +1467,11 @@ class Docker:
 
             t_end_opt = time.time()
 
-            self.log(f'    - Mopac {self.options.theory_level} NEB optimization: Structure {i+1} - {exit_str} - ({time_to_string(t_end_opt-t_start_opt)})', p=False)
+            self.log(f'    - {self.options.calculator} {self.options.theory_level} NEB optimization: Structure {i+1} - {exit_str} - ({time_to_string(t_end_opt-t_start_opt)})', p=False)
 
         loadbar(1, 1, prefix=f'Performing NEB {len(self.structures)}/{len(self.structures)} ')
         t_end = time.time()
-        self.log(f'Mopac {self.options.theory_level} NEB optimization took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'{self.options.calculator} {self.options.theory_level} NEB optimization took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
         self.log(f'NEB converged for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures\n')
 
         mask = self.exit_status
@@ -1501,10 +1503,10 @@ class Docker:
                 loadbar(i, len(self.structures), prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
 
                 mopac_opt(structure,
-                        self.atomnos,
-                        method=f'{self.options.theory_level} FORCE',
-                        title=f'TS_{i+1}_FREQ',
-                        read_output=False)
+                          self.atomnos,
+                          method=f'{self.options.theory_level} FORCE',
+                          title=f'TS_{i+1}_FREQ',
+                          read_output=False)
 
             loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
             t_end = time.time()

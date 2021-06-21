@@ -1025,10 +1025,12 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             if ORCA_PROCS > 1:
                 orcablocks = f'%pal nprocs {ORCA_PROCS} end'
                 atoms.calc = ORCA(label='temp',
+                                  command=f'{ORCA_COMMAND} {title}.inp > {title}.out 2>&1',
                                   orcasimpleinput=method,
                                   orcablocks=orcablocks)
             else:
                 atoms.calc = ORCA(label='temp',
+                                  command=f'{ORCA_COMMAND} {title}.inp > {title}.out 2>&1',
                                   orcasimpleinput=method)
 
         if traj is not None:
