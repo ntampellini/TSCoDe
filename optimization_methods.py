@@ -470,17 +470,19 @@ def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_gr
 
     if docker.options.calculator == 'MOPAC':
         atoms.calc = MOPAC(label='temp',
-                           command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1',
-                           method=method)
+                            command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1',
+                            method=method)
 
     else: # == 'ORCA'
         if ORCA_PROCS > 1:
             orcablocks = f'%pal nprocs {ORCA_PROCS} end'
             atoms.calc = ORCA(label='temp',
+                                command=f'{ORCA_COMMAND} temp.inp > temp.out 2>&1',
                                 orcasimpleinput=method,
                                 orcablocks=orcablocks)
         else:
             atoms.calc = ORCA(label='temp',
+                                command=f'{ORCA_COMMAND} temp.inp > temp.out 2>&1',
                                 orcasimpleinput=method)
     
     springs = []
