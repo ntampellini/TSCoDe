@@ -74,7 +74,7 @@ def clean_directory():
     for f in os.listdir():
         if f.split('.')[0] == 'temp':
             os.remove(f)
-        elif f.startswith('temp_ob'):
+        elif f.startswith('temp_'):
             os.remove(f)
 
 def time_to_string(total_time: float, verbose=False):
