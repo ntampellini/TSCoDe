@@ -31,7 +31,9 @@ from itertools import groupby
 import numpy as np
 from subprocess import check_call, STDOUT, DEVNULL
 
-from parameters import OPENBABEL_OPT_BOOL, orb_dim_dict
+from openbabel.openbabel import Ca
+
+from parameters import OPENBABEL_OPT_BOOL, CALCULATOR, ORCA_PROCS, orb_dim_dict
 from embeds import string_embed, cyclical_embed
 from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
@@ -42,6 +44,7 @@ from optimization_methods import (
                                   MopacReadError,
                                   openbabel_opt,
                                   optimize,
+                                  orca_opt,
                                   prune_enantiomers,
                                   scramble,
                                   write_xyz,
@@ -119,6 +122,8 @@ class Options:
                     'DEEP',           # Performs a deeper search, retaining more starting points
                                       # for calculations and smaller turning angles. Equivalent to
                                       # `THRESH=0.3 STEPS=12 CLASHES=(num=5,dist=1)`
+
+                    'DEBUG',          # DEBUG KEYWORD
                                       
                     'DIST',           # Manually imposed distance between specified atom pairs,
                                       # in Angstroms. Syntax uses parenthesis and commas:
@@ -175,7 +180,7 @@ class Options:
                                       # of one and a half. This makes it easier to perform the embed without
                                       # having molecules clashing one another. Then, the correct distance between
                                       # reactive atom pairs is achieved as for standard runs by spring constraints
-                                      # during MOPAC optimization.
+                                      # during MOPAC/ORCA optimization.
 
                     'STEPS',          # Manually specify the number of steps to be taken in scanning rotations.
                                       # For string embeds, the range to be explored is the full 360°, and the
@@ -206,17 +211,20 @@ class Options:
 
     optimization = True
     neb = False
-    mopac_level = 'PM7'
+    calculator = CALCULATOR
+    theory_level = None        # set later in _calculator_setup()
+    openbabel_opt = OPENBABEL_OPT_BOOL
     openbabel_level = 'UFF'
+
     suprafacial = False
     nci = False
     only_refined = False
     shrink = False
-    openbabel_opt = OPENBABEL_OPT_BOOL
     keep_enantiomers = False
 
     kcal_thresh = None
     bypass = False
+    debug = False
     let = False
     check_structures = False
     # Default values, updated if _parse_input
@@ -226,6 +234,7 @@ class Options:
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
         d.pop('bypass')
         d.pop('let')
+        d.pop('debug')
         d.pop('check_structures')
 
         if self.kcal_thresh is None:
@@ -299,6 +308,7 @@ class Docker:
             quit()
 
         self._setup()
+        self._calculator_setup()
 
     def log(self, string='', p=True):
         if p:
@@ -370,7 +380,12 @@ class Docker:
                     energies = []
 
                     for i, conformer in enumerate(deepcopy(conformers)):
-                        opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
+                        
+                        if self.options.calculator == 'MOPAC':
+                            opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
+
+                        else: # == 'ORCA'
+                            opt_coords, energy, success = orca_opt(conformer, data.atomnos)
 
                         if success:
                             conformers[i] = opt_coords
@@ -393,10 +408,10 @@ class Docker:
 
                     self.log(f'Completed ({time_to_string(time.time()-t_start)}). Will use the best {min((len(conformers), 5))} conformers for TSCoDe embed.\n')
 
-                if 'mopac>' in filename:
+                if 'opt>' in filename:
 
                     filename = filename[6:]
-                    self.log(f'--> Performing MOPAC optimization optimization on {filename} before running TSCoDe')
+                    self.log(f'--> Performing {self.options.calculator} {self.options.theory_level} optimization optimization on {filename} before running TSCoDe')
 
                     from cclib.io import ccread
 
@@ -408,7 +423,12 @@ class Docker:
                     energies = []
 
                     for i, conformer in enumerate(deepcopy(conformers)):
-                        opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
+
+                        if self.options.calculator == 'MOPAC':
+                            opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
+
+                        else: # == 'ORCA'
+                            opt_coords, energy, success = orca_opt(conformer, data.atomnos)
 
                         if success:
                             conformers[i] = opt_coords
@@ -520,7 +540,7 @@ class Docker:
 
                 if 'LEVEL' in [k.split('=')[0] for k in keywords_list]:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('LEVEL')]
-                    self.options.mopac_level = kw.split('=')[1].upper()
+                    self.options.theory_level = kw.split('=')[1].upper().replace('_', ' ')
 
                 if 'RIGID' in keywords_list:
                     self.options.rigid = True
@@ -555,6 +575,9 @@ class Docker:
 
                 if 'ENANTIOMERS' in keywords_list:
                     self.options.keep_enantiomers = True
+
+                if 'DEBUG' in keywords_list:
+                    self.options.debug = True
 
         except SyntaxError as e:
             raise e
@@ -908,6 +931,33 @@ class Docker:
 
         self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
+    def _calculator_setup(self):
+        '''
+        Set up the calculator to be used with default theory levels.
+        '''
+        # Checking that calculator is specified correctly
+        if self.options.calculator not in ('MOPAC', 'ORCA'):
+            raise SyntaxError(f'\'{self.options.calculator}\' is not a valid calculator. Change its value from the parameters.py file.')
+
+        # Setting default theory level if user did not specify it
+        if self.options.theory_level is None:
+
+            if self.options.calculator == 'MOPAC':
+                self.options.theory_level = 'PM7'
+
+            elif self.options.calculator == 'ORCA':
+                # self.options.theory_level = 'GFN2-xTB'
+                self.options.theory_level = 'PM3'
+
+        # Setting up ORCA parallelization 
+        if self.options.calculator == 'ORCA':
+            self.options.orca_procs = ORCA_PROCS
+
+            if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.orca_procs != 1:
+                raise Exception(('ORCA does not support parallelization for Semiempirical Methods. '
+                                 'Please change the value of ORCA_PROCS to 1 in parameters.py or '
+                                 'change the theory level.'))
+
     def get_string_constrained_indexes(self, n):
         '''
         Get constrained indexes referring to the transition states, repeated n times.
@@ -1204,13 +1254,13 @@ class Docker:
         self.zero_candidates_check()
         self.similarity_refining()
 
-        ################################################# CHECKPOINT BEFORE MOPAC OPTIMIZATION
+        ################################################# CHECKPOINT BEFORE MOPAC/ORCA OPTIMIZATION
 
         with open(self.outname, 'w') as f:        
             for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
                 exit_str = f'{self.options.openbabel_level} REFINED' if self.exit_status[i] else 'RAW'
-                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before MOPAC optimization')
-        self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file before MOPAC optimization.\n')
+                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before {self.options.calculator} optimization')
+        self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file before {self.options.calculator} optimization.\n')
                         
     def mopac_refining(self):
         '''
@@ -1220,17 +1270,24 @@ class Docker:
 
         t_start = time.time()
 
-        self.log(f'--> Structure optimization ({self.options.mopac_level} level)')
+        self.log(f'--> Structure optimization ({self.options.theory_level} level)')
+
+        if self.options.calculator == 'MOPAC':
+            method = f'{self.options.theory_level} GEO-OK CYCLES=500'
+
+        else:
+            method = f'{self.options.theory_level}'
 
         for i, structure in enumerate(deepcopy(self.structures)):
             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
             try:
                 t_start_opt = time.time()
-                new_structure, self.energies[i], self.exit_status[i] = optimize(structure,
+                new_structure, self.energies[i], self.exit_status[i] = optimize(self.options.calculator,
+                                                                                structure,
                                                                                 self.atomnos,
                                                                                 self.graphs,
                                                                                 self.constrained_indexes[i],
-                                                                                method=f'{self.options.mopac_level} GEO-OK CYCLES=500',
+                                                                                method=method,
                                                                                 max_newbonds=self.options.max_newbonds)
 
                 if self.exit_status[i]:
@@ -1250,11 +1307,11 @@ class Docker:
                 raise e
 
             t_end_opt = time.time()
-            self.log(f'    - Mopac {self.options.mopac_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+            self.log(f'    - Mopac {self.options.theory_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
 
         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
         t_end = time.time()
-        self.log(f'Mopac {self.options.mopac_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'Mopac {self.options.theory_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
@@ -1263,7 +1320,7 @@ class Docker:
 
         ################################################# REFINING: BONDING DISTANCES
 
-        self.log(f'--> Refining bonding distances for TSs ({self.options.mopac_level} level)')
+        self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level} level)')
 
         # backing up structures before refinement
         self.outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
@@ -1279,15 +1336,18 @@ class Docker:
         for i, structure in enumerate(deepcopy(self.structures)):
             loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
             try:
+
+                traj = f'refine_{i}.traj' if self.options.debug else None
+
                 t_start_opt = time.time()
                 new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
                                                                                         structure,
                                                                                         self.atomnos,
                                                                                         self.constrained_indexes[i],
                                                                                         self.graphs,
-                                                                                        method=self.options.mopac_level,
-                                                                                        max_newbonds=self.options.max_newbonds
-                                                                                        #  traj=f'adjust_{i}.traj'
+                                                                                        method=self.options.theory_level,
+                                                                                        max_newbonds=self.options.max_newbonds,
+                                                                                        traj=traj
                                                                                         )
 
                 if self.exit_status[i]:
@@ -1306,11 +1366,11 @@ class Docker:
 
             finally:
                 t_end_opt = time.time()
-                self.log(f'    - Mopac {self.options.mopac_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+                self.log(f'    - Mopac {self.options.theory_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
         
         loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
         t_end = time.time()
-        self.log(f'Mopac {self.options.mopac_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'Mopac {self.options.theory_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
         before = len(self.structures)
         if self.options.only_refined:
@@ -1370,7 +1430,7 @@ class Docker:
         '''
         Performs a clibing-image NEB calculation inferring reagents and products for each structure.
         '''
-        self.log(f'--> HyperNEB optimization ({self.options.mopac_level} level)')
+        self.log(f'--> HyperNEB optimization ({self.options.theory_level} level)')
         t_start = time.time()
 
         for i, structure in enumerate(self.structures):
@@ -1385,8 +1445,8 @@ class Docker:
                                                                 self.atomnos,
                                                                 self.ids,
                                                                 self.constrained_indexes[i],
-                                                                reag_prod_method=f'{self.options.mopac_level}',
-                                                                NEB_method=f'{self.options.mopac_level} GEO-OK',
+                                                                reag_prod_method=f'{self.options.theory_level}',
+                                                                NEB_method=f'{self.options.theory_level} GEO-OK',
                                                                 title=f'structure_{i+1}')
 
                 exit_str = 'COMPLETED'
@@ -1400,11 +1460,11 @@ class Docker:
 
             t_end_opt = time.time()
 
-            self.log(f'    - Mopac {self.options.mopac_level} NEB optimization: Structure {i+1} - {exit_str} - ({time_to_string(t_end_opt-t_start_opt)})', p=False)
+            self.log(f'    - Mopac {self.options.theory_level} NEB optimization: Structure {i+1} - {exit_str} - ({time_to_string(t_end_opt-t_start_opt)})', p=False)
 
         loadbar(1, 1, prefix=f'Performing NEB {len(self.structures)}/{len(self.structures)} ')
         t_end = time.time()
-        self.log(f'Mopac {self.options.mopac_level} NEB optimization took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'Mopac {self.options.theory_level} NEB optimization took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
         self.log(f'NEB converged for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures\n')
 
         mask = self.exit_status
@@ -1428,7 +1488,7 @@ class Docker:
         ################################################# TS CHECK - FREQUENCY CALCULATION
 
 
-            self.log(f'--> TS frequency calculation ({self.options.mopac_level} level)')
+            self.log(f'--> TS frequency calculation ({self.options.theory_level} level)')
             t_start = time.time()
 
             for i, structure in enumerate(self.structures):
@@ -1437,13 +1497,13 @@ class Docker:
 
                 mopac_opt(structure,
                         self.atomnos,
-                        method=f'{self.options.mopac_level} FORCE',
+                        method=f'{self.options.theory_level} FORCE',
                         title=f'TS_{i+1}_FREQ',
                         read_output=False)
 
             loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
             t_end = time.time()
-            self.log(f'Mopac {self.options.mopac_level} frequency calculation took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)\n')
+            self.log(f'Mopac {self.options.theory_level} frequency calculation took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)\n')
 
         ################################################# NEB XYZ OUTPUT
 
@@ -1527,8 +1587,8 @@ class Docker:
         '''
         Write VMD file with bonds and reactive atoms highlighted.
         '''
-        vmd_name = self.outname.split('.')[0] + '.vmd'
-        path = os.path.join(os.getcwd(), vmd_name)
+        self.vmd_name = self.outname.split('.')[0] + '.vmd'
+        path = os.path.join(os.getcwd(), self.vmd_name)
         with open(path, 'w') as f:
             s = ('display resetview\n' +
                 'mol new {%s.xyz}\n' % (path.strip('.vmd')) +
@@ -1543,7 +1603,7 @@ class Docker:
 
             f.write(s)
 
-        self.log(f'--> Output: Wrote VMD {vmd_name} file\n')
+        self.log(f'--> Output: Wrote VMD {self.vmd_name} file\n')
 
     def write_unoptimized_structures(self):
         '''
@@ -1615,8 +1675,9 @@ class Docker:
 
             #### EXTRA
             
-            # path = os.path.join(os.getcwd(), vmd_name)
-            # os.system(f'vmd -e {path}')
+            if self.options.debug:
+                path = os.path.join(os.getcwd(), self.vmd_name)
+                check_call(f'vmd -e {path}'.split())
 
             ################################################
 

@@ -14,14 +14,31 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+import os
 
-OPENBABEL_OPT_BOOL = True
+OPENBABEL_OPT_BOOL = False
 # whether to run Force Field minimization with
 # Openbabel prior to the MOPAC semiempirical one.
 # (set to False if no Openbabel Python bindings are available)
 
+CALCULATOR = 'MOPAC'
+# CALCULATOR = 'ORCA'
+
+# Calculator used to run force field minimizations.
+# Possibilites are:
+# 'MOPAC' : Semiempirical MOPAC2016 (PM7, PM6-DH3, ...)
+# 'ORCA' : All methods supported by ORCA
+
 MOPAC_COMMAND = 'MOPAC2016.exe'
-# command with which mopac will be called from the command line
+# command with which MOPAC will be called from the command line
+
+ORCA_COMMAND = 'orca.exe'
+# command with which ORCA will be called from the command line.
+# Inserting the full path to orca.exe is required for parallel runs
+# with more than one core! See ORCA documentation.
+
+ORCA_PROCS = 1
+# number of processors (cores) to be used by ORCA
 
 orb_dim_dict = {
     'H Single Bond' : 0.85,
@@ -36,6 +53,7 @@ orb_dim_dict = {
     'C sp' : 1,
     'N sp' : 1,
 
+    'B sp2' : 0.8,
     'C sp2' : 1.1,
     'N sp2' : 1,
 

@@ -26,7 +26,6 @@ from utils import (
                    polygonize,
                    rot_mat_from_pointer,
                    rotation_matrix_from_vectors,
-                   TooDifferentLengthsError,
                    TriangleError,
                    vec_angle,
                   )
@@ -302,8 +301,14 @@ def cyclical_embed(self):
         
         return np.array(directions)
 
-            
     self.log(f'\n--> Performing {self.embed} embed ({self.candidates} candidates)')
+
+    if not self.options.rigid:
+        self.ase_bent_mols_dict = {}
+        # used as molecular cache for ase_bend
+        # keys are tuples with: ((identifier, pivot.index, target_pivot_length), obtained with:
+        # (np.sum(original_mol.atomcoords[0]), pivot.index, threshold)
+
 
     pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
     # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -323,11 +328,28 @@ def cyclical_embed(self):
         norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
         # getting the pivots norms to feed into the polygonize function
 
-        try:
+        if len(norms) == 2:
+
+            if abs(norms[0] - norms[1]) < 1:
+                norms_type = 'digon'
+
+            else:
+                norms_type = 'impossible_digon'
+
+        else:
+            if all([norms[i] < norms[i-1] + norms[i-2] for i in (0,1,2)]):
+                norms_type = 'triangle'
+
+            else:
+                norms_type = 'impossible_triangle'
+
+
+        if norms_type in ('triangle', 'digon'):
+
             polygon_vectors = polygonize(norms)
 
-        except TriangleError:
-            # Raised if we cannot build a triangle with the given norms.
+        elif norms_type == 'impossible_triangle':
+            # Accessed if we cannot build a triangle with the given norms.
             # Try to bend the structure if it was close or just skip this triangle and go on.
 
             deltas = [norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)]
@@ -350,7 +372,17 @@ def cyclical_embed(self):
 
                     # ase_view(mol)
                     maxval = norms[index-1] + norms[index-2]
-                    bent_mol = ase_bend(self, mol, pivot, 0.9*maxval)
+
+                    traj = f'bend_{p}_mol_{i}_tgt_{round(0.9*maxval, 3)}' if self.options.debug else None
+
+                    bent_mol = ase_bend(self,
+                                        mol,
+                                        pivot,
+                                        0.9*maxval,
+                                        method=f'{self.options.theory_level}',
+                                        traj=traj
+                                        )
+
                     # ase_view(bent_mol)
 
                     ###################################### DEBUGGING PURPOSES
@@ -371,8 +403,12 @@ def cyclical_embed(self):
                     norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
                     # updating the pivots norms to feed into the polygonize function
 
-                    polygon_vectors = polygonize(norms)
-                    # repeating the failed polygon creation
+                    try:
+                        polygon_vectors = polygonize(norms)
+                        # repeating the failed polygon creation. If it fails again, skip these pivots
+
+                    except TriangleError:
+                        continue
 
                 else:
                     continue
@@ -380,7 +416,7 @@ def cyclical_embed(self):
             else:
                 continue
         
-        except TooDifferentLengthsError:
+        else: # norms type == 'impossible_digon', that is sides are too different in length
 
             if not self.options.rigid:
 
@@ -411,12 +447,14 @@ def cyclical_embed(self):
                         if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
                         # do not try to bend molecules where the two reactive indices are bonded
 
+                            traj = f'bend_{p}_mol_{i}_tgt_{round(target_length, 3)}' if self.options.debug else None
+
                             bent_mol = ase_bend(self,
                                                 mol,
                                                 pivots[i],
                                                 target_length,
-                                                method=f'{self.options.mopac_level}',
-                                                # traj=f'traj_{p}_{i}.traj'
+                                                method=f'{self.options.theory_level}',
+                                                traj=traj
                                                 )
                             # ase_view(bent_mol)
                             thread_objects[i] = bent_mol
@@ -429,7 +467,7 @@ def cyclical_embed(self):
                 norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
                 # updating the pivots norms to feed into the polygonize function
 
-            polygon_vectors = polygonize(norms, override=True)
+            polygon_vectors = polygonize(norms)
             # repeating the failed polygon creation
 
 

@@ -3,7 +3,7 @@
 __pycache__/
 .ipynb_checkpoints
 vmdpath
-Obsolete (backup purposes)
+Obsolete_(backup purposes)
 rdkit_conformational_search.py
 Resources
 cython

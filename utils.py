@@ -71,12 +71,6 @@ class TriangleError(Exception):
     a triangle with the given side lengths.
     '''
 
-class TooDifferentLengthsError(Exception):
-    '''
-    Raised from polygonize if bimolecular TSs have
-    too different pivot lenghts.
-    '''
-
 def clean_directory():
     for f in os.listdir():
         if f.split('.')[0] == 'temp':
@@ -208,7 +202,7 @@ def rot_mat_from_pointer(pointer, angle):
     
     return R.from_quat(quat).as_matrix()
 
-def polygonize(lengths, override=False):
+def polygonize(lengths):
     '''
     Returns coordinates for the polygon vertexes used in cyclical TS construction,
     as a list of vector couples specifying starting and ending point of each pivot 
@@ -223,9 +217,6 @@ def polygonize(lengths, override=False):
     arr = np.zeros((len(lengths),2,3))
 
     if len(lengths) == 2:
-
-        if not override and abs(lengths[0] - lengths[1]) > 1: # 1 Angstrom threshold
-            raise TooDifferentLengthsError
 
         arr[0,0] = np.array([-lengths[0]/2,0,0])
         arr[0,1] = np.array([+lengths[0]/2,0,0])

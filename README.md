@@ -2,7 +2,10 @@
 
 <div align="center">
 
- [![License: GNU GPL v3](https://img.shields.io/github/license/ntampellini/TSCoDe)](https://opensource.org/licenses/GPL-3.0) [![CodeFactor Grade](https://img.shields.io/codefactor/grade/github/ntampellini/TSCoDe)](https://www.codefactor.io/repository/github/ntampellini/tscode)
+ [![License: GNU GPL v3](https://img.shields.io/github/license/ntampellini/TSCoDe)](https://opensource.org/licenses/GPL-3.0)
+ [![CodeFactor Grade](https://img.shields.io/codefactor/grade/github/ntampellini/TSCoDe)](https://www.codefactor.io/repository/github/ntampellini/tscode)
+ ![Python Version](https://img.shields.io/badge/Python-3.8.10-blue)
+ ![Size](https://img.shields.io/github/languages/code-size/ntampellini/TSCoDe)
 
 </div>
 
@@ -35,17 +38,21 @@ TSCoDe is written in pure Python, ~~with some libraries optionally boosted via C
 
 This program is written in pure Python and it is intended to use with Python version 3.8.10. The use of a dedicated conda virtual environment is highly suggested.
 
-Prerequisites: before downloading this repository, you should have installed both Openbabel (required for Force Field minimizations) and MOPAC2016 (required for semiempirical calculations).
+Prerequisites: before downloading this repository, you should have installed a calculator. At the moment, TSCoDe supports either MOPAC2016 (semiempirical calculations) and ORCA (DFT and more). An installation of Openbabel is optional, providing an additional conformational search tool and Force Field minimizations that can speed up the program.
+
+### MOPAC2016
+
+This software is closed-source but free for academic use. If you qualify for this usage, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "MOPAC2016.exe" command. To test this, the command `MOPAC2016.exe` should return [this](https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d) message.
+
+### ORCA
+
+Detailed instructions on how to install and set up ORCA can be found in [the official website](https://sites.google.com/site/orcainputlibrary/setting-up-orca). Make sure to install and set up OpenMPI along with ORCA if you wish to exploit multiple cores on your machine.
 
 ### Openbabel
 
 This is free software you can download from [the official website](http://openbabel.org/wiki/Category:Installation). After you have installed the software, make sure to install its Python bindings. You can manually compile these by following the [website guidelines](https://openbabel.org/docs/dev/Installation/install.html#compile-bindings), but *by far* the easiest procedure is just using conda:
 
     conda install -c conda-forge openbabel
-
-### MOPAC2016
-
-This software is only free for academic use. If you qualify for this usage, you should [request a licence for MOPAC2016](http://openmopac.net/form.php). After installation, be sure to add the MOPAC folder to your system PATH, to access the program through command line with the "MOPAC2016.exe" command. To test this, the command `MOPAC2016.exe` should return [this](https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d) message.
 
 ### TSCoDe
 
@@ -58,6 +65,10 @@ Open a command shell, move to the ./TSCoDe folder and install the requirements.
     cd TSCoDe
 
     pip install -r requirements.txt
+
+Assert all commands and parameters are consistent with your system and desired usage of TSCoDe by modifying the [parameters.py](https://github.com/ntampellini/TSCoDe/blob/master/parameters.py) file.
+- By default, the used calculator is MOPAC, so if you wish to use ORCA set `CALCULATOR = 'ORCA'`
+- By default, OpenBabel usage is turned off. To activate it, set `OPENBABEL_OPT_BOOL = False` 
 
 To test the installation, you can run the provided test in the test folder:
 
@@ -120,9 +131,9 @@ If a `NEB` calculation is to be performed on a trimolecular transition state, th
 
 Molecule files can be preceded by *operators*, like `csearch>molecule.xyz`. They operate on the input file before it is fed to TSCoDe. It is important not to include any space character between the operator and the molecule name.
 
-- **`mopac>`** - Performs a MOPAC optimization of the structure(s) before using it in TSCoDe. Generates a new `molecule_opt.xyz` file with the optimized coordinates.
+- **`opt>`** - Performs a MOPAC or ORCA optimization of the structure(s) before using it/them in TSCoDe. Generates a new `molecule_opt.xyz` file with the optimized coordinates.
 
-- **`csearch>`** - Performs a simple Openbabel conformational search and optimizes all conformers with MOPAC. Then, a maximum of five best conformers are used to run TSCoDe. Generates a new `molecule_confs.xyz` file with all optimized conformers.
+- **`csearch>`** - Performs a simple Openbabel conformational search and optimizes all conformers with MOPAC or ORCA. Then, a maximum of five best conformers are used to run TSCoDe. Generates a new `molecule_confs.xyz` file with all optimized conformers.
   
 ### Good practice and suggested options
 
@@ -140,9 +151,9 @@ When modeling a reaction through TSCoDe, I suggest following these guidelines:
 
 - By default, TSCoDe parameters are optimized to yield good results without specifying any keyword nor atom pairing. However, I strongly encourage to specify all the desired pairings and use the `DIST` keyword in order to speed up the calculation and achieve better results, respectively. For example, the trimolecular reaction in the example above is described with all three atomic pairings (`a`, `b` and `c`) and their distances. These can come from a previous higher-level calculation or can be inferred by similar reactions. If they are not provided, a guess is performed by reading the `parameters.py` file.
 
-- If the reaction involves big molecules, or if there are a lot of conformations, a preliminar calculation using the `NOOPT` keyword may be a good idea to see how many structures are generated and would require MOPAC optimization in a standard run.
+- If the reaction involves big molecules, or if there are a lot of conformations, a preliminar calculation using the `NOOPT` keyword may be a good idea to see how many structures are generated and would require MOPAC/ORCA optimization in a standard run.
 
-- If TSCoDe does not find enough suitable candidates (or any at all) for the given reacion, most of the times this is because of compenetration pruning. This mean that a lot of structures are generated, but all of them have some atoms compenetrating one into the other, and are therefore discarded. A solution could be to loosen the compenetration rejection citeria (`CLASHES` keyword, not recommended) or to use the `SHRINK` keyword (recommended, see keywords section). Note that `SHRINK` calculations will be loger, as MOPAC/ASE distance-refining optimizations will require more iterations to reach target distances.
+- If TSCoDe does not find enough suitable candidates (or any at all) for the given reacion, most of the times this is because of compenetration pruning. This mean that a lot of structures are generated, but all of them have some atoms compenetrating one into the other, and are therefore discarded. A solution could be to loosen the compenetration rejection citeria (`CLASHES` keyword, not recommended) or to use the `SHRINK` keyword (recommended, see keywords section). Note that `SHRINK` calculations will be loger, as MOPAC/ORCA distance-refining optimizations through ASE will require more iterations to reach target distances.
 
 ### Keywords
 
@@ -164,7 +175,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`LET`** - Overrides safety checks that prevent the program from running too large calculations.
 
-- **`LEVEL`** - Manually set the MOPAC theory level to be used, default is PM7. Syntax: `LEVEL=PM7`
+- **`LEVEL`** - Manually set the theory level to be used. Default is PM7 for MOPAC and GFN2-xTB for ORCA. White spaces can be expressed with underscores. Syntax: `LEVEL=B3LYP_def2-TZVP `
 
 - **`MMFF`** - Use the Merck Molecular Force Field during the OpenBabel pre-optimization (default is UFF).
 
