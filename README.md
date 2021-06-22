@@ -189,6 +189,8 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`ONLYREFINED`** - Discard structures that do not successfully refine bonding distances.
 
+- **`PROCS`** - Manually set the number of cores to be used in a parallel ORCA calculation, overriding the default value in `settings.py`
+
 - **`RIGID`** - Does not apply to "string" embeds. Avoid bending structures to better build TSs.
 
 - **`ROTRANGE`** - Does not apply to "string" embeds. Manually specify the rotation range to be explored around the structure pivot. Default is 90. Syntax: `ROTRANGE=90`

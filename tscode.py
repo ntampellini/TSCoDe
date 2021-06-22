@@ -177,6 +177,8 @@ class Options:
 
                     'ONLYREFINED',    # Discard structures that do not successfully refine bonding distances.
 
+                    'PROCS',          # Set the number of parallel cores to be used by ORCA
+
                     'RIGID',          # Does not apply to "string" embeds. Avoid
                                       # bending structures to better build TSs.
 
@@ -587,6 +589,16 @@ class Docker:
                 if 'DEBUG' in keywords_list:
                     self.options.debug = True
 
+                if 'PROCS' in [k.split('=')[0] for k in keywords_list]:
+                    
+                    if self.options.calculator == 'ORCA':
+                        kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('PROCS')]
+                        self.options.orca_procs = int(kw.split('=')[1])
+
+                    else:
+                        raise SyntaxError('\'PROCS\' keyword can only be used with ORCA calculator.')
+
+
         except SyntaxError as e:
             raise e
 
@@ -956,8 +968,8 @@ class Docker:
             elif self.options.calculator == 'ORCA':
                 self.options.theory_level = ORCA_DEFAULT_LEVEL
 
-        # Setting up ORCA parallelization 
-        if self.options.calculator == 'ORCA':
+        # Setting up ORCA parallelization if user did not specify himself
+        if self.options.calculator == 'ORCA' and not hasattr(self.options, 'orca_procs'):
             self.options.orca_procs = ORCA_PROCS
 
             if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.orca_procs != 1:
