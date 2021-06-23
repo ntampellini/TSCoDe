@@ -347,7 +347,13 @@ class Imine:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
+            # adding the first lobe (lone pair)
             self.orb_vecs = np.array([-norm(np.mean([norm(v) for v in self.vectors], axis=0))*orb_dim])
+
+            # adding two p lobes
+            p_lobe = norm(np.cross(self.vectors[0], self.vectors[1]))*orb_dim
+            self.orb_vecs = np.concatenate((self.orb_vecs, [p_lobe], [-p_lobe]))
+
             self.center = self.orb_vecs + self.coord
             # two vectors defining the position of the two orbital lobes centers
 
@@ -411,7 +417,7 @@ class Sp_or_carbene:
             neighbors_of_neighbors_indexes[1].remove(i)
             neighbors_of_neighbors_indexes[0].remove(neighbors_indexes[0])
             neighbors_of_neighbors_indexes[1].remove(neighbors_indexes[1])
-
+                
             if len(neighbors_of_neighbors_indexes[0]) == 2:
                 substituent = mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[0][0]]
                 ketene_atom = mol.atomcoords[atomcoords_index][neighbors_indexes[0]]
