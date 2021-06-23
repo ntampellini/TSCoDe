@@ -290,23 +290,35 @@ class Ketone:
             self.vector = norm(self.vector)*orb_dim
 
             if len(neighbors_of_neighbor_indexes) == 2:
-            # if it is a normal ketone, orbitals must be coplanar with
-            # atoms connecting to ketone C atom
+            # if it is a normal ketone (or an enolate), orbitals must be coplanar with
+            # atoms connecting to ketone C atom.
+
                 a1 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[0]]
                 a2 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[1]]
                 pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
 
-            else:
-            # otherwise, it can be an alkoxide/ketene and they can lie
-            # on a random plane.
-                r = np.random.rand()
-                v0 = self.vector[0]
-                v1 = self.vector[1]
-                v2 = self.vector[2]
-                pivot = np.array([r,r,-r*(v0+v1)/v2])
-        
-            self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
+                self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
 
+            elif len(neighbors_of_neighbor_indexes) in (1, 3):
+            # ketene or alkoxide
+            
+                ketene_sub_indexes = list([(a, b) for a, b in mol.graph.adjacency()][neighbors_of_neighbor_indexes[0]][1].keys())
+                ketene_sub_indexes.remove(neighbors_of_neighbor_indexes[0])
+                ketene_sub_indexes.remove(neighbors_indexes[0])
+
+                ketene_sub_coords = mol.atomcoords[atomcoords_index][ketene_sub_indexes[0]]
+                n_o_n_coords = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[0]]
+
+                # vector connecting ketene R with C (O=C=C(R)R)
+                v = (ketene_sub_coords - n_o_n_coords)
+
+                # this vector is orthogonal to the ketene O=C=C and coplanar with the ketene
+                pointer = v - ((v @ norm(self.vector)) * self.vector)
+                pointer = norm(pointer) * orb_dim
+
+                self.center = np.array([rot_mat_from_pointer(self.vector, 90*step) @ pointer for step in range(4)])
+            
+        
             self.orb_vecs = np.array([norm(center) for center in self.center])
             # unit vectors connecting reactive atom coord with orbital centers
 
@@ -441,10 +453,6 @@ class Sp_or_carbene:
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
             if self.type == 'sp':
-                
-                # r = np.random.rand()
-                # vx, vy, vz = self.vectors[0]
-                # pivot1 = np.array([r, r, -r*(vx+vy)/vz])
 
                 v = np.random.rand(3)
                 pivot1 = v - ((v @ norm(self.vectors[0])) * self.vectors[0])
