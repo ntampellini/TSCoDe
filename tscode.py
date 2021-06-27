@@ -43,7 +43,7 @@ if OPENBABEL_OPT_BOOL:
     from optimization_methods import openbabel_opt
 
 from parameters import orb_dim_dict
-from embeds import string_embed, cyclical_embed
+from embeds import monomolecular_embed, string_embed, cyclical_embed
 from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
                                   ase_adjust_spacings,
@@ -231,6 +231,7 @@ class Options:
     only_refined = False
     shrink = False
     keep_enantiomers = False
+    double_bond_protection = False
 
     kcal_thresh = None
     bypass = False
@@ -253,7 +254,14 @@ class Options:
         if not OPENBABEL_OPT_BOOL:
             d.pop('openbabel_level')
 
-        return '\n'.join([f'{var}{" "*(18-len(var))}: {d[var]}' for var in d])
+        # if len(self.objects) == 1:
+        #     d.pop('rotation_range')
+        #     d.pop('rotation_steps')
+        #     d.pop('rigid')
+
+        padding = 1 + max([len(var) for var in d])
+
+        return '\n'.join([f'{var}{" "*(padding-len(var))}: {d[var]}' for var in d])
 
 class Docker:
     def __init__(self, filename, stamp=None):
@@ -341,8 +349,8 @@ class Docker:
         lines = [line for line in lines if line != '\n']
         
         try:
-            assert len(lines) in (2,3,4)
-            # (optional) keyword line + 2 or 3 lines for molecules
+            assert len(lines) < 5
+            # (optional) keyword line + 1, 2 or 3 lines for molecules
 
             keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
             if any(k in self.options.__keywords__ for k in keywords):
@@ -378,7 +386,12 @@ class Docker:
                                            'This is probably a bad idea, as the OpenBabel conformational search '
                                            'algorithm implemented here is quite basic and is not suited for this '
                                            'task. A much better idea is to generate conformations for this complex '
-                                           'by a more sophisticated third party software.'))
+                                           'by a more sophisticated software.'))
+
+                    if len(set(data.atomnos) - {1,6,7,8,9,15,16,17,35,53}) != 0:
+                        raise InputError(('Requested conformational search on a molecule that contains atoms different '
+                                          'than the ones for which OpenBabel Force Field is parametrized. Please consider '
+                                          'performing this conformational search on a different, more sophisticated software.'))
                                                 
                     confname = filename[:-4] + '_confs.xyz'
 
@@ -855,7 +868,15 @@ class Docker:
         Setting embed type and calculating the number of conformation combinations based on embed type
         '''
 
-        if len(self.objects) in (2,3):
+        if len(self.objects) == 1:
+            self.embed = 'monomolecular'
+            self._set_pivots(self.objects[0])
+            self.options.only_refined = True
+
+            self.candidates = int(len(self.objects[0].atomcoords))
+            self.candidates *= len(self.objects[0].pivots)
+
+        elif len(self.objects) in (2,3):
         # Setting embed type and calculating the number of conformation combinations based on embed type
 
             cyclical = all([len(molecule.reactive_atoms_classes_dict) == 2 for molecule in self.objects])
@@ -873,7 +894,7 @@ class Docker:
                             orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
                             atom.init(mol, index, update=True, orb_dim=orb_dim + 0.2)
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
-                    # be always generated too close to each other for how the cyclical embed works          
+                    # be generated a tad too close to each other for how the cyclical embed works          
 
                 self.options.rotation_steps = 9
 
@@ -893,15 +914,6 @@ class Docker:
                 # while 2 is the disposition of two vectors (parallel, antiparallel). This ends here if
                 # no parings are to be respected. If there are any, each one reduces the number of
                 # candidates to be computed, and we divide self.candidates number in the next section.
-
-                if self.options.shrink:
-                    for molecule in self.objects:
-                        molecule._scale_orbs(self.options.shrink_multiplier)
-                    self.options.only_refined = True
-
-                if sum(self.ids) < 50:
-                    self.options.pruning_thresh = 0.5
-                # small molecules need smaller RMSD threshold
 
                 for molecule in self.objects:
                     self._set_pivots(molecule)
@@ -941,12 +953,22 @@ class Docker:
                 self.candidates = self.options.rotation_steps*np.prod([len(mol.atomcoords) for mol in self.objects])*np.prod([len(list(mol.reactive_atoms_classes_dict.values())[0].center) for mol in self.objects])
                 
             else:
-                raise InputError(('Bad input - The only molecular configurations accepted are:\n' + 
-                                  '1) Two or three molecules with two reactive centers each (cyclical embed)\n' + 
-                                  '2) Two molecules with one reactive center each (string embed)\n' +
-                                  '3) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
+                raise InputError(('Bad input - The only molecular configurations accepted are:\n' 
+                                  '1) One molecule with two reactive centers (monomolecular embed)\n' 
+                                  '2) Two or three molecules with two reactive centers each (cyclical embed)\n'
+                                  '3) Two molecules with one reactive center each (string embed)\n'
+                                  '4) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
         else:
-            raise InputError('Bad input - too many or too few molecules specified (2 or 3 are required).')
+            raise InputError('Bad input - too many molecules specified (three at most).')
+
+        if self.options.shrink:
+            for molecule in self.objects:
+                molecule._scale_orbs(self.options.shrink_multiplier)
+            self.options.only_refined = True
+
+        if sum(self.ids) < 50:
+            self.options.pruning_thresh = 0.5
+        # small molecules need smaller RMSD threshold
 
 
         self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
@@ -1094,51 +1116,63 @@ class Docker:
         atoms compenetrate one into the other and too similar structures are discarded.
         '''
 
-        if self.embed == 'cyclical' or self.embed == 'chelotropic':
-            embedded_structures = cyclical_embed(self)
+        if self.embed == 'monomolecular':
+            monomolecular_embed(self)
+            self.atomnos = self.objects[0].atomnos
+            self.energies = np.zeros(len(self.structures))
+            self.exit_status = np.zeros(len(self.structures), dtype=bool)
+            self.graphs = [self.objects[0].graph]
 
-            if embedded_structures == []:
-                s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
-                        '    This is probably because one molecule has two reactive centers at a great distance,\n' +
-                        '    preventing the other two molecules from forming a closed, cyclical structure.')
-                self.log(s, p=False)
-                raise ZeroCandidatesError(s)
+            self.constrained_indexes = np.array([[self.objects[0].reactive_indexes] for _ in range(self.candidates)])
 
         else:
-            embedded_structures = string_embed(self)
 
-        clean_directory() # removing temporary files from ase_bend
+            if self.embed in ('cyclical', 'chelotropic'):
+                embedded_structures = cyclical_embed(self)
 
-        self.atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
-        # cumulative list of atomic numbers associated with coordinates
+                if embedded_structures == []:
+                    s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
+                           '    This is probably because one molecule has two reactive centers at a great distance,\n' +
+                           '    preventing the other two molecules from forming a closed, cyclical structure.')
+                    self.log(s, p=False)
+                    raise ZeroCandidatesError(s)
 
-        conf_number = [len(molecule.atomcoords) for molecule in self.objects]
-        conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
-        # first index of each vector is the conformer number of the first molecule and so on
+            else: # self.embed == 'string'
+                embedded_structures = string_embed(self)
 
-        self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(self.atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
-        n_of_constraints = self.dispositions_constrained_indexes.shape[1]
-        self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2), dtype=int)
-        # we will be getting constrained indexes for each combination of conformations from the general self.disposition_constrained_indexes array
 
-        for geometry_number, geometry in enumerate(embedded_structures):
+            clean_directory() # removing temporary files from ase_bend
 
-            for molecule in geometry:
-                calc_positioned_conformers(molecule)
+            self.atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
+            # cumulative list of atomic numbers associated with coordinates
 
-            for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
-                count_atoms = 0
+            conf_number = [len(molecule.atomcoords) for molecule in self.objects]
+            conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
+            # first index of each vector is the conformer number of the first molecule and so on
 
-                for molecule_number, conformation in enumerate(conf_index): # (0,0) then (1,0) then (2,0) (first [] of outer for-loop)
-                    coords = geometry[molecule_number].positioned_conformers[conformation]
-                    n = len(geometry[molecule_number].atomnos)
-                    self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
-                    self.constrained_indexes[geometry_number*len(conf_indexes)+i] = self.dispositions_constrained_indexes[geometry_number]
-                    count_atoms += n
-        # Calculating new coordinates for embedded_structures and storing them in self.structures
+            self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(self.atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
+            n_of_constraints = self.dispositions_constrained_indexes.shape[1]
+            self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2), dtype=int)
+            # we will be getting constrained indexes for each combination of conformations from the general self.disposition_constrained_indexes array
 
-        del self.dispositions_constrained_indexes
-        # cleaning the old, general data on indexes that ignored conformations
+            for geometry_number, geometry in enumerate(embedded_structures):
+
+                for molecule in geometry:
+                    calc_positioned_conformers(molecule)
+
+                for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
+                    count_atoms = 0
+
+                    for molecule_number, conformation in enumerate(conf_index): # (0,0) then (1,0) then (2,0) (first [] of outer for-loop)
+                        coords = geometry[molecule_number].positioned_conformers[conformation]
+                        n = len(geometry[molecule_number].atomnos)
+                        self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
+                        self.constrained_indexes[geometry_number*len(conf_indexes)+i] = self.dispositions_constrained_indexes[geometry_number]
+                        count_atoms += n
+            # Calculating new coordinates for embedded_structures and storing them in self.structures
+
+            del self.dispositions_constrained_indexes
+            # cleaning the old, general data on indexes that ignored conformations
 
         t_end = time.time()
         self.log(f'Generated {len(self.structures)} transition state candidates ({time_to_string(t_end-self.t_start_run)})\n')
@@ -1347,8 +1381,9 @@ class Docker:
             for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
                 write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - NOT REFINED')
 
-        os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
-        # We don't need the pre-optimized structures anymore
+        if self.options.openbabel_opt:
+            os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
+            # We don't need the pre-optimized structures anymore
 
         self._set_target_distances()
 
@@ -1653,11 +1688,13 @@ class Docker:
                 self.generate_candidates()
 
                 if not self.options.bypass:
-                    self.compenetration_refining()
+                    if not self.embed == 'monomolecular':
+                        self.compenetration_refining()
                     self.similarity_refining(verbose=True)
 
                 if self.options.optimization:
-                    self.openbabel_refining()
+                    if self.options.openbabel_opt:
+                        self.openbabel_refining()
                     self.mopac_refining()
                 else:
                     self.write_unoptimized_structures()
@@ -1710,12 +1747,13 @@ if __name__ == '__main__':
 
     usage = '\n\tTSCoDe correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
 
-    if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
+    # if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
 
-        print(usage)
-        quit()
+    #     print(usage)
+    #     quit()
 
-    filename = os.path.realpath(sys.argv[1])
+    # filename = os.path.realpath(sys.argv[1])
+    filename = r'C:\Users\ehrma\Desktop\Monomolecular\input.txt'
     os.chdir(os.path.dirname(filename))
 
     if len(sys.argv) > 2:

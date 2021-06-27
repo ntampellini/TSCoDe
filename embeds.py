@@ -309,6 +309,12 @@ def cyclical_embed(self):
         # keys are tuples with: ((identifier, pivot.index, target_pivot_length), obtained with:
         # (np.sum(original_mol.atomcoords[0]), pivot.index, threshold)
 
+    if not self.options.let:
+        for mol in self.objects:
+            if len(mol.atomcoords) > 5:
+                mol.atomcoords = mol.atomcoords[0:5]
+                self.log(f'Using only the first 5 conformers of molecule {mol.name} (override with LET keyword)')
+        # Do not keep more than 5 conformations, since the algorithm scales quite fast
 
     pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
     # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
@@ -373,13 +379,14 @@ def cyclical_embed(self):
                     # ase_view(mol)
                     maxval = norms[index-1] + norms[index-2]
 
-                    traj = f'bend_{p}_mol_{i}_tgt_{round(0.9*maxval, 3)}' if self.options.debug else None
+                    traj = f'bend_{mol.name}_p{p}_tgt_{round(0.9*maxval, 3)}' if self.options.debug else None
 
                     bent_mol = ase_bend(self,
                                         mol,
                                         pivot,
                                         0.9*maxval,
                                         method=f'{self.options.theory_level}',
+                                        title=f'{mol.rootname} - pivot {p}',
                                         traj=traj
                                         )
 
@@ -447,15 +454,17 @@ def cyclical_embed(self):
                         if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
                         # do not try to bend molecules where the two reactive indices are bonded
 
-                            traj = f'bend_{p}_mol_{i}_tgt_{round(target_length, 3)}' if self.options.debug else None
+                            traj = f'bend_{mol.name}_p{p}_tgt_{round(target_length, 3)}' if self.options.debug else None
 
                             bent_mol = ase_bend(self,
                                                 mol,
                                                 pivots[i],
                                                 target_length,
                                                 method=f'{self.options.theory_level}',
+                                                title=f'{mol.rootname} - pivot {p}',
                                                 traj=traj
                                                 )
+
                             # ase_view(bent_mol)
                             thread_objects[i] = bent_mol
 
@@ -585,3 +594,42 @@ def cyclical_embed(self):
 
     return threads
 
+def monomolecular_embed(self):
+    '''
+    return threads: embeds structures by bending molecules, storing them
+    in self.structures. Algorithm used is the "monomolecular" algorithm (see docs).
+    '''
+
+    assert len(self.objects) == 1
+
+    self.log(f'\n--> Performing monomolecular embed ({self.candidates} candidates)')
+
+    mol = self.objects[0]
+    
+    self.structures = []
+
+    for p, pivot in enumerate(mol.pivots):
+
+        loadbar(p, len(mol.pivots), prefix=f'Bending structures ')
+
+        traj = f'bend_{p}_monomol' if self.options.debug else None
+
+        bent_mol = ase_bend(self,
+                            mol,
+                            pivot,
+                            0.1*np.linalg.norm(pivot.pivot),
+                            method=f'{self.options.theory_level}',
+                            title=f'{mol.rootname} - pivot {p}',
+                            traj=traj,
+                            check=False, # avoid returning the non-bent molecule,
+                                            # even if this means having it scrambled
+                            )
+
+        for conformer in bent_mol.atomcoords:
+            self.structures.append(conformer)
+
+    loadbar(len(mol.pivots), len(mol.pivots), prefix=f'Bending structures ')
+
+    self.structures = np.array(self.structures)
+
+    return

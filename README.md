@@ -173,7 +173,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`KCAL`** - Trim output structures to a given value of relative energy. Syntax: `KCAL=n`, where n can be an integer or float.
 
-- **`LET`** - Overrides safety checks that prevent the program from running too large calculations.
+- **`LET`** - Overrides safety checks that prevent the program from running too large calculations. Also, removes the limit of five conformers for cyclical embeds.
 
 - **`LEVEL`** - Manually set the theory level to be used. Default is PM7 for MOPAC and GFN2-xTB for ORCA. White spaces can be expressed with underscores. Syntax: `LEVEL=B3LYP_def2-TZVP `
 
@@ -187,7 +187,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`NOOPT`** - Skip the optimization steps, directly writing structures to file.
 
-- **`ONLYREFINED`** - Discard structures that do not successfully refine bonding distances.
+- **`ONLYREFINED`** - Discard structures that do not successfully refine bonding distances. Set by default with the `SHRINK` keyword and for monomolecular TSs.
 
 - **`PROCS`** - Manually set the number of cores to be used in a parallel ORCA calculation, overriding the default value in `settings.py`
 

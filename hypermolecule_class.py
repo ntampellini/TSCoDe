@@ -128,9 +128,9 @@ class Hypermolecule:
 
         coordinates = np.array(ccread_object.atomcoords)
 
-        if coordinates.shape[0] > 5:
-            coordinates = coordinates[0:5]
-        # Do not keep more than 5 conformations
+        # if coordinates.shape[0] > 5:
+        #     coordinates = coordinates[0:5]
+        # # Do not keep more than 5 conformations
 
         self.reactive_indexes = np.array(reactive_atoms)
         # alignment_indexes = self._alignment_indexes(ccread_object.atomcoords[0], ccread_object.atomnos, self.reactive_indexes)

@@ -17,7 +17,13 @@ GNU General Public License for more details.
 
 import numpy as np
 from parameters import orb_dim_dict
-from utils import pt, norm, rot_mat_from_pointer, vec_angle
+from utils import (
+                   pt,
+                   neighbors,
+                   norm,
+                   rot_mat_from_pointer,
+                   vec_angle
+                )
 
 
 class Single:
@@ -34,8 +40,7 @@ class Single:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
+        neighbors_indexes = neighbors(mol.graph, i)
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
@@ -69,8 +74,8 @@ class Sp2:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
+        neighbors_indexes = neighbors(mol.graph, i)
+        
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
@@ -112,8 +117,8 @@ class Sp3:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
+        neighbors_indexes = neighbors(mol.graph, i)
+        
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
@@ -221,8 +226,8 @@ class Ether:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
+        neighbors_indexes = neighbors(mol.graph, i)
+        
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
@@ -264,8 +269,8 @@ class Ketone:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
+        neighbors_indexes = neighbors(mol.graph, i)
+        
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
@@ -283,27 +288,26 @@ class Ketone:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
-            neighbors_of_neighbor_indexes = list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys())
+            neighbors_of_neighbor_indexes = neighbors(mol.graph, neighbors_indexes[0])
             neighbors_of_neighbor_indexes.remove(i)
-            neighbors_of_neighbor_indexes.remove(neighbors_indexes[0])
 
             self.vector = norm(self.vector)*orb_dim
 
             if len(neighbors_of_neighbor_indexes) == 2:
-            # if it is a normal ketone (or an enolate), orbitals must be coplanar with
-            # atoms connecting to ketone C atom.
+            # if it is a normal ketone (or an enolate), n orbital lobes must be coplanar with
+            # atoms connecting to ketone C atom. Then, also p lobes are added.
 
                 a1 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[0]]
                 a2 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[1]]
                 pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
 
                 self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
+                self.center = np.concatenate((self.center, [pivot*orb_dim], [-pivot*orb_dim]))
 
             elif len(neighbors_of_neighbor_indexes) in (1, 3):
             # ketene or alkoxide
             
-                ketene_sub_indexes = list([(a, b) for a, b in mol.graph.adjacency()][neighbors_of_neighbor_indexes[0]][1].keys())
-                ketene_sub_indexes.remove(neighbors_of_neighbor_indexes[0])
+                ketene_sub_indexes = neighbors(mol.graph, neighbors_of_neighbor_indexes[0])
                 ketene_sub_indexes.remove(neighbors_indexes[0])
 
                 ketene_sub_coords = mol.atomcoords[atomcoords_index][ketene_sub_indexes[0]]
@@ -340,8 +344,8 @@ class Imine:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
+        neighbors_indexes = neighbors(mol.graph, i)
+        
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
@@ -384,8 +388,8 @@ class Sp_or_carbene:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = list([(a, b) for a, b in mol.graph.adjacency()][i][1].keys())
-        neighbors_indexes.remove(i)
+        neighbors_indexes = neighbors(mol.graph, i)
+        
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
 
         self.coord = mol.atomcoords[atomcoords_index][i]
@@ -407,13 +411,11 @@ class Sp_or_carbene:
         self.ketene = False
         if self.type == 'sp' and all([s == 'C' for s in self.neighbors_symbols]):
 
-            neighbors_of_neighbors_indexes = (list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys()),
-                                              list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[1]][1].keys()))
+            neighbors_of_neighbors_indexes = (neighbors(mol.graph, neighbors_indexes[0]),
+                                              neighbors(mol.graph, neighbors_indexes[1]))
 
             neighbors_of_neighbors_indexes[0].remove(i)
             neighbors_of_neighbors_indexes[1].remove(i)
-            neighbors_of_neighbors_indexes[0].remove(neighbors_indexes[0])
-            neighbors_of_neighbors_indexes[1].remove(neighbors_indexes[1])
 
             if (len(side1) == len(side2) == 2 for side1, side2 in neighbors_of_neighbors_indexes):
                 self.allene = True
@@ -422,13 +424,11 @@ class Sp_or_carbene:
 
             self.ketene = True
 
-            neighbors_of_neighbors_indexes = (list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[0]][1].keys()),
-                                              list([(a, b) for a, b in mol.graph.adjacency()][neighbors_indexes[1]][1].keys()))
+            neighbors_of_neighbors_indexes = (neighbors(mol.graph, neighbors_indexes[0]),
+                                              neighbors(mol.graph, neighbors_indexes[1]))
 
             neighbors_of_neighbors_indexes[0].remove(i)
             neighbors_of_neighbors_indexes[1].remove(i)
-            neighbors_of_neighbors_indexes[0].remove(neighbors_indexes[0])
-            neighbors_of_neighbors_indexes[1].remove(neighbors_indexes[1])
                 
             if len(neighbors_of_neighbors_indexes[0]) == 2:
                 substituent = mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[0][0]]
@@ -500,9 +500,50 @@ class Sp_or_carbene:
                 # three vectors defining the position of the two p lobes and main sp2 lobe centers
 
 
+class Metal:
+    '''
+    '''
+
+    def __init__(self):
+        pass
+
+    def __repr__(self):
+        return 'Metal'
+
+    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+        '''
+        '''
+        self.index = i
+        self.symbol = pt[mol.atomnos[i]].symbol
+        neighbors_indexes = neighbors(mol.graph, i)
+        
+
+
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.coord = mol.atomcoords[atomcoords_index][i]
+        self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+
+        self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
+
+        v1 = self.vectors[0]
+
+        neighbor_of_neighbor_index = neighbors(mol.graph, neighbors_indexes[0])[0]
+        v2 = mol.atomcoords[atomcoords_index][neighbor_of_neighbor_index] - self.coord
+
+        self.orb_vec = norm(rot_mat_from_pointer(np.cross(v1, v2), 120) @ v1)
+
+        steps = 4
+        self.orb_vecs = np.array([rot_mat_from_pointer(v1, angle) @ self.orb_vec for angle in range(0,360,int(360/steps))])
+
+        if update:
+            if orb_dim is None:
+                orb_dim = orb_dim_dict[str(self)]
+            
+            self.center = (self.orb_vecs * orb_dim) + self.coord
+
 # class Sigma_bond: # when the nucleophile is a sigma bond!
 
-
+# Keys are made of atom symbol and number of bonds that it makes
 atom_type_dict = {
             'H1' : Single(),
 
@@ -538,3 +579,20 @@ atom_type_dict = {
             'I1' : Single(),
              }
 
+metals = (
+    'Li',
+    'Na',
+    'Mg',
+    'K',
+    'Ca',
+    'Rb',
+    'Sr',
+    'Cs',
+    'Ba',
+    'Zn',
+)
+
+for metal in metals:
+    for bonds in range(1,9):
+        bonds = str(bonds)
+        atom_type_dict[metal+bonds] = Metal()

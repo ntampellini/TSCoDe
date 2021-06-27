@@ -16,6 +16,7 @@ GNU General Public License for more details.
 '''
 
 import os
+import time
 import itertools as it
 from copy import deepcopy
 from subprocess import DEVNULL, STDOUT, check_call
@@ -29,6 +30,7 @@ from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
+from ase.constraints import FixInternals
 from scipy.spatial.transform import Rotation as R
 
 from settings import MOPAC_COMMAND, ORCA_COMMAND, ORCA_PROCS
@@ -39,9 +41,13 @@ from utils import (
                    clean_directory,
                    diagonalize,
                    dihedral,
+                   findPaths,
+                   get_double_bonds_indexes,
                    kronecker_delta,
+                   neighbors,
                    norm,
                    pt,
+                   time_to_string,
                    )
 
 class MopacReadError(Exception):
@@ -927,17 +933,17 @@ class OrbitalSpring:
         # spring_force = np.clip(spring_force, -5, 5)
         # force is clipped at 5 eV/A
 
+        force_direction1 = np.sign(spring_force) * norm(np.mean((norm(+orb_direction),
+                                                                    norm(self.orb1-atoms.positions[self.i1])), axis=0))
+
+        force_direction2 = np.sign(spring_force) * norm(np.mean((norm(-orb_direction),
+                                                                    norm(self.orb2-atoms.positions[self.i2])), axis=0))
+
+        # versors specifying the direction at which forces act, that is on the
+        # bisector of the angle between vector connecting atom to orbital and
+        # vector connecting the two orbitals
+
         if np.abs(sum_of_distances - reactive_atoms_distance) > 0.2:
-
-            force_direction1 = np.sign(spring_force) * norm(np.mean((norm(+orb_direction),
-                                                                     norm(self.orb1-atoms.positions[self.i1])), axis=0))
-
-            force_direction2 = np.sign(spring_force) * norm(np.mean((norm(-orb_direction),
-                                                                     norm(self.orb2-atoms.positions[self.i2])), axis=0))
-
-            # versors specifying the direction at which forces act, that is on the
-            # bisector of the angle between vector connecting atom to orbital and
-            # vector connecting the two orbitals
 
             forces[self.i1] += (force_direction1 * spring_force)
             forces[self.i2] += (force_direction2 * spring_force)
@@ -953,7 +959,47 @@ class OrbitalSpring:
         for i in self.neighbors_of_2:
             forces[i] += norm(np.cross(torque2, atoms.positions[i] - atoms.positions[self.i2])) * spring_force
 
-def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp', traj=None):
+def PreventScramblingConstraint(graph, atoms, double_bond_protection=False):
+    '''
+    graph: NetworkX graph of the molecule
+    atoms: ASE atoms object
+
+    return: FixInternals constraint to apply to ASE calculations
+    '''
+
+    allpaths = []
+
+    for node in graph:
+        allpaths.extend(findPaths(graph, node, 2))
+
+    allpaths = {tuple(sorted(path)) for path in allpaths}
+
+    angles_deg = []
+    for path in allpaths:
+        angles_deg.append([atoms.get_angle(*path), list(path)])
+
+    bonds = []
+    for bond in [[a, b] for a, b in graph.edges if a != b]:
+        bonds.append([atoms.get_distance(*bond), bond])
+
+    dihedrals_deg = None
+    if double_bond_protection:
+        double_bonds = get_double_bonds_indexes(atoms.positions, atoms.get_atomic_numbers())
+        if double_bonds != []:
+            dihedrals_deg = []
+            for a, b in double_bonds:
+                n_a = neighbors(graph, a)
+                n_a.remove(b)
+
+                n_b = neighbors(graph, b)
+                n_b.remove(a)
+
+                d = [n_a[0], a, b, n_b[0]]
+                dihedrals_deg.append([atoms.get_dihedral(*d), d])
+
+    return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
+
+def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp', traj=None, check=True):
     '''
     threshold: float (A)
     '''
@@ -962,20 +1008,15 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
 
     try:
         return docker.ase_bent_mols_dict[(identifier, pivot.index, round(threshold, 3))]
-    except KeyError:
+    except (KeyError, AttributeError):
+        # ignore structure cacheing either if we do not already have
+        # this structure (KeyError) or we never set up the bent mols dict
         pass
 
     if traj is not None:
 
         from ase.io.trajectory import Trajectory
         from optimization_methods import write_xyz
-
-        def write_xyz_orb(atoms, orbitals):
-            positions = np.concatenate((atoms.positions, orbitals))
-            symbols = np.concatenate((atoms.numbers, [2 for _ in range(len(orbitals))]))
-            
-            with open(traj, 'a') as f:
-                write_xyz(positions, symbols, f)
 
         def orbitalized(atoms, orbitals, pivot=None):
             positions = np.concatenate((atoms.positions, orbitals))
@@ -997,42 +1038,46 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
         except FileNotFoundError:
             pass
 
-    mol = deepcopy(original_mol)
+    i1, i2 = original_mol.reactive_indexes
 
-    i1, i2 = mol.reactive_indexes
-
-    neighbors_of_1 = list([(a, b) for a, b in mol.graph.adjacency()][i1][1].keys())
+    neighbors_of_1 = list([(a, b) for a, b in original_mol.graph.adjacency()][i1][1].keys())
     neighbors_of_1.remove(i1)
 
-    neighbors_of_2 = list([(a, b) for a, b in mol.graph.adjacency()][i2][1].keys())
+    neighbors_of_2 = list([(a, b) for a, b in original_mol.graph.adjacency()][i2][1].keys())
     neighbors_of_2.remove(i2)
 
-    for p in mol.pivots:
-        if p.index == pivot.index:
-            active_pivot = p
-            break
-    
-    dist = np.linalg.norm(active_pivot.pivot)
+    mols = [deepcopy(original_mol) for _ in range(len(original_mol.atomcoords))]
+    for m, mol in enumerate(mols):
+        mol.atomcoords = np.array([mol.atomcoords[m]])
 
-    for conf in range(len(mol.atomcoords)):
+    final_mol = deepcopy(original_mol)
 
-        atoms = Atoms(mol.atomnos, positions=mol.atomcoords[conf])
+    for conf, mol in enumerate(mols):
+
+        for p in mol.pivots:
+            if p.index == pivot.index:
+                active_pivot = p
+                break
+        
+        dist = np.linalg.norm(active_pivot.pivot)
+
+        atoms = Atoms(mol.atomnos, positions=mol.atomcoords[0])
         
         if docker.options.calculator == 'MOPAC':
-            atoms.calc = MOPAC(label=title,
-                               command=f'{MOPAC_COMMAND} {title}.mop > {title}.cmdlog 2>&1',
+            atoms.calc = MOPAC(label='temp',
+                               command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1',
                                method=method)
 
         else: # == 'ORCA'
             if ORCA_PROCS > 1:
                 orcablocks = f'%pal nprocs {ORCA_PROCS} end'
                 atoms.calc = ORCA(label='temp',
-                                  command=f'{ORCA_COMMAND} {title}.inp > {title}.out 2>&1',
+                                  command=f'{ORCA_COMMAND} temp.inp > temp.out 2>&1',
                                   orcasimpleinput=method,
                                   orcablocks=orcablocks)
             else:
                 atoms.calc = ORCA(label='temp',
-                                  command=f'{ORCA_COMMAND} {title}.inp > {title}.out 2>&1',
+                                  command=f'{ORCA_COMMAND} temp.inp > temp.out 2>&1',
                                   orcasimpleinput=method)
 
         if traj is not None:
@@ -1041,23 +1086,35 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
         unproductive_iterations = 0
+        break_reason = 'MAX ITER'
+        t_start = time.time()
 
-        for iteration in range(200):
+        for iteration in range(500):
 
-            atoms.positions = mol.atomcoords[conf]
+            atoms.positions = mol.atomcoords[0]
 
             orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict.items()}
 
             orb1, orb2 = active_pivot.start, active_pivot.end
 
-            c = OrbitalSpring(i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq=threshold)
-            atoms.set_constraint(c)
+            c1 = OrbitalSpring(i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq=threshold)
+            c2 = PreventScramblingConstraint(mol.graph, atoms, docker.options.double_bond_protection)
+
+            atoms.set_constraint([
+                                  c1,
+                                  c2,
+                                  ])
 
             opt = BFGS(atoms, maxstep=0.2, logfile=None,
                        trajectory=None
                       )
 
-            opt.run(fmax=0.5, steps=1)
+            try:
+                opt.run(fmax=0.5, steps=1)
+            except ValueError:
+                # Shake did not converge
+                break_reason = 'CRASHED'
+                break
 
             if traj is not None:
                 traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
@@ -1065,20 +1122,21 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
                 # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
             # check if we are stuck
-            if np.max(np.abs(np.linalg.norm(atoms.get_positions() - mol.atomcoords[conf], axis=1))) < 0.1:
+            if np.max(np.abs(np.linalg.norm(atoms.get_positions() - mol.atomcoords[0], axis=1))) < 0.01:
                 unproductive_iterations += 1
 
                 if unproductive_iterations == 5:
+                    break_reason = 'STUCK'
                     break
 
             else:
                 unproductive_iterations = 0
 
-            mol.atomcoords[conf] = atoms.get_positions()
+            mol.atomcoords[0] = atoms.get_positions()
 
             # Update orbitals and get temp pivots
             for index, atom in mol.reactive_atoms_classes_dict.items():
-                atom.init(mol, index, update=True, orb_dim=orb_memo[index], atomcoords_index=conf)
+                atom.init(mol, index, update=True, orb_dim=orb_memo[index])
                 # orbitals positions are calculated based on the conformer we are working on
 
             temp_pivots = docker._get_pivots(mol)
@@ -1093,24 +1151,28 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             # print(f'{iteration}. {mol.name} conf {conf}: pivot is {round(dist, 3)} (target {round(threshold, 3)})')
 
             if abs(dist - threshold) < 0.1:
+                break_reason = 'CONVERGED'
                 break
             # else:
                 # print('delta is ', round(dist - threshold, 3))
 
-        # print(iteration)
+        docker.log(f'    {title} - conformer {conf} - {break_reason} ({iteration} iterations, {time_to_string(time.time()-t_start)})', p=False)
 
-        if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[conf], mol.atomnos, max_newbonds=1):
-            mol.atomcoords[conf] = original_mol.atomcoords[conf]
-        # keep the bent structures only if no scrambling occurred between atoms
+        if check:
+            if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[0], mol.atomnos, max_newbonds=1):
+                mol.atomcoords[0] = original_mol.atomcoords[conf]
+            # keep the bent structures only if no scrambling occurred between atoms
+
+        final_mol.atomcoords[conf] = mol.atomcoords[0]
 
     # Now align the ensembles on the new reactive atoms positions
 
-    reference, *targets = mol.atomcoords
+    reference, *targets = final_mol.atomcoords
     reference = np.array(reference)
     targets = np.array(targets)
 
-    r = reference - np.mean(reference[mol.reactive_indexes], axis=0)
-    ts = np.array([t - np.mean(t[mol.reactive_indexes], axis=0) for t in targets])
+    r = reference - np.mean(reference[final_mol.reactive_indexes], axis=0)
+    ts = np.array([t - np.mean(t[final_mol.reactive_indexes], axis=0) for t in targets])
 
     output = []
     output.append(r)
@@ -1118,18 +1180,19 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
         matrix = kabsch(r, target)
         output.append([matrix @ vector for vector in target])
 
-    mol.atomcoords = np.array(output)
+    final_mol.atomcoords = np.array(output)
 
     # Update orbitals and pivots
-    for index, atom in mol.reactive_atoms_classes_dict.items():
-        atom.init(mol, index, update=True, orb_dim=orb_memo[index])
+    for index, atom in final_mol.reactive_atoms_classes_dict.items():
+        atom.init(final_mol, index, update=True, orb_dim=orb_memo[index])
 
-    docker._set_pivots(mol)
+    docker._set_pivots(final_mol)
 
-    # add result to cache so we avoid recomputing it
-    docker.ase_bent_mols_dict[(identifier, pivot.index, round(threshold, 3))] = mol
+    # add result to cache (if we have it) so we avoid recomputing it
+    if hasattr(docker, "ase_bent_mols_dict"):
+        docker.ase_bent_mols_dict[(identifier, pivot.index, round(threshold, 3))] = final_mol
 
-    return mol
+    return final_mol
 
 def get_inertia_moments(coords, atomnos):
     '''
@@ -1168,25 +1231,25 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
             delta = np.abs(im_i - im_j)
             mat[i,j] = 1 if np.all(delta < max_delta) else 0
 
-        where = np.where(mat == 1)
-        matches = [(i,j) for i,j in zip(where[0], where[1])]
+    where = np.where(mat == 1)
+    matches = [(i,j) for i,j in zip(where[0], where[1])]
 
-        g = nx.Graph(matches)
+    g = nx.Graph(matches)
 
-        subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
-        groups = [tuple(graph.nodes) for graph in subgraphs]
+    subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+    groups = [tuple(graph.nodes) for graph in subgraphs]
 
-        best_of_cluster = [group[0] for group in groups]
+    best_of_cluster = [group[0] for group in groups]
 
-        rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
-        rejects = []
-        for s in rejects_sets:
-            for i in s:
-                rejects.append(i)
+    rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+    rejects = []
+    for s in rejects_sets:
+        for i in s:
+            rejects.append(i)
 
-        mask = np.array([True for _ in range(l)], dtype=bool)
-        for i in rejects:
-            mask[i] = False
+    mask = np.array([True for _ in range(l)], dtype=bool)
+    for i in rejects:
+        mask[i] = False
 
     return structures[mask], mask
 

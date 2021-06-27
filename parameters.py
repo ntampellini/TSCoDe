@@ -45,6 +45,8 @@ orb_dim_dict = {
 
     'C bent carbene' : 1,
 
+    'Metal' : 2.5,
+
     'Fallback' : 1
                 }       
 # Half-lenght of the transition state bonding distance involving a given atom

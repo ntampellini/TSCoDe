@@ -289,3 +289,59 @@ def diagonalize(A):
     B = eigenvectors_of_A[:,abs(eigenvalues_of_A).argsort()]   
     diagonal_matrix= np.dot(np.linalg.inv(B), np.dot(A, B))
     return diagonal_matrix
+
+double_bonds_thresholds_dict = {
+    'CC':1.4,
+    'CN':1.3,
+}
+
+def get_double_bonds_indexes(coords, atomnos):
+    '''
+    Returns a list containing 2-elements lists
+    of indexes involved in any double bond
+    '''
+    mask = (atomnos != 1)
+    numbering = np.arange(len(coords))[mask]
+    coords = coords[mask]
+    atomnos = atomnos[mask]
+    output = []
+
+    for i1 in range(len(coords)):
+        for i2 in range(i1+1, len(coords)):
+            dist = np.linalg.norm(coords[i1] - coords[i2])
+            tag = ''.join(sorted([pt[atomnos[i1]].symbol,
+                                  pt[atomnos[i2]].symbol]))
+            try:
+                threshold = double_bonds_thresholds_dict[tag]
+
+                if dist < threshold:
+                    output.append([numbering[i1], numbering[i2]])
+
+            except KeyError:
+                pass
+
+    return output
+
+def findPaths(G, u, n, excludeSet = None):
+    '''
+    Recursively find all paths of a NetworkX
+    graph G with length = n, starting from node u
+    '''
+    if excludeSet == None:
+        excludeSet = set([u])
+
+    else:
+        excludeSet.add(u)
+
+    if n == 0:
+        return [[u]]
+
+    paths = [[u]+path for neighbor in G.neighbors(u) if neighbor not in excludeSet for path in findPaths(G,neighbor,n-1,excludeSet)]
+    excludeSet.remove(u)
+
+    return paths
+
+def neighbors(graph, index):
+    neighbors = list([(a, b) for a, b in graph.adjacency()][index][1].keys())
+    neighbors.remove(index)
+    return neighbors
