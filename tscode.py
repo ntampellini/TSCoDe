@@ -1762,13 +1762,13 @@ if __name__ == '__main__':
 
     usage = '\n\tTSCoDe correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
 
-    # if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
+    if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
 
-    #     print(usage)
-    #     quit()
+        print(usage)
+        quit()
 
-    # filename = os.path.realpath(sys.argv[1])
-    filename = r'C:\Users\ehrma\Desktop\Monomolecular\input.txt'
+    filename = os.path.realpath(sys.argv[1])
+    
     os.chdir(os.path.dirname(filename))
 
     if len(sys.argv) > 2:
