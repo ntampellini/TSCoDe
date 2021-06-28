@@ -905,7 +905,7 @@ class OrbitalSpring:
     :params neighbors_of_1, neighbors_of_2: lists of indexes for atoms bonded to i1/i2
     :params d_eq: equilibrium target distance between orbital centers
     '''
-    def __init__(self, i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq, k=10):
+    def __init__(self, i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq, k=1000):
         self.i1, self.i2 = i1, i2
         self.orb1, self.orb2 = orb1, orb2
         self.neighbors_of_1, self.neighbors_of_2 = neighbors_of_1, neighbors_of_2
@@ -930,8 +930,8 @@ class OrbitalSpring:
         spring_force = self.k * (np.linalg.norm(orb_direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
-        # spring_force = np.clip(spring_force, -5, 5)
-        # force is clipped at 5 eV/A
+        # spring_force = np.clip(spring_force, -50, 50)
+        # # force is clipped at 5 eV/A
 
         force_direction1 = np.sign(spring_force) * norm(np.mean((norm(+orb_direction),
                                                                     norm(self.orb1-atoms.positions[self.i1])), axis=0))
@@ -949,34 +949,37 @@ class OrbitalSpring:
             forces[self.i2] += (force_direction2 * spring_force)
             # applying harmonic force to each atom, directed toward the other one
 
-        # Now applying to neighbors the force derived by torque, scaled to match the spring_force
+        # Now applying to neighbors the force derived by torque, scaled to match the spring_force,
+        # but only if atomic orbitals are more than two Angstroms apart. This improves convergence.
 
-        torque1 = np.cross(self.orb1 - atoms.positions[self.i1], force_direction1)
-        for i in self.neighbors_of_1:
-            forces[i] += norm(np.cross(torque1, atoms.positions[i] - atoms.positions[self.i1])) * spring_force
+        if np.linalg.norm(orb_direction) > 2:
+            torque1 = np.cross(self.orb1 - atoms.positions[self.i1], force_direction1)
+            for i in self.neighbors_of_1:
+                forces[i] += norm(np.cross(torque1, atoms.positions[i] - atoms.positions[self.i1])) * spring_force
 
-        torque2 = np.cross(self.orb2 - atoms.positions[self.i2], force_direction2)
-        for i in self.neighbors_of_2:
-            forces[i] += norm(np.cross(torque2, atoms.positions[i] - atoms.positions[self.i2])) * spring_force
+            torque2 = np.cross(self.orb2 - atoms.positions[self.i2], force_direction2)
+            for i in self.neighbors_of_2:
+                forces[i] += norm(np.cross(torque2, atoms.positions[i] - atoms.positions[self.i2])) * spring_force
 
-def PreventScramblingConstraint(graph, atoms, double_bond_protection=False):
+def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_angles=False):
     '''
     graph: NetworkX graph of the molecule
     atoms: ASE atoms object
 
     return: FixInternals constraint to apply to ASE calculations
     '''
+    angles_deg = None
+    if fix_angles:
+        allpaths = []
 
-    allpaths = []
+        for node in graph:
+            allpaths.extend(findPaths(graph, node, 2))
 
-    for node in graph:
-        allpaths.extend(findPaths(graph, node, 2))
+        allpaths = {tuple(sorted(path)) for path in allpaths}
 
-    allpaths = {tuple(sorted(path)) for path in allpaths}
-
-    angles_deg = []
-    for path in allpaths:
-        angles_deg.append([atoms.get_angle(*path), list(path)])
+        angles_deg = []
+        for path in allpaths:
+            angles_deg.append([atoms.get_angle(*path), list(path)])
 
     bonds = []
     for bond in [[a, b] for a, b in graph.edges if a != b]:
@@ -1081,7 +1084,7 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
                                   orcasimpleinput=method)
 
         if traj is not None:
-            traj_obj = Trajectory(traj + f'_conf{conf}.traj', mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]), pivot))
+            traj_obj = Trajectory(traj + f'_conf{conf}.traj', mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]), active_pivot))
             traj_obj.write()
             # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
@@ -1098,16 +1101,18 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             orb1, orb2 = active_pivot.start, active_pivot.end
 
             c1 = OrbitalSpring(i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq=threshold)
-            c2 = PreventScramblingConstraint(mol.graph, atoms, docker.options.double_bond_protection)
+
+            c2 = PreventScramblingConstraint(mol.graph,
+                                             atoms,
+                                             double_bond_protection=docker.options.double_bond_protection,
+                                             fix_angles=docker.options.fix_angles_in_deformation)
 
             atoms.set_constraint([
                                   c1,
                                   c2,
                                   ])
 
-            opt = BFGS(atoms, maxstep=0.2, logfile=None,
-                       trajectory=None
-                      )
+            opt = BFGS(atoms, maxstep=0.2, logfile=None, trajectory=None)
 
             try:
                 opt.run(fmax=0.5, steps=1)
@@ -1125,7 +1130,7 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             if np.max(np.abs(np.linalg.norm(atoms.get_positions() - mol.atomcoords[0], axis=1))) < 0.01:
                 unproductive_iterations += 1
 
-                if unproductive_iterations == 5:
+                if unproductive_iterations == 10:
                     break_reason = 'STUCK'
                     break
 
@@ -1156,7 +1161,7 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             # else:
                 # print('delta is ', round(dist - threshold, 3))
 
-        docker.log(f'    {title} - conformer {conf} - {break_reason} ({iteration} iterations, {time_to_string(time.time()-t_start)})', p=False)
+        docker.log(f'    {title} - conformer {conf} - {break_reason}{" "*(9-len(break_reason))} ({iteration+1}{" "*(3-len(str(iteration+1)))} iterations, {time_to_string(time.time()-t_start)})', p=False)
 
         if check:
             if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[0], mol.atomnos, max_newbonds=1):

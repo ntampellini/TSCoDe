@@ -327,7 +327,7 @@ def findPaths(G, u, n, excludeSet = None):
     Recursively find all paths of a NetworkX
     graph G with length = n, starting from node u
     '''
-    if excludeSet == None:
+    if excludeSet is None:
         excludeSet = set([u])
 
     else:

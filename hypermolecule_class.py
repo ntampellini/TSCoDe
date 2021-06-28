@@ -98,7 +98,7 @@ class Hypermolecule:
     def __repr__(self):
         return self.rootname + f' {[str(atom) for atom in self.reactive_atoms_classes_dict.values()]}, ID = {id(self)}'
 
-    def __init__(self, filename, reactive_atoms, debug=False, T=298.15):
+    def __init__(self, filename, reactive_atoms, debug=False):
         '''
         Initializing class properties: reading conformational ensemble file, aligning
         conformers to first and centering them in origin.

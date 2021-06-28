@@ -617,12 +617,13 @@ def monomolecular_embed(self):
         bent_mol = ase_bend(self,
                             mol,
                             pivot,
-                            0.1*np.linalg.norm(pivot.pivot),
+                            1, # bend until we are within 1 A to
+                               # the target distance between atoms
                             method=f'{self.options.theory_level}',
                             title=f'{mol.rootname} - pivot {p}',
                             traj=traj,
                             check=False, # avoid returning the non-bent molecule,
-                                            # even if this means having it scrambled
+                                         # even if this means having it scrambled
                             )
 
         for conformer in bent_mol.atomcoords:
@@ -631,5 +632,3 @@ def monomolecular_embed(self):
     loadbar(len(mol.pivots), len(mol.pivots), prefix=f'Bending structures ')
 
     self.structures = np.array(self.structures)
-
-    return

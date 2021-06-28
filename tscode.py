@@ -137,18 +137,21 @@ class Options:
                                       # in Angstroms. Syntax uses parenthesis and commas:
                                       # `DIST(a=2.345,b=3.67,c=2.1)`
 
-                    'ENANTIOMERS'     # Do not discard enantiomeric structures.
+                    'ENANTIOMERS',    # Do not discard enantiomeric structures.
+
+                    'EZPROT',         # Double bond protection
 
                     'KCAL',           # Trim output structures to a given value of relative energy.
                                       # Syntax: `KCAL=n`, where n can be an integer or float.
                                        
                     'LET',            # Overrides safety checks that prevent the
-                                      # program from running too large calculations.
+                                      # program from running too large calculations,
+                                      # removes the limit of 5 conformers for cyclical embeds
 
                     'LEVEL',          # Manually set the MOPAC theory level to be used,
                                       # default is PM7. Syntax: `LEVEL=PM7`
                                        
-                    'MMFF'            # Use the Merck Molecular Force Field during the
+                    'MMFF',           # Use the Merck Molecular Force Field during the
                                       # OpenBabel pre-optimization (default is UFF).
 
                     'NCI',            # Estimate and print non-covalent interactions present in the generated poses.
@@ -232,6 +235,12 @@ class Options:
     shrink = False
     keep_enantiomers = False
     double_bond_protection = False
+
+    fix_angles_in_deformation = False
+    # not possible to set manually through a keyword.
+    # Monomolecular have it on to prevent scrambling,
+    # but better to leave it off for less severe
+    # deformations (faster convergence)
 
     kcal_thresh = None
     bypass = False
@@ -611,6 +620,9 @@ class Docker:
                     else:
                         raise SyntaxError('\'PROCS\' keyword can only be used with ORCA calculator.')
 
+                if 'EZPROT' in keywords_list:
+                    self.options.double_bond_protection = True
+
 
         except SyntaxError as e:
             raise e
@@ -871,8 +883,11 @@ class Docker:
         if len(self.objects) == 1:
             self.embed = 'monomolecular'
             self._set_pivots(self.objects[0])
-            self.options.only_refined = True
 
+            self.options.only_refined = True
+            self.options.fix_angles_in_deformation = True
+            # These are required: otherwise, extreme bending could scramble molecules
+            
             self.candidates = int(len(self.objects[0].atomcoords))
             self.candidates *= len(self.objects[0].pivots)
 
