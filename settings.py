@@ -50,8 +50,9 @@ ORCA_COMMAND = 'orca.exe'
 GAUSSIAN_COMMAND = 'g09.exe'
 # command with which Gaussian will be called from the command line
 
-PROCS = 4
+PROCS = 1
 # number of processors (cores) to be used by ORCA and/or Gaussian
 
-MEM = '4GB'
-# memory allocated for each job (Gaussian only)
+MEM = '1GB'
+# memory allocated for each job (Gaussian only). If you experience problems
+# in running Gaussian calculation, try setting PROCS to 1 and MEM to '1GB'.
