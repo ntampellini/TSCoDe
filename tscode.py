@@ -33,10 +33,11 @@ from subprocess import check_call, STDOUT, DEVNULL
 
 from settings import (
                       CALCULATOR,
+                      GAUSSIAN_DEFAULT_LEVEL,
                       MOPAC_DEFAULT_LEVEL,
                       OPENBABEL_OPT_BOOL,
                       ORCA_DEFAULT_LEVEL,
-                      ORCA_PROCS,
+                      PROCS,
                       )
 
 if OPENBABEL_OPT_BOOL:
@@ -615,7 +616,7 @@ class Docker:
                     
                     if self.options.calculator == 'ORCA':
                         kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('PROCS')]
-                        self.options.orca_procs = int(kw.split('=')[1])
+                        self.options.PROCS = int(kw.split('=')[1])
 
                     else:
                         raise SyntaxError('\'PROCS\' keyword can only be used with ORCA calculator.')
@@ -993,7 +994,7 @@ class Docker:
         Set up the calculator to be used with default theory levels.
         '''
         # Checking that calculator is specified correctly
-        if self.options.calculator not in ('MOPAC', 'ORCA'):
+        if self.options.calculator not in ('MOPAC', 'ORCA', 'GAUSSIAN'):
             raise SyntaxError(f'\'{self.options.calculator}\' is not a valid calculator. Change its value from the parameters.py file.')
 
         # Setting default theory level if user did not specify it
@@ -1005,13 +1006,16 @@ class Docker:
             elif self.options.calculator == 'ORCA':
                 self.options.theory_level = ORCA_DEFAULT_LEVEL
 
-        # Setting up ORCA parallelization if user did not specify himself
-        if self.options.calculator == 'ORCA' and not hasattr(self.options, 'orca_procs'):
-            self.options.orca_procs = ORCA_PROCS
+            elif self.options.calculator == 'GAUSSIAN':
+                self.options.theory_level = GAUSSIAN_DEFAULT_LEVEL
 
-            if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.orca_procs != 1:
+        # Setting up ORCA parallelization if user did not specify himself
+        if self.options.calculator == 'ORCA' and not hasattr(self.options, 'PROCS'):
+            self.options.PROCS = PROCS
+
+            if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.PROCS != 1:
                 raise Exception(('ORCA does not support parallelization for Semiempirical Methods. '
-                                 'Please change the value of ORCA_PROCS to 1 in parameters.py or '
+                                 'Please change the value of PROCS to 1 in parameters.py or '
                                  'change the theory level.'))
 
     def get_string_constrained_indexes(self, n):

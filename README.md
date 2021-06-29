@@ -178,7 +178,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`LET`** - Overrides safety checks that prevent the program from running too large calculations. Also, removes the limit of five conformers for cyclical embeds.
 
-- **`LEVEL`** - Manually set the theory level to be used. Default is PM7 for MOPAC and GFN2-xTB for ORCA. White spaces can be expressed with underscores. Syntax: `LEVEL=B3LYP_def2-TZVP `
+- **`LEVEL`** - Manually set the theory level to be used. Default is PM7 for MOPAC, PM3 for ORCA and PM6 for Gaussian. White spaces can be expressed with underscores. Be careful to use the syntax of your calculator, as ORCA wants a space between method and basis while Gaussian a forward slash. Syntax: `LEVEL=B3LYP_def2-TZVP`. Standard values can be modified by `settings.py`.
 
 - **`MMFF`** - Use the Merck Molecular Force Field during the OpenBabel pre-optimization (default is UFF).
 
