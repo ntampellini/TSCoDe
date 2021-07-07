@@ -56,7 +56,6 @@ from optimization_methods import (
                                   orca_opt,
                                   prune_enantiomers,
                                   scramble,
-                                  write_xyz,
                                   )
 from utils import (
                    ase_view,
@@ -66,6 +65,7 @@ from utils import (
                    loadbar,
                    suppress_stdout_stderr,
                    time_to_string,
+                   write_xyz,
                    ZeroCandidatesError
                    )
 

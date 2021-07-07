@@ -77,6 +77,20 @@ def clean_directory():
         elif f.startswith('temp_'):
             os.remove(f)
 
+def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
+    '''
+    output is of _io.TextIOWrapper type
+
+    '''
+    assert atomnos.shape[0] == coords.shape[0]
+    assert coords.shape[1] == 3
+    string = ''
+    string += str(len(coords))
+    string += f'\n{title}\n'
+    for i, atom in enumerate(coords):
+        string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
+    output.write(string)
+
 def time_to_string(total_time: float, verbose=False):
     '''
     Converts totaltime (float) to a timestring
@@ -111,6 +125,7 @@ def norm(vec):
 
 def dihedral(p):
     '''
+    Returns dihedral angle in degrees
     Praxeolitic formula: 1 sqrt, 1 cross product
     
     '''
