@@ -26,7 +26,7 @@ from rmsd import kabsch
 from cclib.io import ccread
 from numpy.linalg import LinAlgError
 
-from utils import pt
+from utils import is_sigmatropic, pt
 from reactive_atoms_classes import atom_type_dict
 
 class CCReadError(Exception):
@@ -35,7 +35,7 @@ class CCReadError(Exception):
     the provided filename.
     '''
 
-def align_structures(structures, indexes=None):
+def align_structures(structures:np.array, indexes=None):
     '''
     Aligns molecules of a structure array (shape is (n_structures, n_atoms, 3))
     to the first one, based on the indexes. If not provided, all atoms are used
@@ -98,7 +98,7 @@ class Hypermolecule:
     def __repr__(self):
         return self.rootname + f' {[str(atom) for atom in self.reactive_atoms_classes_dict.values()]}, ID = {id(self)}'
 
-    def __init__(self, filename, reactive_atoms, debug=False):
+    def __init__(self, filename, reactive_atoms, hyper=True, debug=False):
         '''
         Initializing class properties: reading conformational ensemble file, aligning
         conformers to first and centering them in origin.
@@ -106,6 +106,8 @@ class Hypermolecule:
         :params filename:           Input file name. Can be anything, .xyz preferred
         :params reactive_atoms:     Index of atoms that will link during the desired reaction.
                                     May be either int or list of int.
+
+        :params hyper:              bool, whether to calculate orbitals positions
         '''
 
         if not os.path.isfile(filename):
@@ -118,9 +120,14 @@ class Hypermolecule:
         self.rootname = filename.split('.')[0]
         self.name = filename
         self.debug = debug
+        self.hyper = hyper
 
-        if reactive_atoms == ():
+        if len(reactive_atoms) == 0:
             reactive_atoms = self._set_reactive_atoms(filename)
+
+        elif len(reactive_atoms) >= 4:
+            self.hyper = False
+        # Do not compute orbitals for 4 or more reactive atoms
 
         ccread_object = ccread(filename)
         if ccread_object is None:
@@ -139,10 +146,10 @@ class Hypermolecule:
         self.position = np.array([0,0,0], dtype=float)  # used in Docker class
         self.rotation = np.identity(3)                  # used in Docker class - rotation matrix
 
-        assert all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))])     # Checking that ensemble has constant length
+        assert all([len(coordinates[i])==len(coordinates[0]) for i in range(1, len(coordinates))]), 'Ensembles must have constant atom number.'
+        # Checking that ensemble has constant length
         if self.debug:
             print(f'DEBUG--> Initializing object {filename}\nDEBUG--> Found {len(coordinates)} structures with {len(coordinates[0])} atoms')
-
 
         self.centroid = np.sum(np.sum(coordinates, axis=0), axis=0) / (len(coordinates) * len(coordinates[0]))
 
@@ -152,13 +159,17 @@ class Hypermolecule:
         self.atomcoords = coordinates - self.centroid
         self.graph = graphize(self.atomcoords[0], self.atomnos)
         # show_graph(self)
-        self._inspect_reactive_atoms() # sets reactive atoms properties to rotate the ensemble correctly afterwards
 
-        self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
+        if self.hyper:
+            self._inspect_reactive_atoms()
+            # sets reactive atoms properties
 
-        for index, reactive_atom in self.reactive_atoms_classes_dict.items():   
-            reactive_atom.init(self, index, update=True)
-            # update properties into reactive_atom class
+            self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
+            self.sigmatropic = is_sigmatropic(self)
+
+            for index, reactive_atom in self.reactive_atoms_classes_dict.items():   
+                reactive_atom.init(self, index, update=True)
+                # update properties into reactive_atom class
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atomic positions
         
@@ -299,17 +310,15 @@ class Hypermolecule:
 
         hyp_name = self.rootname + '_hypermolecule.xyz'
         with open(hyp_name, 'w') as f:
-            f.write(str(sum([len(atom.center) for atom in self.reactive_atoms_classes_dict.values()]) + len(self.hypermolecule)))
-            f.write(f'\nHypermolecule originated from {self.rootname}\n')
+            f.write(str(sum([len(atom.center) for atom in self.reactive_atoms_classes_dict.values()]) + len(self.atomcoords[0])))
+            f.write(f'\nTSCoDe Hypermolecule for {self.rootname} - reactive indexes {self.reactive_indexes}\n')
             orbs =np.vstack([atom_type.center for atom_type in self.reactive_atoms_classes_dict.values()]).ravel()
             orbs = orbs.reshape((int(len(orbs)/3), 3))
-            for i, atom in enumerate(self.hypermolecule):
-                f.write('%-5s %-8s %-8s %-8s\n' % (pt[self.hypermolecule_atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
+            for i, atom in enumerate(self.atomcoords[0]):
+                f.write('%-5s %-8s %-8s %-8s\n' % (pt[self.atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
             for orb in orbs:
-                f.write('%-5s %-8s %-8s %-8s\n' % ('D', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
+                f.write('%-5s %-8s %-8s %-8s\n' % ('X', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
 
-        
-        print('Written .xyz orbital file -', hyp_name)
 
 if __name__ == '__main__':
     # TESTING PURPOSES

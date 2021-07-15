@@ -632,3 +632,35 @@ def monomolecular_embed(self):
     loadbar(len(mol.pivots), len(mol.pivots), prefix=f'Bending structures ')
 
     self.structures = np.array(self.structures)
+
+def dihedral_embed(self):
+    '''
+    '''
+    from atropisomer_module import ase_torsion_TSs
+    mol = self.objects[0]
+    self.structures, self.energies = [], []
+
+    self.log(f'\n--> {mol.name} - performing a scan of dihedral angle with indices {mol.reactive_indexes}\n')
+
+    for c, coords in enumerate(mol.atomcoords):
+
+        self.log(f'--> Performing Scans and Berny optimizations (conformer {c+1}/{len(mol.atomcoords)})')
+
+        structures, energies = ase_torsion_TSs(coords,
+                                                mol.atomnos,
+                                                mol.reactive_indexes,
+                                                self.options.calculator,
+                                                self.options.theory_level,
+                                                threshold_kcal=self.options.kcal_thresh,
+                                                title=mol.rootname,
+                                                optimization=self.options.optimization,
+                                                logfile=self.logfile,
+                                                bernytraj=mol.rootname + '_berny' if self.options.debug else None,
+                                                plot=True)
+
+        for structure, energy in zip(structures, energies):
+            self.structures.append(structure)
+            self.energies.append(energy)
+
+    self.structures = np.array(self.structures)
+    self.energies = np.array(self.energies)

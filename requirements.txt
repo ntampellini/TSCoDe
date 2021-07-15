@@ -6,3 +6,4 @@ scipy==1.6.3
 rmsd==1.4
 cclib==1.7
 ase==3.21.1
+sella==1.0.0

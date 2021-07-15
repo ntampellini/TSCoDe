@@ -269,8 +269,7 @@ class Ketone:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
-        
+        neighbors_indexes = neighbors(mol.graph, i)       
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
@@ -295,14 +294,19 @@ class Ketone:
 
             if len(neighbors_of_neighbor_indexes) == 2:
             # if it is a normal ketone (or an enolate), n orbital lobes must be coplanar with
-            # atoms connecting to ketone C atom. Then, also p lobes are added.
+            # atoms connecting to ketone C atom, or p lobes must be placed accordingly
 
                 a1 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[0]]
                 a2 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[1]]
                 pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
 
-                self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
-                self.center = np.concatenate((self.center, [pivot*orb_dim], [-pivot*orb_dim]))
+                if mol.sigmatropic:
+                    # two p lobes
+                    self.center = np.concatenate(([pivot*orb_dim], [-pivot*orb_dim]))
+
+                else:
+                    #two n lobes
+                    self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
 
             elif len(neighbors_of_neighbor_indexes) in (1, 3):
             # ketene or alkoxide
@@ -363,12 +367,14 @@ class Imine:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
-            # adding the first lobe (lone pair)
-            self.orb_vecs = np.array([-norm(np.mean([norm(v) for v in self.vectors], axis=0))*orb_dim])
+            if mol.sigmatropic:
+                # two p lobes
+                p_lobe = norm(np.cross(self.vectors[0], self.vectors[1]))*orb_dim
+                self.orb_vecs = np.concatenate(([p_lobe], [-p_lobe]))
 
-            # adding two p lobes
-            p_lobe = norm(np.cross(self.vectors[0], self.vectors[1]))*orb_dim
-            self.orb_vecs = np.concatenate((self.orb_vecs, [p_lobe], [-p_lobe]))
+            else:
+                # lone pair lobe
+                self.orb_vecs = np.array([-norm(np.mean([norm(v) for v in self.vectors], axis=0))*orb_dim])
 
             self.center = self.orb_vecs + self.coord
             # two vectors defining the position of the two orbital lobes centers

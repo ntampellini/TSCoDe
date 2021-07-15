@@ -43,11 +43,13 @@ from settings import (
 if OPENBABEL_OPT_BOOL:
     from optimization_methods import openbabel_opt
 
+from operators import operate
 from parameters import orb_dim_dict
-from embeds import monomolecular_embed, string_embed, cyclical_embed
-from hypermolecule_class import Hypermolecule, align_structures
+from embeds import monomolecular_embed, string_embed, cyclical_embed, dihedral_embed
+from hypermolecule_class import CCReadError, Hypermolecule, align_structures
 from optimization_methods import (
                                   ase_adjust_spacings,
+                                  gaussian_opt,
                                   get_nci,
                                   hyperNEB,
                                   mopac_opt,
@@ -119,6 +121,8 @@ class Options:
     __keywords__ = [
                     'BYPASS',         # Debug keyword. Used to skip all pruning steps and
                                       # directly output all the embedded geometries.
+
+                    'CALC',           # Manually overrides the calculator in "settings.py"
                     
                     'CHECK',          # Visualize the input molecules through the ASE GUI,
                                       # to check orbital positions or reading faults.
@@ -214,8 +218,8 @@ class Options:
     # list of keyword names to be used in the first line of program input
 
     rotation_range = 90
-    rotation_steps = None # This is set later by the _setup() function, based on embed type
-    pruning_thresh = 1
+    rotation_steps = None # Set later by the _setup() function, based on embed type
+    pruning_thresh = None # Set later by the _setup() function, based on embed type/atom number
     rigid = False
     
     max_clashes = 0
@@ -307,36 +311,36 @@ class Docker:
         self.log(s)
 
         self.options = Options()
-        self.objects = [Hypermolecule(name, c_ids) for name, c_ids in self._parse_input(filename)]
+
+        inp = self._parse_input(filename)
+        self.objects = [Hypermolecule(name, c_ids) for name, c_ids in inp]
 
         self.ids = [len(mol.atomnos) for mol in self.objects]
         # used to divide molecules in TSs
 
         for i, mol in enumerate(self.objects):
-            for r_atom in mol.reactive_atoms_classes_dict.values():
-                if i == 0:
-                    r_atom.cumnum = r_atom.index
-                else:
-                    r_atom.cumnum = r_atom.index + sum(self.ids[:i])
+            if mol.hyper:
+                for r_atom in mol.reactive_atoms_classes_dict.values():
+                    if i == 0:
+                        r_atom.cumnum = r_atom.index
+                    else:
+                        r_atom.cumnum = r_atom.index + sum(self.ids[:i])
         # appending to each reactive atom the cumulative
         # number indexing in the TS context
 
         self._read_pairings(filename)
         self._set_options(filename)
+        self._calculator_setup()
+
+        if self.options.debug:
+            for mol in self.objects:
+                if mol.hyper:
+                    mol.write_hypermolecule()
 
         if self.options.check_structures:
-            self.log('--> Structures check requested. Shutting down after last window is closed.\n')
-
-            for mol in self.objects:
-                ase_view(mol)
-            
-            self.logfile.close()
-            os.remove(f'TSCoDe_{self.stamp}.log')
-
-            quit()
+            self._inspect_structures()
 
         self._setup()
-        self._calculator_setup()
 
     def log(self, string='', p=True):
         if p:
@@ -370,119 +374,17 @@ class Docker:
             for line in lines:
                 filename, *reactive_atoms = line.split()
 
-                if len(reactive_atoms) > 2:
-                    raise SyntaxError(f'Too many reactive atoms specified for {filename} ({len(reactive_atoms)})')
+                if len(reactive_atoms) > 4:
+                    s = f'Too many reactive atoms specified for {filename} ({len(reactive_atoms)}).'
+                    raise SyntaxError(s)
 
                 reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
 
-                if 'csearch>' in filename:
-
-                    filename = filename[8:]
-                    self.log(f'--> Performing conformational search and optimization on {filename}')
-
-                    from cclib.io import ccread
-                    from hypermolecule_class import graphize
-                    from networkx import connected_components
-
-                    t_start = time.time()
-
-                    data = ccread(filename)
-
-                    if len(data.atomcoords) > 1:
-                        raise InputError(f'Requested conformational search on file {filename} that already contains more than one structure.')
-
-                    if len(tuple(connected_components(graphize(data.atomcoords[0], data.atomnos)))) > 1:
-                        raise InputError((f'Requested conformational search on a multimolecular file ({filename}). '
-                                           'This is probably a bad idea, as the OpenBabel conformational search '
-                                           'algorithm implemented here is quite basic and is not suited for this '
-                                           'task. A much better idea is to generate conformations for this complex '
-                                           'by a more sophisticated software.'))
-
-                    if len(set(data.atomnos) - {1,6,7,8,9,15,16,17,35,53}) != 0:
-                        raise InputError(('Requested conformational search on a molecule that contains atoms different '
-                                          'than the ones for which OpenBabel Force Field is parametrized. Please consider '
-                                          'performing this conformational search on a different, more sophisticated software.'))
-                                                
-                    confname = filename[:-4] + '_confs.xyz'
-
-                    with suppress_stdout_stderr():
-                        check_call(f'obabel {filename} -O {confname} --confab --rcutoff 1 --original'.split(), stdout=DEVNULL, stderr=STDOUT)
-
-                    data = ccread(confname)
-                    conformers = data.atomcoords
-                    energies = []
-
-                    for i, conformer in enumerate(deepcopy(conformers)):
-                        
-                        if self.options.calculator == 'MOPAC':
-                            opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
-
-                        else: # == 'ORCA'
-                            opt_coords, energy, success = orca_opt(conformer, data.atomnos)
-
-                        if success:
-                            conformers[i] = opt_coords
-                            energies.append(energy)
-
-                        else:
-                            energies.append(np.inf)
-                    # optimize the generated conformers
-
-                    energies = np.array(energies) - np.min(energies)
-                    energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
-                    # sorting structures based on energy
-
-                    os.remove(confname)
-                    with open(confname, 'w') as f:
-                        for i, conformer in enumerate(conformers):
-                            write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
-
-                    filename = confname
-
-                    self.log(f'Completed ({time_to_string(time.time()-t_start)}). Will use the best {min((len(conformers), 5))} conformers for TSCoDe embed.\n')
-
-                if 'opt>' in filename:
-
-                    filename = filename[6:]
-                    self.log(f'--> Performing {self.options.calculator} {self.options.theory_level} optimization optimization on {filename} before running TSCoDe')
-
-                    from cclib.io import ccread
-
-                    t_start = time.time()
-
-                    data = ccread(filename)
-                                                
-                    conformers = data.atomcoords
-                    energies = []
-
-                    for i, conformer in enumerate(deepcopy(conformers)):
-
-                        if self.options.calculator == 'MOPAC':
-                            opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
-
-                        else: # == 'ORCA'
-                            opt_coords, energy, success = orca_opt(conformer, data.atomnos)
-
-                        if success:
-                            conformers[i] = opt_coords
-                            energies.append(energy)
-
-                        else:
-                            energies.append(np.inf)
-                    # optimize the generated conformers
-
-                    energies = np.array(energies) - np.min(energies)
-                    energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
-                    # sorting structures based on energy
-
-                    optname = filename[:-4] + '_opt.xyz'
-                    with open(optname, 'w') as f:
-                        for i, conformer in enumerate(conformers):
-                            write_xyz(conformer, data.atomnos, f, title=f'Optimized conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
-
-                    self.log(f'Completed optimization on {len(conformers)} conformers. ({time_to_string(time.time()-t_start)}). Will use the best {len(conformers)} conformers for TSCoDe embed.\n')
-
-                    filename = optname
+                if '>' in filename:
+                    filename = operate(filename,
+                                        self.options.calculator,
+                                        self.options.theory_level,
+                                        self.log)
 
                 inp.append((filename, reactive_indexes))
 
@@ -624,6 +526,10 @@ class Docker:
                 if 'EZPROT' in keywords_list:
                     self.options.double_bond_protection = True
 
+                if 'CALC' in [k.split('=')[0] for k in keywords_list]:
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('KCAL')]
+                    self.options.calculator = kw.split('=')[1]
+
 
         except SyntaxError as e:
             raise e
@@ -746,13 +652,13 @@ class Docker:
             if len(ids) > 2:
                 raise SyntaxError(f'Letter \'{letter}\' is specified more than two times. Please remove the unwanted letters.')
 
-        if not all([len(mol.reactive_indexes) == 1 for mol in self.objects]): # if not self.embed == 'string', but we that is set afterward by _setup()
-            if self.pairings == []:
-                s = '--> No atom pairings imposed. Computing all possible dispositions.\n'
-            else:
-                s = f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n'
-            self.log(s)
-
+        if self.pairings == []:
+            if all([len(mol.reactive_indexes) == 2 for mol in self.objects]):
+                self.log('--> No atom pairings imposed. Computing all possible dispositions.\n')
+                # if there is multiple regioisomers to be computed
+        else:
+            self.log(f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n')
+        
         if len(lines) == 3:
         # adding third pairing if we have three molecules and user specified two pairings
         # (used to adjust distances for trimolecular TSs)
@@ -882,15 +788,29 @@ class Docker:
         '''
 
         if len(self.objects) == 1:
-            self.embed = 'monomolecular'
-            self._set_pivots(self.objects[0])
 
-            self.options.only_refined = True
-            self.options.fix_angles_in_deformation = True
-            # These are required: otherwise, extreme bending could scramble molecules
-            
-            self.candidates = int(len(self.objects[0].atomcoords))
-            self.candidates *= len(self.objects[0].pivots)
+            if len(self.objects[0].reactive_indexes) == 4:
+                self.embed = 'dihedral'
+                if self.options.kcal_thresh is None:
+                # set to 5 if user did not specify a value
+                    self.options.kcal_thresh = 5
+
+                if self.options.pruning_thresh is None:
+                # set to 0.2 if user did not specify a value
+                    self.options.pruning_thresh = 0.2
+
+                return
+
+            else:
+                self.embed = 'monomolecular'
+                self._set_pivots(self.objects[0])
+
+                self.options.only_refined = True
+                self.options.fix_angles_in_deformation = True
+                # These are required: otherwise, extreme bending could scramble molecules
+                
+                self.candidates = int(len(self.objects[0].atomcoords))
+                self.candidates *= len(self.objects[0].pivots)
 
         elif len(self.objects) in (2,3):
         # Setting embed type and calculating the number of conformation combinations based on embed type
@@ -918,7 +838,8 @@ class Docker:
                 # if user specified a custom value, use it.
                     self.options.rotation_steps = self.options.custom_rotation_steps
 
-                self.systematic_angles = cartesian_product(*[range(self.options.rotation_steps+1) for _ in self.objects]) * 2*self.options.rotation_range/self.options.rotation_steps - self.options.rotation_range
+                self.systematic_angles = cartesian_product(*[range(self.options.rotation_steps+1) for _ in self.objects]) \
+                                         * 2*self.options.rotation_range/self.options.rotation_steps - self.options.rotation_range
 
                 self.candidates = len(self.systematic_angles)*np.prod([len(mol.atomcoords) for mol in self.objects])
                 
@@ -970,10 +891,11 @@ class Docker:
                 
             else:
                 raise InputError(('Bad input - The only molecular configurations accepted are:\n' 
-                                  '1) One molecule with two reactive centers (monomolecular embed)\n' 
-                                  '2) Two or three molecules with two reactive centers each (cyclical embed)\n'
-                                  '3) Two molecules with one reactive center each (string embed)\n'
-                                  '4) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
+                                  '1) One molecule with two reactive centers (monomolecular embed)\n'
+                                  '2) One molecule with four indexes (dihedral embed)\n'
+                                  '3) Two or three molecules with two reactive centers each (cyclical embed)\n'
+                                  '4) Two molecules with one reactive center each (string embed)\n'
+                                  '5) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
         else:
             raise InputError('Bad input - too many molecules specified (three at most).')
 
@@ -982,10 +904,12 @@ class Docker:
                 molecule._scale_orbs(self.options.shrink_multiplier)
             self.options.only_refined = True
 
-        if sum(self.ids) < 50:
-            self.options.pruning_thresh = 0.5
-        # small molecules need smaller RMSD threshold
+        if self.options.pruning_thresh is None:
+            self.options.pruning_thresh = 1
 
+            if sum(self.ids) < 50:
+                self.options.pruning_thresh = 0.5
+            # small molecules need smaller RMSD threshold
 
         self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
@@ -995,7 +919,7 @@ class Docker:
         '''
         # Checking that calculator is specified correctly
         if self.options.calculator not in ('MOPAC', 'ORCA', 'GAUSSIAN'):
-            raise SyntaxError(f'\'{self.options.calculator}\' is not a valid calculator. Change its value from the parameters.py file.')
+            raise SyntaxError(f'\'{self.options.calculator}\' is not a valid calculator. Change its value from the parameters.py file or with the CALC keyword.')
 
         # Setting default theory level if user did not specify it
         if self.options.theory_level is None:
@@ -1009,7 +933,7 @@ class Docker:
             elif self.options.calculator == 'GAUSSIAN':
                 self.options.theory_level = GAUSSIAN_DEFAULT_LEVEL
 
-        # Setting up ORCA parallelization if user did not specify himself
+        # Setting up ORCA parallelization if user did not specify themselves
         if self.options.calculator == 'ORCA' and not hasattr(self.options, 'PROCS'):
             self.options.PROCS = PROCS
 
@@ -1073,10 +997,7 @@ class Docker:
         Called before TS refinement to compute all
         target bonding distances.
 
-        Is this function badly written? Yup.
-        Should i do something more elegant? Yup.
-        Am I satisfied with it working as it is? Probably yup.
-        TODO
+        (This function could be written better, I know. But it works.)
         '''
         self.target_distances = {}
 
@@ -1117,6 +1038,29 @@ class Docker:
 
             self.target_distances[(index1, index2)] = target_dist
 
+    def _inspect_structures(self):
+        '''
+        '''
+
+        self.log('--> Structures check requested. Shutting down after last window is closed.\n')
+
+        for mol in self.objects:
+            ase_view(mol)
+        
+        self.logfile.close()
+        os.remove(f'TSCoDe_{self.stamp}.log')
+
+        quit()
+
+    def apply_mask(self, attributes, mask):
+        '''
+        Applies in-place masking of Docker attributes
+        '''
+        for attr in attributes:
+            if hasattr(self, attr):
+                new_attr = getattr(self, attr)[mask]
+                setattr(self, attr, new_attr)
+
     def scramble(self, array, sequence):
         return np.array([array[s] for s in sequence])
 
@@ -1131,11 +1075,22 @@ class Docker:
 
     def generate_candidates(self):
         '''
-        Generate a series of candidate structures by the proper embed algorithm. Then, structures where
-        atoms compenetrate one into the other and too similar structures are discarded.
+        Generate a series of candidate structures by the proper embed algorithm.
         '''
 
-        if self.embed == 'monomolecular':
+        if self.embed == 'dihedral':
+            dihedral_embed(self)
+            self.atomnos = self.objects[0].atomnos
+
+            if len(self.structures) == 0:
+                s = ('\n--> Dihedral embed did not find any suitable maxima above the set threshold\n'
+                    f'    ({self.options.kcal_thresh} kcal/mol) during the scan procedure. Observe the\n'
+                     '    generated energy plot and try lowering the threshold value (KCAL keyword).')
+                self.log(s)
+                raise ZeroCandidatesError()
+
+
+        elif self.embed == 'monomolecular':
             monomolecular_embed(self)
             self.atomnos = self.objects[0].atomnos
             self.energies = np.zeros(len(self.structures))
@@ -1241,14 +1196,14 @@ class Docker:
         t_start = time.time()
 
         before = len(self.structures)
+        attr = ('constrained_indexes', 'energies', 'exit_status')
 
         for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
             if 5*k < len(self.structures):
                 t_start_int = time.time()
                 self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh, k=k)
-                self.constrained_indexes = self.constrained_indexes[mask]
-                self.exit_status = self.exit_status[mask]
-                self.energies = self.energies[mask]
+
+                self.apply_mask(attr, mask)
                 t_end_int = time.time()
 
                 if verbose:
@@ -1261,9 +1216,7 @@ class Docker:
         if verbose:
             self.log(f'    - similarity final processing (k=1) - {time_to_string(t_end-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
 
-        self.constrained_indexes = self.constrained_indexes[mask]
-        self.energies = self.energies[mask]
-        self.exit_status = self.exit_status[mask]
+        self.apply_mask(attr, mask)
 
         if False in mask:
             self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
@@ -1272,16 +1225,16 @@ class Docker:
 
             t_start = time.time()
             self.structures, mask = prune_enantiomers(self.structures, self.atomnos)
-            self.energies = self.energies[mask]
-            self.exit_status = self.exit_status[mask]
-            self.constrained_indexes = self.constrained_indexes[mask]
+            
+            self.apply_mask(attr, mask)
+
             t_end = time.time()
             
             if False in mask:
                 self.log(f'Discarded {len([b for b in mask if not b])} enantiomeric structures ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
             self.log()
 
-    def openbabel_refining(self):
+    def force_field_refining(self):
         '''
         Performs structural optimizations with the UFF or MMFF force field,
         through the OpenBabel package. Only structures that do not scramble during
@@ -1334,7 +1287,7 @@ class Docker:
                 write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before {self.options.calculator} optimization')
         self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file before {self.options.calculator} optimization.\n')
                         
-    def mopac_refining(self):
+    def optimization_refining(self):
         '''
         Refines structures by constrained optimizations with the MOPAC calculator,
         discarding similar ones and scrambled ones.
@@ -1394,11 +1347,7 @@ class Docker:
 
         self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level} level)')
 
-        # backing up structures before refinement
-        self.outname = f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz'
-        with open(self.outname, 'w') as f:        
-            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - NOT REFINED')
+        self.write_structures('TS_guesses_unrefined', energies=False)
 
         if self.options.openbabel_opt:
             os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
@@ -1486,7 +1435,7 @@ class Docker:
 
         ################################################# XYZ GUESSES OUTPUT 
 
-        self.outname = f'TSCoDe_TSs_guesses_{self.stamp}.xyz'
+        self.outname = f'TSCoDe_TS_guesses_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
             for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
 
@@ -1494,7 +1443,7 @@ class Docker:
 
                 write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
-        os.remove(f'TSCoDe_TSs_guesses_unrefined_{self.stamp}.xyz')
+        os.remove(f'TSCoDe_TS_guesses_unrefined_{self.stamp}.xyz')
         # since we have the refined structures, we can get rid of the unrefined ones
 
         self.log(f'--> Output - Wrote {len(self.structures)} rough TS structures to {self.outname} file.\n')
@@ -1642,30 +1591,42 @@ class Docker:
         '''
         Writes information about the TSCoDe parameters used in the calculation.
         '''
-        head = ''
-        for i, mol in enumerate(self.objects):
-            descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A)' for atom in mol.reactive_atoms_classes_dict.values()]
-            t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
-            head += f'    {i+1}. {mol.name}:\n        {t}\n'
 
-        self.log('--> Input structures, reactive indexes and reactive atoms TSCoDe type and orbital dimensions:\n' + head)
+        if self.embed != 'dihedral':
+
+            head = ''
+            for i, mol in enumerate(self.objects):
+                descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A)' for atom in mol.reactive_atoms_classes_dict.values()]
+                t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
+                head += f'    {i+1}. {mol.name}:\n        {t}\n'
+
+            self.log('--> Input structures, reactive indexes and reactive atoms TSCoDe type and orbital dimensions:\n' + head)
+
         self.log(f'--> Calculation options used were:')
         for line in str(self.options).split('\n'):
-            if self.embed == 'string':
-                if line.split()[0] in ('rotation_range', 'rigid', 'suprafacial'):
-                    continue
+
+            if self.embed in ('monomolecular','string') and line.split()[0] in ('rotation_range', 'rigid', 'suprafacial'):
+                continue
+
+            if self.embed == 'dihedral' and line.split()[0] not in ('optimization', 'calculator','theory_level', 'kcal_thresh', 'debug', 'pruning_thresh'):
+                continue
+            
             self.log(f'    - {line}')
 
-    def write_vmd(self):
+    def write_vmd(self, indexes=None):
         '''
         Write VMD file with bonds and reactive atoms highlighted.
         '''
+
+        if indexes is None:
+            indexes = self.constrained_indexes[0].ravel()
+
         self.vmd_name = self.outname.split('.')[0] + '.vmd'
         path = os.path.join(os.getcwd(), self.vmd_name)
         with open(path, 'w') as f:
             s = ('display resetview\n' +
                 'mol new {%s.xyz}\n' % (path.strip('.vmd')) +
-                'mol selection index %s\n' % (' '.join([str(i) for i in self.constrained_indexes[0].ravel()])) +
+                'mol selection index %s\n' % (' '.join([str(i) for i in indexes])) +
                 'mol representation CPK 0.7 0.5 50 50\n' +
                 'mol color ColorID 7\n' +
                 'mol material Transparent\n' +
@@ -1678,21 +1639,33 @@ class Docker:
 
         self.log(f'--> Output: Wrote VMD {self.vmd_name} file\n')
 
-    def write_unoptimized_structures(self):
+    def write_structures(self, tag, indexes=None, energies=True):
         '''
         '''
-        self.outname = f'TSCoDe_unoptimized_{self.stamp}.xyz'
+
+        if indexes is None:
+            indexes = self.constrained_indexes[0]
+
+        if energies:
+            rel_e = self.energies - np.min(self.energies)
+
+        self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
-            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - Unoptimized')
-        self.log(f'--> Output - Wrote {len(self.structures)} unoptimized TS structures to {self.outname} file.\n')
+            for i, structure in enumerate(align_structures(self.structures, indexes)):
+                title = f'TS candidate {i+1} - {tag}'
+
+                if energies:
+                    title += f' - Rel. E. = {round(rel_e[i], 3)} kcal/mol'
+
+                write_xyz(structure, self.atomnos, f, title=title)
+        self.log(f'--> Output - Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
 
     def run(self):
         '''
         Run the TSCoDe program.
         '''
 
-        if not self.options.let:
+        if not self.options.let and hasattr(self, 'candidates'):
             assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message'
                                            ' and proceed, add the LET keyword to the input file.')
 
@@ -1701,31 +1674,41 @@ class Docker:
             try: # except ZeroCandidatesError() -> quit()
 
                 self.print_header()
-
                 self.t_start_run = time.time()
 
                 self.generate_candidates()
 
-                if not self.options.bypass:
-                    if not self.embed == 'monomolecular':
-                        self.compenetration_refining()
-                    self.similarity_refining(verbose=True)
+                if self.embed == 'dihedral':
+                    self.similarity_refining()
+                    self.write_structures('TS_guesses', indexes=self.objects[0].reactive_indexes)
 
-                if self.options.optimization:
-                    if self.options.openbabel_opt:
-                        self.openbabel_refining()
-                    self.mopac_refining()
                 else:
-                    self.write_unoptimized_structures()
+
+                    if not self.options.bypass:
+
+                        if not self.embed == 'monomolecular':
+                            self.compenetration_refining()
+
+                        self.similarity_refining(verbose=True)
+
+                    if self.options.optimization:
+
+                        if self.options.openbabel_opt:
+                            self.force_field_refining()
+
+                        self.optimization_refining()
+
+                    else:
+                        self.write_structures('unoptimized', energies=False)
 
 
             except ZeroCandidatesError:
                 t_end_run = time.time()
-                s = ('Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes and pairings were correct? If so, try these tips:\n'
-                        '    - If no structure passes the compenetration check, the SHRINK keyword may help (see documentation).\n'
-                        '    - Similarly, enlarging the spacing between atom pairs with the DIST keyword facilitates the embed.\n'
-                        '    - Impose less strict compenetration rejection criteria with the CLASHES keyword.\n'
-                        '    - Generate more structures with higher STEPS and ROTRANGE values.\n'
+                s = ('    Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes and pairings were correct? If so, try these tips:\n'
+                     '    - If no structure passes the compenetration check, the SHRINK keyword may help (see documentation).\n'
+                     '    - Similarly, enlarging the spacing between atom pairs with the DIST keyword facilitates the embed.\n'
+                     '    - Impose less strict compenetration rejection criteria with the CLASHES keyword.\n'
+                     '    - Generate more structures with higher STEPS and ROTRANGE values.\n'
                 )
 
                 self.log(f'\n--> Program termination: No candidates found - Total time {time_to_string(t_end_run-self.t_start_run)}')
@@ -1733,14 +1716,19 @@ class Docker:
                 clean_directory()
                 quit()
 
-            if self.options.neb:
-                self.hyperneb()
-                
-            if self.options.nci and self.options.optimization:
-                self.print_nci()
+            ##################### POST TSCODE - NEB, NCI, VMD
 
             if not self.options.bypass:
-                self.write_vmd()
+                indexes = self.objects[0].reactive_indexes if self.embed == 'dihedral' else None
+                self.write_vmd(indexes=indexes)
+
+            if self.embed != 'dihedral':
+
+                if self.options.neb:
+                    self.hyperneb()
+                    
+                if self.options.nci and self.options.optimization:
+                    self.print_nci()
             
             clean_directory()
             t_end_run = time.time()
@@ -1750,9 +1738,9 @@ class Docker:
 
             #### EXTRA
             
-            if self.options.debug:
-                path = os.path.join(os.getcwd(), self.vmd_name)
-                check_call(f'vmd -e {path}'.split())
+            # if self.options.debug:
+            #     path = os.path.join(os.getcwd(), self.vmd_name)
+            #     check_call(f'vmd -e {path}'.split())
 
             ################################################
 

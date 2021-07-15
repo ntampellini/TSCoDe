@@ -15,8 +15,9 @@ GNU General Public License for more details.
 
 '''
 
-import os
+import os, sys
 import numpy as np
+import networkx as nx
 from scipy.spatial.transform import Rotation as R
 from periodictable import core, covalent_radius, mass
 pt = core.PeriodicTable(table="H=1")
@@ -51,6 +52,15 @@ class suppress_stdout_stderr(object):
         # Close all file descriptors
         for fd in self.null_fds + self.save_fds:
             os.close(fd)
+
+class HiddenPrints:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
 
 class ZeroCandidatesError(Exception):
     '''
@@ -277,14 +287,18 @@ def ase_view(mol):
     from ase.gui.gui import GUI
     from ase.gui.images import Images
 
-    centers = np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])
-    atomnos = np.concatenate((mol.atomnos, [0 for _ in centers]))
-    images = []
-    for coords in mol.atomcoords:
+    if mol.hyper:
+        centers = np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])
+        atomnos = np.concatenate((mol.atomnos, [0 for _ in centers]))
+        images = []
 
-        totalcoords = np.concatenate((coords, centers))
-        images.append(Atoms(atomnos, positions=totalcoords))
-    
+        for coords in mol.atomcoords:
+            totalcoords = np.concatenate((coords, centers))
+            images.append(Atoms(atomnos, positions=totalcoords))
+
+    else:
+        images = [Atoms(mol.atomnos, positions=coords) for coords in mol.atomcoords]
+        
     GUI(images=Images(images), show_bonds=True).run()
 
 def center_of_mass(coords, atomnos):
@@ -360,3 +374,44 @@ def neighbors(graph, index):
     neighbors = list([(a, b) for a, b in graph.adjacency()][index][1].keys())
     neighbors.remove(index)
     return neighbors
+
+def is_sigmatropic(mol):
+    '''
+    An hypermolecule is considered sigmatropic when:
+    - has 2 reactive atoms
+    - they are of sp2 or analogous types
+    - they are connected, or at least one path connecting them
+      is made up of atoms that do not make more than three bonds each
+    - they are less than 3 A apart (cisoid propenal makes it, transoid do not)
+
+    Used to set the mol.sigmatropic attribute, that affects orbital
+    building (p or n lobes) for Ketone and Imine reactive atoms classes.
+    '''
+    sp2_types = (
+                'Ketone',
+                'Imine',
+                'sp2',
+                'sp',
+                'bent carbene'
+                )
+    if len(mol.reactive_indexes) == 2:
+
+        i1, i2 = mol.reactive_indexes
+        if np.linalg.norm(mol.atomcoords[0][i1] - mol.atomcoords[0][i2]) < 3:
+
+            if all([str(r_atom) in sp2_types for r_atom in mol.reactive_atoms_classes_dict.values()]):
+
+                paths = nx.all_simple_paths(mol.graph, i1, i2)
+
+                for path in paths:
+                    path = path[1:-1]
+
+                    full_sp2 = True
+                    for index in path:
+                        if len(neighbors(mol.graph, index))-2 > 1:
+                            full_sp2 = False
+                            break
+
+                    if full_sp2:
+                        return True
+    return False

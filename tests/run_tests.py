@@ -8,7 +8,7 @@ os.chdir(os.path.dirname(os.getcwd()))
 import sys
 sys.path.append(os.getcwd())
 
-from parameters import MOPAC_COMMAND
+from settings import MOPAC_COMMAND, ORCA_COMMAND, CALCULATOR
 from utils import time_to_string
 
 
@@ -20,8 +20,16 @@ t_start_run = time.time()
 
 ##########################################################################
 
-check_call(f'{MOPAC_COMMAND} HCOOH.mop > HCOOH.cmdlog 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
+if CALCULATOR == 'MOPAC':
+    check_call(f'{MOPAC_COMMAND} HCOOH.mop > HCOOH.cmdlog 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
     
+# elif CALCULATOR == 'ORCA':
+#     check_call(f'{ORCA_COMMAND} HCOOH.mop > HCOOH.cmdlog 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
+
+else:
+    print()
+    quit()
+
 ##########################################################################
 
 try:

@@ -49,6 +49,7 @@ from utils import (
                    norm,
                    pt,
                    time_to_string,
+                   write_xyz
                    )
 
 class MopacReadError(Exception):
@@ -1228,7 +1229,7 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             dist = np.linalg.norm(active_pivot.pivot)
             # print(f'{iteration}. {mol.name} conf {conf}: pivot is {round(dist, 3)} (target {round(threshold, 3)})')
 
-            if abs(dist - threshold) < 0.1:
+            if dist - threshold < 0.1:
                 break_reason = 'CONVERGED'
                 break
             # else:

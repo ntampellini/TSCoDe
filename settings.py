@@ -20,9 +20,9 @@ OPENBABEL_OPT_BOOL = False
 # Openbabel prior to the MOPAC semiempirical one.
 # (set to False if no Openbabel Python bindings are available)
 
-# CALCULATOR = 'MOPAC'
+CALCULATOR = 'MOPAC'
 # CALCULATOR = 'ORCA'
-CALCULATOR = 'GAUSSIAN'
+# CALCULATOR = 'GAUSSIAN'
 
 # Calculator used to run geometry optimization.
 # Possibilites are:
