@@ -131,8 +131,8 @@ Best transition state arrangement found by TSCoDe for the above trimolecular inp
     atropisomer.xyz 1 2 9 10
 
 <p align="center">
-<img src="images/atropo.png" alt="Example output structure" class="center" height="260"/>
-<img src="images/plot.svg" alt="Example plot" class="center" height="330"/>
+<img src="images/atropo.png" alt="Example output structure" class="center" height="250"/>
+<img src="images/plot.svg" alt="Example plot" class="center" height="300"/>
 </p>
 
 <p align="center"><i>
@@ -158,7 +158,7 @@ Reactive atoms supported include various hybridations of `C, H, O, N, P, S, F, C
 - **cyclical** embed (trimolecular) - Three molecules, two reactive atoms each (*i.e.* reactions where two partners are bridged by a carboxylic acid like the example above)
 
 <p align="center">
-<img src="images/embeds.svg" alt="Embeds Infographic" class="center" width="500"/>
+<img src="images/embeds.svg" alt="Embeds Infographic" class="center" width="700"/>
 <p align="center"><i>
 Colored dots represent imposed atom pairings. Note that monomolecular embeds only support two reactive atoms at the moment (feature requests are encouraged).
 </i></p>
