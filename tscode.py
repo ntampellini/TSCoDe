@@ -924,7 +924,7 @@ class Docker:
                 self.options.theory_level = GAUSSIAN_DEFAULT_LEVEL
 
         # Setting up procs number from settings if user did not specify another value
-        if self.options.procs == None:
+        if self.options.procs is None:
             self.options.procs = PROCS
 
             if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.PROCS != 1:
