@@ -26,21 +26,21 @@ from cclib.io import ccread
 from hypermolecule_class import graphize
 from networkx import connected_components
 
-def operate(input_string, calculator, theory_level, logfunction=None):
+def operate(input_string, calculator, theory_level, procs=1, logfunction=None):
     '''
     '''
     
     filename = input_string.split('>')[-1]
 
     if 'csearch>' in input_string:
-        outname = csearch_operator(filename, calculator, theory_level, logfunction)
+        outname = csearch_operator(filename, calculator, theory_level, procs=procs, logfunction=logfunction)
 
     elif 'opt>' in input_string:
-        outname = opt_operator(filename, calculator, theory_level, logfunction)
+        outname = opt_operator(filename, calculator, theory_level, procs=procs, logfunction=logfunction)
 
     return outname
 
-def csearch_operator(filename, calculator, theory_level, logfunction=None):
+def csearch_operator(filename, calculator, theory_level, procs=1, logfunction=None):
     '''
     '''
 
@@ -81,10 +81,10 @@ def csearch_operator(filename, calculator, theory_level, logfunction=None):
             opt_coords, energy, success = mopac_opt(conformer, data.atomnos, method=theory_level)
 
         elif calculator == 'ORCA':
-            opt_coords, energy, success = orca_opt(conformer, data.atomnos, method=theory_level)
+            opt_coords, energy, success = orca_opt(conformer, data.atomnos, method=theory_level, procs=procs)
 
         else: # == 'GAUSSIAN'
-            opt_coords, energy, success = gaussian_opt(conformer, data.atomnos, method=theory_level)
+            opt_coords, energy, success = gaussian_opt(conformer, data.atomnos, method=theory_level, procs=procs)
 
         if success:
             conformers[i] = opt_coords
@@ -114,7 +114,7 @@ def csearch_operator(filename, calculator, theory_level, logfunction=None):
 
     return confname
 
-def opt_operator(filename, calculator, theory_level, logfunction=None):
+def opt_operator(filename, calculator, theory_level, procs=1, logfunction=None):
     '''
     '''
 
@@ -133,13 +133,13 @@ def opt_operator(filename, calculator, theory_level, logfunction=None):
     for i, conformer in enumerate(deepcopy(conformers)):
 
         if calculator == 'MOPAC':
-            opt_coords, energy, success = mopac_opt(conformer, data.atomnos)
+            opt_coords, energy, success = mopac_opt(conformer, data.atomnos, method=theory_level)
 
         elif calculator == 'GAUSSIAN':
-            opt_coords, energy, success = gaussian_opt(conformer, data.atomnos)
+            opt_coords, energy, success = gaussian_opt(conformer, data.atomnos, method=theory_level, procs=procs)
 
         else: # == 'ORCA'
-            opt_coords, energy, success = orca_opt(conformer, data.atomnos)
+            opt_coords, energy, success = orca_opt(conformer, data.atomnos, method=theory_level, procs=procs)
 
         if success:
             conformers[i] = opt_coords

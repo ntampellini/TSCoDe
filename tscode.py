@@ -46,16 +46,14 @@ if OPENBABEL_OPT_BOOL:
 from operators import operate
 from parameters import orb_dim_dict
 from embeds import monomolecular_embed, string_embed, cyclical_embed, dihedral_embed
-from hypermolecule_class import CCReadError, Hypermolecule, align_structures
+from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
                                   ase_adjust_spacings,
-                                  gaussian_opt,
                                   get_nci,
                                   hyperNEB,
                                   mopac_opt,
                                   MopacReadError,
                                   optimize,
-                                  orca_opt,
                                   prune_enantiomers,
                                   scramble,
                                   )
@@ -72,21 +70,11 @@ from utils import (
                    )
 
 
-# try: 
-#     from compenetration import compenetration_check
-# except ImportError:
-#     from _fallback import compenetration_check
-
-# try:
-#     from prune import prune_conformers
-# except ImportError:
-#     from _fallback import prune_conformers
-# If cython libraries are not present, load pure python ones.
-
-# TODO - eventually I could re-write cython libraries, but for now pure python seem fast enough
-
-from _fallback import prune_conformers, compenetration_check
-
+from python_functions import prune_conformers, compenetration_check
+# These could in the future be boosted via Cython or Julia, but they
+# are the bottleneck of the program only for cyclical trimolecular
+# embeds with a lot of conformers, that need to intersect in a 
+# precise and specific way. Rare case, indeed.
 
 def calc_positioned_conformers(self):
     self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
@@ -231,6 +219,7 @@ class Options:
     neb = False
     calculator = CALCULATOR
     theory_level = None        # set later in _calculator_setup()
+    procs = None               # set later in _calculator_setup()
     openbabel_opt = OPENBABEL_OPT_BOOL
     openbabel_level = 'UFF'
 
@@ -267,6 +256,9 @@ class Options:
 
         if not OPENBABEL_OPT_BOOL:
             d.pop('openbabel_level')
+
+        if self.procs == 1:
+            d.pop('procs')
 
         # if len(self.objects) == 1:
         #     d.pop('rotation_range')
@@ -384,7 +376,8 @@ class Docker:
                     filename = operate(filename,
                                         self.options.calculator,
                                         self.options.theory_level,
-                                        self.log)
+                                        procs=self.options.procs,
+                                        logfunction=self.log)
 
                 inp.append((filename, reactive_indexes))
 
@@ -516,18 +509,14 @@ class Docker:
 
                 if 'PROCS' in [k.split('=')[0] for k in keywords_list]:
                     
-                    if self.options.calculator == 'ORCA':
-                        kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('PROCS')]
-                        self.options.PROCS = int(kw.split('=')[1])
-
-                    else:
-                        raise SyntaxError('\'PROCS\' keyword can only be used with ORCA calculator.')
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('PROCS')]
+                    self.options.procs = int(kw.split('=')[1])
 
                 if 'EZPROT' in keywords_list:
                     self.options.double_bond_protection = True
 
                 if 'CALC' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('KCAL')]
+                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('CALC')]
                     self.options.calculator = kw.split('=')[1]
 
 
@@ -801,16 +790,15 @@ class Docker:
 
                 return
 
-            else:
-                self.embed = 'monomolecular'
-                self._set_pivots(self.objects[0])
+            self.embed = 'monomolecular'
+            self._set_pivots(self.objects[0])
 
-                self.options.only_refined = True
-                self.options.fix_angles_in_deformation = True
-                # These are required: otherwise, extreme bending could scramble molecules
-                
-                self.candidates = int(len(self.objects[0].atomcoords))
-                self.candidates *= len(self.objects[0].pivots)
+            self.options.only_refined = True
+            self.options.fix_angles_in_deformation = True
+            # These are required: otherwise, extreme bending could scramble molecules
+            
+            self.candidates = int(len(self.objects[0].atomcoords))
+            self.candidates *= len(self.objects[0].pivots)
 
         elif len(self.objects) in (2,3):
         # Setting embed type and calculating the number of conformation combinations based on embed type
@@ -902,7 +890,9 @@ class Docker:
         if self.options.shrink:
             for molecule in self.objects:
                 molecule._scale_orbs(self.options.shrink_multiplier)
+                self._set_pivots(molecule)
             self.options.only_refined = True
+        # SHRINK - scale orbitals and rebuild pivots
 
         if self.options.pruning_thresh is None:
             self.options.pruning_thresh = 1
@@ -933,9 +923,9 @@ class Docker:
             elif self.options.calculator == 'GAUSSIAN':
                 self.options.theory_level = GAUSSIAN_DEFAULT_LEVEL
 
-        # Setting up ORCA parallelization if user did not specify themselves
-        if self.options.calculator == 'ORCA' and not hasattr(self.options, 'PROCS'):
-            self.options.PROCS = PROCS
+        # Setting up procs number from settings if user did not specify another value
+        if self.options.procs == None:
+            self.options.procs = PROCS
 
             if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.PROCS != 1:
                 raise Exception(('ORCA does not support parallelization for Semiempirical Methods. '
@@ -1313,6 +1303,7 @@ class Docker:
                                                                                 self.graphs,
                                                                                 self.constrained_indexes[i],
                                                                                 method=method,
+                                                                                procs=self.options.procs,
                                                                                 max_newbonds=self.options.max_newbonds)
 
                 if self.exit_status[i]:
@@ -1637,7 +1628,7 @@ class Docker:
 
             f.write(s)
 
-        self.log(f'--> Output: Wrote VMD {self.vmd_name} file\n')
+        self.log(f'Wrote VMD {self.vmd_name} file\n')
 
     def write_structures(self, tag, indexes=None, energies=True):
         '''
@@ -1658,7 +1649,7 @@ class Docker:
                     title += f' - Rel. E. = {round(rel_e[i], 3)} kcal/mol'
 
                 write_xyz(structure, self.atomnos, f, title=title)
-        self.log(f'--> Output - Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
+        self.log(f'Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
 
     def run(self):
         '''
@@ -1669,12 +1660,12 @@ class Docker:
             assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message'
                                            ' and proceed, add the LET keyword to the input file.')
 
-        try: # except KeyboardInterrupt -> quit()
+        self.print_header()
+        self.t_start_run = time.time()
 
-            try: # except ZeroCandidatesError() -> quit()
+        try: # except KeyboardInterrupt
 
-                self.print_header()
-                self.t_start_run = time.time()
+            try: # except ZeroCandidatesError()
 
                 self.generate_candidates()
 
@@ -1752,11 +1743,9 @@ if __name__ == '__main__':
 
     import sys
 
-    usage = '\n\tTSCoDe correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n'
-
     if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
 
-        print(usage)
+        print('\n\tTSCoDe correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
         quit()
 
     filename = os.path.realpath(sys.argv[1])

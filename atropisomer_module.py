@@ -7,6 +7,7 @@ from ase.vibrations import Vibrations
 from ase.constraints import FixInternals
 from sella import Sella
 from networkx.algorithms.components.connected import connected_components
+from networkx.algorithms.shortest_paths.generic import shortest_path
 
 from hypermolecule_class import graphize, align_structures
 from optimization_methods import get_ase_calc, molecule_check
@@ -24,6 +25,7 @@ def ase_torsion_TSs(coords,
                     indexes,
                     calculator,
                     method,
+                    procs=1,
                     threshold_kcal=5,
                     title='temp',
                     optimization=True,
@@ -34,28 +36,46 @@ def ase_torsion_TSs(coords,
     '''
     
     assert len(indexes) == 4
+    cyclical = False
     
     ts_structures, energies = [], []
 
     graph = graphize(coords, atomnos)
     i1, i2, i3, i4 = indexes
-    graph.remove_edge(i2, i3)
-    subgraphs = connected_components(graph)
 
-    for subgraph in subgraphs:
-        if i3 in subgraph:
-            indexes_to_be_moved = subgraph - {i3}
-            break
+    if all([len(shortest_path(graph, start, end)) == 2 for start, end in zip(indexes[0:-1], indexes[1:])]):
+        graph.remove_edge(i2, i3)
+        subgraphs = connected_components(graph)
 
-    cyclical = False
-    if i1 in indexes_to_be_moved:
+        for subgraph in subgraphs:
+            if i3 in subgraph:
+                indexes_to_be_moved = subgraph - {i3}
+                break
+
+        if i1 in indexes_to_be_moved:
+
+            cyclical = True
+            indexes_to_be_moved = [i4]
+            # if molecule is cyclical, just move the fourth atom and
+            # let the rest of the structure relax
+
+            s = 'The specified dihedral angle is comprised within a cycle. Two preliminary scans will be conducted.'
+            print(s)
+            if logfile is not None:
+                logfile.write(s+'\n')
+
+    else:
+        # if user did not provide four contiguous indexes,
+        # just move the fourth atom and
+        # let the rest of the structure relax
+        indexes_to_be_moved = [i4]
         cyclical = True
 
-    if cyclical:
-        s = 'The specified dihedral angle is comprised within a cycle. Two preliminary scans will be conducted.'
+        s = 'The specified dihedral angle is made up of non-contiguous atoms.\nThis might cause some unexpected results. Two preliminary scans will be conducted.'
         print(s)
         if logfile is not None:
             logfile.write(s+'\n')
+
 
     routine = ((10, 18, '_clockwise'), (-10, 18, '_counterclockwise')) if cyclical else ((10, 36, ''),)
 
@@ -73,8 +93,10 @@ def ase_torsion_TSs(coords,
                                         degrees=degrees,
                                         steps=steps,
                                         relaxed=optimization,
+                                        indexes_to_be_moved=indexes_to_be_moved,
                                         title='Preliminary scan' + ((' (clockwise)' if direction == '_clockwise' \
                                               else ' (counterclockwise)') if direction != '' else ''),
+                                        procs=procs,
                                         logfile=logfile)
 
         min_e = min(energies)
@@ -124,6 +146,8 @@ def ase_torsion_TSs(coords,
                                                             steps=20,
                                                             relaxed=optimization,
                                                             ad_libitum=True, # goes on until the hill is crossed
+                                                            indexes_to_be_moved=indexes_to_be_moved,
+                                                            procs=procs,
                                                             title=f'Accurate scan {p+1}/{len(peaks_indexes)}',
                                                             logfile=logfile)
 
@@ -177,6 +201,7 @@ def ase_torsion_TSs(coords,
                                                                 atomnos,
                                                                 calculator=calculator,
                                                                 method=method,
+                                                                procs=procs,
                                                                 title=f'Berny - peak {p+1}, sub-peak {s+1}',
                                                                 logfile=logfile,
                                                                 traj=bernytraj+f'_{p+1}_{s+1}.traj' if bernytraj is not None else None)
@@ -241,13 +266,13 @@ def peaks(data, min_thr, max_thr):
 
     return peaks
     
-def ase_berny(coords, atomnos, calculator, method, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
+def ase_berny(coords, atomnos, calculator, method, procs=1, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
     '''
     Runs a Berny optimization through the ASE package
     '''
     atoms = Atoms(atomnos, positions=coords)
 
-    atoms.calc = get_ase_calc(calculator, method)
+    atoms.calc = get_ase_calc(calculator, procs, method)
     
     t_start = time()
     with HiddenPrints():
@@ -294,6 +319,8 @@ def ase_scan(coords,
              steps=36,
              relaxed=True,
              ad_libitum=False,
+             indexes_to_be_moved=None,
+             procs=1,
              title='temp scan',
              logfile=None):
     '''
@@ -308,22 +335,10 @@ def ase_scan(coords,
     atoms = Atoms(atomnos, positions=coords)
     structures, energies = [], []
 
-    atoms.calc = get_ase_calc(calculator, method)
+    atoms.calc = get_ase_calc(calculator, procs, method)
 
-    graph = graphize(coords, atomnos)
-    i1, i2, i3, i4 = indexes
-    graph.remove_edge(i2, i3)
-    subgraphs = connected_components(graph)
-
-    for subgraph in subgraphs:
-        if i3 in subgraph:
-            indexes_to_be_moved = subgraph - {i3}
-            break
-
-    if i1 in indexes_to_be_moved:
-        indexes_to_be_moved = [i4]
-    # if molecule is cyclical, just move the fourth atom and
-    # let the rest of the structure relax
+    if indexes_to_be_moved is None:
+        indexes_to_be_moved = [i for i in range(len(atomnos))]
 
     mask = np.array([i in indexes_to_be_moved for i in range(len(atomnos))], dtype=bool)
 

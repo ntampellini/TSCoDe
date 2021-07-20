@@ -6,6 +6,7 @@
  [![CodeFactor Grade](https://img.shields.io/codefactor/grade/github/ntampellini/TSCoDe)](https://www.codefactor.io/repository/github/ntampellini/tscode)
  ![Python Version](https://img.shields.io/badge/Python-3.8.10-blue)
  ![Size](https://img.shields.io/github/languages/code-size/ntampellini/TSCoDe)
+ ![Lines](https://img.shields.io/tokei/lines/github/ntampellini/tscode)
 
 </div>
 
@@ -20,7 +21,7 @@ TSCoDe is the first systematical conformational embedder for bimolecular and tri
 **NOTE: structures obtained from TSCoDe are not proper transition states (most of the times) but are often quite close. The program is intended to yield and rank poses, not TSs. In this way, the computational chemist can skip the error-prone phase of molecular embedding and proceed to the most appropriate higher-level calculation step.**
 
 ### Required packages and tools
-TSCoDe is written in pure Python, ~~with some libraries optionally boosted via Cython~~. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, the OpenBabel software for performing force field optimization and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of structure manipulations through the semiempirical [MOPAC2016](http://openmopac.net/MOPAC2016.html) calculator. While the former is free software, the latter is only free for academic use, and a license must be requested via the MOPAC website (see *Installation*).
+TSCoDe is written in pure Python. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, the OpenBabel software for performing force field optimization and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of structure manipulations through one of the [supported calculators](#installation).
 
 ## :green_circle: What the program can do (well)
 **Generate accurately spaced poses** for bimolecular and trimolecular transition states of organic molecules, also considering structural deformation. If a transition state is already in hand, the distance between reactive atoms can be specified, so as to obtain all the stereo/regioisomeric analogs with precise molecular spacings.
@@ -38,7 +39,7 @@ TSCoDe is best suited for modelizations that involve many transition state regio
 ## :red_circle: What the program cannot do
 **Completely replace calculations at higher levels of theory** - Output geometries arise from constrained optimizations, by default at semiempirical levels of theory (PM3, PM6, PM7). They are therefore not proper transition states, and are to be used as starting points for higher-level calculations. External programs are meant to be used to refine these structures and obtain real TSs. Nevetheless, the program can significatively speed up and reinforce the systematicity of the transition state embedding process.
 
-## Installation (Windows, Linux and Mac)
+## Installation
 
 This program is written in pure Python and it is intended to use with Python version 3.8.10. The use of a dedicated conda virtual environment is highly enocouraged.
 
@@ -119,7 +120,7 @@ A custom title for the run can be optionally provided, otherwise a time stamp wi
     
 
 <p align="center">
-<img src="images/tri.png" alt="Example output structure" class="center" width="400"/>
+<img src="images/trimolecular.png" alt="Example output structure" class="center" width="400"/>
 </p>
 
 <p align="center"><i>
@@ -131,7 +132,7 @@ Best transition state arrangement found by TSCoDe for the above trimolecular inp
 
 <p align="center">
 <img src="images/atropo.png" alt="Example output structure" class="center" height="260"/>
-<img src="images/plot.svg" alt="Example plot" class="center" height="260"/>
+<img src="images/plot.svg" alt="Example plot" class="center" height="330"/>
 </p>
 
 <p align="center"><i>
@@ -148,13 +149,20 @@ The input can be any text file. The extension is arbitrary but I suggest stickin
 
 TSCoDe can work with all molecular formats read by [cclib](https://github.com/cclib/cclib), but best practice is using only the `.xyz` file format, particularly for multimolecular files containing different conformers of the same molecule. **Reactive indexes are counted starting from zero!** If the molecules are specified without reactive indexes, a pop-up ASE GUI window will guide the user into manually specifying the reactive atoms after running the program *(not available from CLI)*.
  
-Reactive atoms supported include various hybridations of `C, H, O, N, P, S, F, Cl, Br and I`. Many common metals are also included (`Li, Na, Mg, K, Ca, Rb, Sr, Cs, Ba, Zn`), and it is easy to add more if you need them. Reactions can be of six kinds:
-- **One molecule, two reactive atoms** - "monomolecular" embed (*i.e.* Cope rearrangements)
-- **One molecule, four reactive atoms** - "dihedral" embed (*i.e.* racemization of BINOL)
-- **Two molecules, one reactive atom each** - "string embed" (*i.e.* SN2 reactions)
-- **Two molecules, one with a single reactive atom and the other with two reactive atoms** - "chelotropic embed" (*i.e.* epoxidations)
-- **Two molecules, two reactive atoms each** - "cyclical embed" (*i.e.* Diels-Alder reactions)
-- **Three molecules, two reactive atoms each** - "cyclical embed" (*i.e.* reactions where two partners are bridged by a carboxylic acid like the example above)
+Reactive atoms supported include various hybridations of `C, H, O, N, P, S, F, Cl, Br and I`. Many common metals are also included (`Li, Na, Mg, K, Ca, Ti, Rb, Sr, Cs, Ba, Zn`), and it is easy to add more if you need them. Reactions can be of six kinds:
+- **monomolecular** embed - One molecule, two reactive atoms (*i.e.* Cope rearrangements)
+- **dihedral** embed - One molecule, four reactive atoms (*i.e.* racemization of BINOL)
+- **string** embed - Two molecules, one reactive atom each (*i.e.* SN2 reactions)
+- **chelotropic** embed - Two molecules, one with a single reactive atom and the other with two reactive atoms (*i.e.* epoxidations)
+- **cyclical** embed (bimolecular) - Two molecules, two reactive atoms each (*i.e.* Diels-Alder reactions)
+- **cyclical** embed (trimolecular) - Three molecules, two reactive atoms each (*i.e.* reactions where two partners are bridged by a carboxylic acid like the example above)
+
+<p align="center">
+<img src="images/embeds.svg" alt="Embeds Infographic" class="center" width="500"/>
+<p align="center"><i>
+Colored dots represent imposed atom pairings. Note that monomolecular embeds only support two reactive atoms at the moment (feature requests are encouraged).
+</i></p>
+</p>
 
 After each reactive index, it is possible to specify a letter (`a`, `b` or `c`) to represent the "flag" of that atom. If provided, the program will only yield the regioisomers that respect these atom pairings. For "chelotropic embeds", one could specify that a single atom has two flags, for example the hydroxyl oxygen atom of a peracid, like `4ab`.
 
@@ -194,7 +202,7 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`BYPASS`** - Debug keyword. Used to skip all pruning steps and directly output all the embedded geometries.
 
--**`CALC`** - Overrides default calculator in `settings.py`. Syntax: `CALC=ORCA`
+- **`CALC`** - Overrides default calculator in `settings.py`. Syntax: `CALC=ORCA`
 
 - **`CHECK`** - Visualize the input molecules through the ASE GUI, to check orbital positions or conformers reading faults. *(not available from CLI)*
 
@@ -240,4 +248,4 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 
 - **`SUPRAFAC`** - Only retain suprafacial orbital configurations in cyclical TSs. Thought for Diels-Alder and other cycloaddition reactions.
 
-- **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures (default is 1 A). For particularly small structures, a value of 0.5 is better suited, and it is set by default for TSs with less than 50 atoms. For dihedral embeds the default value is 0.2 A. Syntax: `THRESH=n`, where n is a number.
+- **`THRESH`** - RMSD threshold (Angstroms) for structure pruning. The smaller, the more retained structures (default is 1 A). For particularly small structures, a value of 0.5 is better suited, and it is set by default for TSs with less than 50 atoms. For dihedral embeds, the default value is 0.2 A. Syntax: `THRESH=n`, where n is a number.

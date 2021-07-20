@@ -15,7 +15,8 @@ GNU General Public License for more details.
 
 '''
 
-import os, sys
+import os
+import sys
 import numpy as np
 import networkx as nx
 from scipy.spatial.transform import Rotation as R

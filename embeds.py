@@ -651,6 +651,7 @@ def dihedral_embed(self):
                                                 mol.reactive_indexes,
                                                 self.options.calculator,
                                                 self.options.theory_level,
+                                                procs=self.options.procs,
                                                 threshold_kcal=self.options.kcal_thresh,
                                                 title=mol.rootname,
                                                 optimization=self.options.optimization,

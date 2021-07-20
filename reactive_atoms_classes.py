@@ -591,6 +591,7 @@ metals = (
     'Mg',
     'K',
     'Ca',
+    'Ti',
     'Rb',
     'Sr',
     'Cs',
