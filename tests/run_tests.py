@@ -61,7 +61,7 @@ print('\nNo installation faults detected with the current settings. Running test
 
 def _run_command(command:str):
     print("Command: {}".format(command))
-    result = run(command.split(), shell=True, capture_output=True)
+    result = run(command.split(), shell=False, capture_output=True)
     if result.stderr:
         raise CalledProcessError(
                 returncode = result.returncode,
