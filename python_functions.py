@@ -46,36 +46,37 @@ def compenetration_check(coords, ids, thresh=1.5, max_clashes=2):
                     return False
         return True
 
-    else:
-        m1 = coords[0:ids[0]]
-        m2 = coords[ids[0]:ids[0]+ids[1]]
-        m3 = coords[ids[0]+ids[1]:]
+    # if len(ids) == 3:
 
-        for v1 in m1:
-            for v2 in m2:
-                dist = norm_of(v1-v2)
-                if dist < thresh:
-                    clashes += 1
-                if clashes > max_clashes:
-                    return False
+    m1 = coords[0:ids[0]]
+    m2 = coords[ids[0]:ids[0]+ids[1]]
+    m3 = coords[ids[0]+ids[1]:]
 
+    for v1 in m1:
         for v2 in m2:
-            for v3 in m3:
-                dist = norm_of(v2-v3)
-                if dist < thresh:
-                    clashes += 1
-                if clashes > max_clashes:
-                    return False
+            dist = norm_of(v1-v2)
+            if dist < thresh:
+                clashes += 1
+            if clashes > max_clashes:
+                return False
 
+    for v2 in m2:
         for v3 in m3:
-            for v1 in m1:
-                dist = norm_of(v3-v1)
-                if dist < thresh:
-                    clashes += 1
-                if clashes > max_clashes:
-                    return False
+            dist = norm_of(v2-v3)
+            if dist < thresh:
+                clashes += 1
+            if clashes > max_clashes:
+                return False
 
-        return True
+    for v3 in m3:
+        for v1 in m1:
+            dist = norm_of(v3-v1)
+            if dist < thresh:
+                clashes += 1
+            if clashes > max_clashes:
+                return False
+
+    return True
 
 def scramble_mask(array, sequence):
     return np.array([array[s] for s in sequence])
@@ -152,4 +153,3 @@ def prune_conformers(structures, atomnos, k = 1, max_rmsd = 1.):
         # undoing the previous shuffling, therefore preserving the input order
 
     return structures[mask], mask
-
