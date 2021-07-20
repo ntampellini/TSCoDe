@@ -1437,7 +1437,7 @@ class Docker:
         os.remove(f'TSCoDe_TS_guesses_unrefined_{self.stamp}.xyz')
         # since we have the refined structures, we can get rid of the unrefined ones
 
-        self.log(f'--> Output - Wrote {len(self.structures)} rough TS structures to {self.outname} file.\n')
+        self.log(f'Wrote {len(self.structures)} rough TS structures to {self.outname} file.\n')
 
     def hyperneb(self):
         '''
@@ -1532,7 +1532,7 @@ class Docker:
                 for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
                     write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
-            self.log(f'--> Output: Wrote {len(self.structures)} final TS structures to {self.outname} file\n')
+            self.log(f'Wrote {len(self.structures)} final TS structures to {self.outname} file\n')
 
     def print_nci(self):
         '''
