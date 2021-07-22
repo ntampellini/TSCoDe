@@ -21,7 +21,7 @@ TSCoDe is the first systematical conformational embedder for bimolecular and tri
 **NOTE: structures obtained from TSCoDe are not proper transition states (most of the times) but are often quite close. The program is intended to yield and rank poses, not TSs. In this way, the computational chemist can skip the error-prone phase of molecular embedding and proceed to the most appropriate higher-level calculation step.**
 
 ### Required packages and tools
-TSCoDe is written in pure Python. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, the OpenBabel software for performing force field optimization and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of structure manipulations through one of the [supported calculators](#installation).
+TSCoDe is written in pure Python. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, the OpenBabel software for performing force field optimization (optional) and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of structure manipulations through one of the [supported calculators](#installation).
 
 ## :green_circle: What the program can do (well)
 **Generate accurately spaced poses** for bimolecular and trimolecular transition states of organic molecules, also considering structural deformation. If a transition state is already in hand, the distance between reactive atoms can be specified, so as to obtain all the stereo/regioisomeric analogs with precise molecular spacings.
@@ -43,10 +43,11 @@ TSCoDe is best suited for modelizations that involve many transition state regio
 
 This program is written in pure Python and it is intended to use with Python version 3.8.10. The use of a dedicated conda virtual environment is highly enocouraged.
 
-Prerequisites: before downloading this repository, you should have installed at least one calculator. At the moment, TSCoDe supports three calculators:
+Prerequisites: before downloading this repository, you should have installed at least one calculator. At the moment, TSCoDe supports these calculators:
 - MOPAC2016
-- ORCA
-- Gaussian
+- ORCA (>=4.2)
+- Gaussian (>=9)
+- XTB (>=6.3)
 
 An installation of Openbabel is optional, providing an additional conformational search tool and Force Field minimizations that can speed up the program.
 
@@ -68,6 +69,10 @@ This is free software you can download from [the official website](http://openba
 
     conda install -c conda-forge openbabel
 
+### XTB
+
+This is free software. See the [GitHub repository](https://github.com/grimme-lab/xtb) and the [documentation](https://xtb-docs.readthedocs.io/en/latest/contents.html) for how to install it on your machine.
+
 ### TSCoDe
 
 If you have Git installed, you can directly clone the repository: *(otherwise download the code and unpack it)*
@@ -81,8 +86,8 @@ Open a command shell, move to the ./TSCoDe folder and install the requirements.
     pip install -r requirements.txt
 
 Assert all commands and settings are consistent with your system and desired usage of TSCoDe by modifying the [settings.py](https://github.com/ntampellini/TSCoDe/blob/master/settings.py) file.
-- By default, the used calculator is MOPAC, so if you wish to use ORCA or GAUSSIAN set the calculator accordingly. (*i.e.* `CALCULATOR = 'ORCA'`)
-- By default, OpenBabel support is turned off. If you have it installed, set `OPENBABEL_OPT_BOOL = False` to activate it.
+- By default, the used calculator is MOPAC, so if you wish to use another one, set the calculator accordingly. (*i.e.* `CALCULATOR = 'ORCA'`)
+- By default, OpenBabel support is turned off. If you have it installed, set `OPENBABEL_OPT_BOOL = True` to activate it.
 
 To test the installation, you can run the provided test in the test folder:
 
@@ -225,6 +230,8 @@ Keywords are divided by at least one blank space. Some of them are self-sufficie
 - **`LEVEL`** - Manually set the theory level to be used. Default is PM7 for MOPAC, PM3 for ORCA and PM6 for Gaussian. White spaces can be expressed with underscores. Be careful to use the syntax of your calculator, as ORCA wants a space between method and basis while Gaussian a forward slash. Syntax: `LEVEL=B3LYP_def2-TZVP`. Standard values can be modified by `settings.py`.
 
 - **`MMFF`** - Use the Merck Molecular Force Field during the OpenBabel pre-optimization (default is UFF).
+
+- **`MTD`** - Augments the conformational sampling of transition state candidates through the [XTB metadynamics implementation](https://xtb-docs.readthedocs.io/en/latest/mtd.html) (XTB calculator only).
 
 - **`NCI`** - Estimate and print non-covalent interactions present in the generated poses.
 

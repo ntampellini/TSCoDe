@@ -20,6 +20,7 @@ import time
 import itertools as it
 from copy import deepcopy
 from subprocess import DEVNULL, STDOUT, check_call
+from ase.io.formats import parse_filename
 
 import numpy as np
 from ase import Atoms
@@ -34,10 +35,11 @@ from ase.calculators.gaussian import Gaussian
 from ase.constraints import FixInternals
 from scipy.spatial.transform import Rotation as R
 
-from settings import MOPAC_COMMAND, ORCA_COMMAND, GAUSSIAN_COMMAND, MEM
+from settings import COMMANDS, MEM
 from parameters import nci_dict
 from hypermolecule_class import graphize
 from utils import (
+                   HiddenPrints,
                    center_of_mass,
                    clean_directory,
                    diagonalize,
@@ -96,49 +98,60 @@ def get_ase_calc(calculator, procs, method):
     to the ASE Atoms object
     '''
 
-    if calculator == 'MOPAC':
-        return MOPAC(label='temp',
-                     command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1',
-                     method=method)
+    if calculator == 'XTB':
+        try:
+            from xtb.ase.calculator import XTB
+        except ImportError:
+            raise Exception('Cannot import xtb python bindings. Install them with:\n>>> conda install -c conda-forge xtb-python\n')
+        return XTB(method=method)
 
-    elif calculator == 'ORCA':
-        if procs > 1:
-            orcablocks = f'%pal nprocs {procs} end'
-            return ORCA(label='temp',
-                        command=f'{ORCA_COMMAND} temp.inp > temp.out 2>&1',
-                        orcasimpleinput=method,
-                        orcablocks=orcablocks)
-        else:
-            return ORCA(label='temp',
-                        command=f'{ORCA_COMMAND} temp.inp > temp.out 2>&1',
-                        orcasimpleinput=method)
+    else:
+        
+        command = COMMANDS[calculator]
 
-    elif calculator == 'GAUSSIAN':
+        if calculator == 'MOPAC':
+            return MOPAC(label='temp',
+                        command=f'{command} temp.mop > temp.cmdlog 2>&1',
+                        method=method)
 
-        # firstline = method if procs == 1 else f'%nprocshared={procs}\n{method}'
+        elif calculator == 'ORCA':
+            if procs > 1:
+                orcablocks = f'%pal nprocs {procs} end'
+                return ORCA(label='temp',
+                            command=f'{command} temp.inp > temp.out 2>&1',
+                            orcasimpleinput=method,
+                            orcablocks=orcablocks)
+            else:
+                return ORCA(label='temp',
+                            command=f'{command} temp.inp > temp.out 2>&1',
+                            orcasimpleinput=method)
 
-        calc = Gaussian(label='temp',
-                        command=f'{GAUSSIAN_COMMAND} temp.com',
-                        method=method,
-                        nprocshared=procs,
-                        mem=MEM
-                        )
+        elif calculator == 'GAUSSIAN':
 
-        if 'g09' in GAUSSIAN_COMMAND:
+            # firstline = method if procs == 1 else f'%nprocshared={procs}\n{method}'
 
-            from ase.io import read
-            def g09_read_results(self=calc):
-                output = read(self.label + '.out', format='gaussian-out')
-                self.calc = output.calc
-                self.results = output.calc.results
+            calc = Gaussian(label='temp',
+                            command=f'{command} temp.com',
+                            method=method,
+                            nprocshared=procs,
+                            mem=MEM
+                            )
 
-            calc.read_results = g09_read_results
+            if 'g09' in command:
 
-            # Adapting for g09 outputting .out files instead of g16 .log files.
-            # This is a bad fix and the issue should be corrected in
-            # the ASE source code: pull request on GitHub pending
+                from ase.io import read
+                def g09_read_results(self=calc):
+                    output = read(self.label + '.out', format='gaussian-out')
+                    self.calc = output.calc
+                    self.results = output.calc.results
 
-            return calc
+                calc.read_results = g09_read_results
+
+                # Adapting for g09 outputting .out files instead of g16 .log files.
+                # This is a bad fix and the issue should be corrected in
+                # the ASE source code: pull request on GitHub pending
+
+                return calc
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
@@ -323,7 +336,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
         f.write(s)
     
     try:
-        check_call(f'{MOPAC_COMMAND} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
+        check_call(f'{COMMANDS["MOPAC"]} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
         quit()
@@ -385,7 +398,7 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, t
         f.write(s)
     
     try:
-        check_call(f'{ORCA_COMMAND} {title}.inp'.split(), stdout=DEVNULL, stderr=STDOUT)
+        check_call(f'{COMMANDS["ORCA"]} {title}.inp'.split(), stdout=DEVNULL, stderr=STDOUT)
 
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
@@ -403,6 +416,25 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, t
 
         except FileNotFoundError:
             return None, None, False
+
+def read_orca_property(filename):
+    '''
+    Read energy from ORCA property output file
+    '''
+    energy = None
+
+    with open(filename, 'r') as f:
+
+        while True:
+            line = f.readline()
+
+            if not line:
+                break
+
+            if 'SCF Energy:' in line:
+                energy = float(line.split()[2])
+
+    return energy
 
 def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=1, title='temp', read_output=True):
     '''
@@ -448,7 +480,7 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
         f.write(s)
     
     try:
-        check_call(f'{GAUSSIAN_COMMAND} {title}.com'.split(), stdout=DEVNULL, stderr=STDOUT)
+        check_call(f'{COMMANDS["GAUSSIAN"]} {title}.com'.split(), stdout=DEVNULL, stderr=STDOUT)
 
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
@@ -468,24 +500,83 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
         except FileNotFoundError:
             return None, None, False
 
-def read_orca_property(filename):
+def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', title='temp', read_output=True):
     '''
-    Read energy from ORCA property output file
-    '''
-    energy = None
+    This function writes an XTB .inp file, runs it with the subprocess
+    module and reads its output.
 
+    :params coords: array of shape (n,3) with cartesian coordinates for atoms.
+    :params atomnos: array of atomic numbers for atoms.
+    :params constrained_indexes: array of shape (n,2), with the indexes
+                                 of atomic pairs to be constrained.
+    :params method: string, specifiyng the first line of keywords for the MOPAC input file.
+    :params title: string, used as a file name and job title for the mopac input file.
+    :params read_output: Whether to read the output file and return anything.
+    '''
+
+    with open(f'{title}.xyz', 'w') as f:
+        write_xyz(coords, atomnos, f, title=title)
+
+    s = f'$opt\n   logfile={title}_opt.log\n$end'
+         
+    if constrained_indexes is not None:
+        s += '\n$constrain\n'
+        for a, b in constrained_indexes:
+            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(np.linalg.norm(coords[a]-coords[b]), 5))
+    
+    if method.upper() in ('GFN-XTB', 'GFNXTB'):
+        s += '\n$gfn\n   method=1\n'
+
+    elif method.upper() in ('GFN2-XTB', 'GFN2XTB'):
+        s += '\n$gfn\n   method=2\n'
+    
+    s += '\n$end'
+
+    s = ''.join(s)
+    with open(f'{title}.inp', 'w') as f:
+        f.write(s)
+    
+    flags = '--opt'
+    if method in ('GFN-FF', 'GFNFF'):
+        flags += ' --gfnff'
+
+    try:
+        check_call(f'xtb --input {title}.inp {title}.xyz {flags} > temp.log 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
+
+    except KeyboardInterrupt:
+        print('KeyboardInterrupt requested by user. Quitting.')
+        quit()
+
+    if read_output:
+
+        try:
+            outname = 'xtbopt.xyz'
+            opt_coords = ccread(outname).atomcoords[0]
+            energy = read_xtb_energy(outname)
+
+            clean_directory()
+            os.remove(outname)
+
+            for filename in ('gfnff_topo', 'charges', 'wbo', 'xtbrestart', 'xtbtopo.mol'):
+                try:
+                    os.remove(filename)
+                except FileNotFoundError:
+                    pass
+
+            return opt_coords, energy, True
+
+        except FileNotFoundError:
+            return None, None, False
+
+def read_xtb_energy(filename):
+    '''
+    returns energy in kcal/mol from an XTB
+    .xyz result file (xtbotp.xyz)
+    '''
     with open(filename, 'r') as f:
-
-        while True:
-            line = f.readline()
-
-            if not line:
-                break
-
-            if 'SCF Energy:' in line:
-                energy = float(line.split()[2])
-
-    return energy
+        line = f.readline()
+        line = f.readline() # second line is where energy is printed
+        return float(line.split()[1]) * 627.5096080305927 # Eh to kcal/mol
 
 def optimize(calculator, TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, method='PM6', procs=1, max_newbonds=0, title='temp', debug=False):
     '''
@@ -517,6 +608,10 @@ def optimize(calculator, TS_structure, TS_atomnos, mols_graphs, constrained_inde
 
     elif calculator == 'GAUSSIAN':
         opt_coords, energy, success = gaussian_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, procs=procs, title=title)
+
+    elif calculator == 'XTB':
+        opt_coords, energy, success = xtb_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, title=title)
+
 
     if success:
         success = scramble_check(opt_coords, TS_atomnos, mols_graphs, max_newbonds=max_newbonds)
@@ -573,13 +668,13 @@ def dump(filename, images, atomnos):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
 
-def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_graphs, method='PM7', max_newbonds=0, traj=None):
+def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_graphs, title=0, max_newbonds=0, traj=None):
     '''
     TODO - desc
     '''
     atoms = Atoms(atomnos, positions=structure)
 
-    atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, method)
+    atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, docker.options.theory_level)
     
     springs = []
 
@@ -589,19 +684,23 @@ def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_gr
 
     atoms.set_constraint(springs)
 
+    t_start_opt = time.time()
     with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
-
         opt.run(fmax=0.05, steps=500)
+        iterations = opt.nsteps
 
     new_structure = atoms.get_positions()
 
     success = scramble_check(new_structure, atomnos, mols_graphs, max_newbonds=max_newbonds)
+    exit_str = 'REFINED' if success else 'SCRAMBLED'
+
+    docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
 
     return new_structure, atoms.get_total_energy(), success
 
 def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS, logfile=None):
     '''
-    TODO:desc
+    TODO:REDO COMPLETELY
     '''
 
     first = Atoms(atomnos, positions=reagents)
@@ -618,7 +717,7 @@ def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-
     
     # Set calculators for all images
     for i, image in enumerate(images):
-        image.calc = MOPAC(label='temp', command=f'{MOPAC_COMMAND} temp.mop > temp.cmdlog 2>&1', method=method)
+        image.calc = MOPAC(label='temp', command=f'{COMMANDS["MOPAC"]} temp.mop > temp.cmdlog 2>&1', method=method)
 
     # Set the optimizer and optimize
     try:
@@ -1331,6 +1430,79 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
         mask[i] = False
 
     return structures[mask], mask
+
+def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_structures:int=5, title=0, debug=False):
+    '''
+    Runs a metadynamics simulation (MTD) through
+    the XTB program to obtain new conformations.
+    The GFN-FF force field is used.
+    '''
+    with open(f'temp.xyz', 'w') as f:
+        write_xyz(coords, atomnos, f, title='temp')
+
+    s = (
+        '$md\n'
+        '   time=%s\n' % (new_structures+1) +
+        '   step=1\n'
+        '   temp=300\n'
+        '$end\n'
+        '$metadyn\n'
+        '   save=%s\n' % (new_structures+1) + # extra one is the starting one
+        '$end'
+        )
+         
+    if constrained_indexes is not None:
+        s += '\n$constrain\n'
+        for a, b in constrained_indexes:
+            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(np.linalg.norm(coords[a]-coords[b]), 5))
+
+    s = ''.join(s)
+    with open(f'temp.inp', 'w') as f:
+        f.write(s)
+
+    try:
+        check_call(f'xtb --md --input temp.inp temp.xyz --gfnff > temp.log 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
+
+    except KeyboardInterrupt:
+        print('KeyboardInterrupt requested by user. Quitting.')
+        quit()
+
+    structures = [coords]
+    for n in range(1,new_structures):
+        name = 'scoord.'+str(n)
+        structures.append(parse_xtb_out(name))
+        os.remove(name)
+
+    for filename in ('gfnff_topo', 'xtbmdoc', 'mdrestart'):
+                try:
+                    os.remove(filename)
+                except FileNotFoundError:
+                    pass
+
+    # if debug:
+    os.rename('xtb.trj', f'Structure{title}_MTD_traj.xyz')
+    os.rename('temp.log', f'Structure{title}_MTD.log')
+
+    # else:
+    #     os.remove('xtb.traj')  
+
+    structures = np.array(structures)
+
+    return structures
+
+def parse_xtb_out(filename):
+    '''
+    '''
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+
+    coords = np.zeros((len(lines)-3,3))
+
+    for l, line in enumerate(lines[1:-2]):
+        coords[l] = line.split()[:-1]
+
+    return coords * 0.529177249 # Bohrs to Angstroms
+
 
 from settings import OPENBABEL_OPT_BOOL
 

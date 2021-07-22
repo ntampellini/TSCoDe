@@ -19,7 +19,9 @@ import os
 import sys
 import numpy as np
 import networkx as nx
+from subprocess import run, CalledProcessError
 from scipy.spatial.transform import Rotation as R
+from subprocess import check_call, DEVNULL, STDOUT
 from periodictable import core, covalent_radius, mass
 pt = core.PeriodicTable(table="H=1")
 covalent_radius.init(pt)
@@ -88,6 +90,20 @@ def clean_directory():
         elif f.startswith('temp_'):
             os.remove(f)
 
+def run_command(command:str, p=False):
+    if p:
+        print("Command: {}".format(command))
+    result = run(command.split(), shell=False, capture_output=True)
+    if result.stderr:
+        raise CalledProcessError(
+                returncode = result.returncode,
+                cmd = result.args,
+                stderr = result.stderr
+                )
+    if p and result.stdout:
+        print("Command Result: {}".format(result.stdout.decode('utf-8')))
+    return result
+
 def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
     '''
     output is of _io.TextIOWrapper type
@@ -101,6 +117,18 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
     for i, atom in enumerate(coords):
         string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
     output.write(string)
+
+def get_pdb_structure(coords, atomnos, title='temp'):
+    '''
+    return: pdb filename
+    '''
+    with open(title+'.xyz', 'w') as f:
+        write_xyz(coords, atomnos, f, title)
+
+    check_call(f'obabel {title}.xyz -O {title}.pdb'.split(), stdout=DEVNULL, stderr=STDOUT)
+    os.remove(title+'.xyz')
+
+    return title+'.pdb'
 
 def time_to_string(total_time: float, verbose=False):
     '''

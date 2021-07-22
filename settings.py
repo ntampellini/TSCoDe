@@ -17,12 +17,13 @@ GNU General Public License for more details.
 
 OPENBABEL_OPT_BOOL = False
 # whether to run Force Field minimization with
-# Openbabel prior to the MOPAC semiempirical one.
+# Openbabel prior to the final one.
 # (set to False if no Openbabel Python bindings are available)
 
 CALCULATOR = 'MOPAC'
 # CALCULATOR = 'ORCA'
 # CALCULATOR = 'GAUSSIAN'
+# CALCULATOR = 'XTB'
 
 # Calculator used to run geometry optimization.
 # Possibilites are:
@@ -30,25 +31,19 @@ CALCULATOR = 'MOPAC'
 # 'ORCA' : All methods supported by ORCA
 # 'GAUSSIAN' : All methods supported by Gaussian
 
-MOPAC_DEFAULT_LEVEL = 'PM7'
-# Default theory level for MOPAC
+DEFAULT_LEVELS = {
+    'MOPAC':'PM7',
+    'ORCA':'PM3',
+    'GAUSSIAN':'PM7',
+    'XTB':'GFN2-xTB'
+}
 
-ORCA_DEFAULT_LEVEL = 'PM3'
-# Default theory level for ORCA
-
-GAUSSIAN_DEFAULT_LEVEL = 'PM6'
-# Default theory level for Gaussian
-
-MOPAC_COMMAND = 'MOPAC2016.exe'
-# command with which MOPAC will be called from the command line
-
-ORCA_COMMAND = 'orca.exe'
-# command with which ORCA will be called from the command line.
-# Inserting the full path to orca.exe is required for parallel runs
-# with more than one core! See ORCA documentation.
-
-GAUSSIAN_COMMAND = 'g09.exe'
-# command with which Gaussian will be called from the command line
+COMMANDS = {
+    'MOPAC':'MOPAC2016.exe',
+    'ORCA':'orca.exe',
+    'GAUSSIAN':'g09.exe'
+}
+# command with which calculators will be called from the command line
 
 PROCS = 1
 # number of processors (cores) to be used by ORCA and/or Gaussian

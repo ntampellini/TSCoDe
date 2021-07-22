@@ -1,16 +1,16 @@
 import os
 import sys
 import time
-from subprocess import run, DEVNULL, STDOUT, CalledProcessError
+from subprocess import CalledProcessError
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.chdir(os.path.dirname(os.getcwd()))
 
 sys.path.append(os.getcwd())
 
-from settings import MOPAC_COMMAND, OPENBABEL_OPT_BOOL, ORCA_COMMAND, GAUSSIAN_COMMAND, CALCULATOR
-from optimization_methods import mopac_opt, orca_opt, gaussian_opt
-from utils import HiddenPrints, time_to_string, clean_directory
+from settings import COMMANDS, OPENBABEL_OPT_BOOL, CALCULATOR
+from optimization_methods import mopac_opt, orca_opt, gaussian_opt, xtb_opt
+from utils import HiddenPrints, time_to_string, clean_directory, run_command
 from cclib.io import ccread
 os.chdir('tests/tests')
 
@@ -22,22 +22,26 @@ print('\nRunning tests for TSCoDe. Settings used:')
 print(f'{CALCULATOR=}')
 
 if CALCULATOR == 'MOPAC':
-    print(f'{MOPAC_COMMAND=}')
+    print(f'MOPAC COMMAND = {COMMANDS[CALCULATOR]}')
     print('\nTesting calculator...')
     mopac_opt(data.atomcoords[0], data.atomnos)
 
 elif CALCULATOR == 'ORCA':
-    print(f'{ORCA_COMMAND=}')
+    print(f'ORCA COMMAND = {COMMANDS[CALCULATOR]}')
     print('\nTesting calculator...')
     orca_opt(data.atomcoords[0], data.atomnos)
 
 elif CALCULATOR == 'GAUSSIAN':
-    print(f'{GAUSSIAN_COMMAND=}')
+    print(f'GAUSSIAN COMMAND = {COMMANDS[CALCULATOR]}')
     print('\nTesting calculator...')
     gaussian_opt(data.atomcoords[0], data.atomnos)
 
+elif CALCULATOR == 'XTB':
+    print('\nTesting calculator...')
+    xtb_opt(data.atomcoords[0], data.atomnos)
+
 else:
-    raise Exception(f'{CALCULATOR} is not a valid calculator. Use MOPAC, ORCA or GAUSSIAN.')
+    raise Exception(f'{CALCULATOR} is not a valid calculator. Use MOPAC, ORCA, GAUSSIAN or XTB.')
 
 clean_directory()
 print(f'{CALCULATOR} calculator works.')
@@ -59,19 +63,6 @@ print('\nNo installation faults detected with the current settings. Running test
 
 ##########################################################################
 
-def _run_command(command:str):
-    print("Command: {}".format(command))
-    result = run(command.split(), shell=False, capture_output=True)
-    if result.stderr:
-        raise CalledProcessError(
-                returncode = result.returncode,
-                cmd = result.args,
-                stderr = result.stderr
-                )
-    if result.stdout:
-        print("Command Result: {}".format(result.stdout.decode('utf-8')))
-    return result
-
 tests = []
 for f in os.listdir():
     if f.endswith('.txt'):
@@ -92,8 +83,8 @@ for i, f in enumerate(tests):
     t_start = time.time()
     try:
         with HiddenPrints():
-            _run_command(f'python tscode.py {f} {name}')
-            # _run_command(f'python tscode.py tests\\tests\\dihedral.txt dihedral')
+            run_command(f'python tscode.py {f} {name}')
+            # run_command(f'python tscode.py tests\\tests\\dihedral.txt dihedral')
 
     except CalledProcessError as error:
         print(error.stderr.decode("utf-8"))

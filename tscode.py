@@ -29,14 +29,11 @@ from copy import deepcopy
 from itertools import groupby
 
 import numpy as np
-from subprocess import check_call, STDOUT, DEVNULL
 
 from settings import (
                       CALCULATOR,
-                      GAUSSIAN_DEFAULT_LEVEL,
-                      MOPAC_DEFAULT_LEVEL,
+                      DEFAULT_LEVELS,
                       OPENBABEL_OPT_BOOL,
-                      ORCA_DEFAULT_LEVEL,
                       PROCS,
                       )
 
@@ -56,6 +53,7 @@ from optimization_methods import (
                                   optimize,
                                   prune_enantiomers,
                                   scramble,
+                                  xtb_metadyn_augmentation,
                                   )
 from utils import (
                    ase_view,
@@ -63,7 +61,6 @@ from utils import (
                    clean_directory,
                    InputError,
                    loadbar,
-                   suppress_stdout_stderr,
                    time_to_string,
                    write_xyz,
                    ZeroCandidatesError
@@ -147,6 +144,8 @@ class Options:
                     'MMFF',           # Use the Merck Molecular Force Field during the
                                       # OpenBabel pre-optimization (default is UFF).
 
+                    'MTD',            # Run conformational augmentation through metadynamic sampling (XTB)
+
                     'NCI',            # Estimate and print non-covalent interactions present in the generated poses.
 
                     'NEB',            # Perform an automatical climbing image nudged elastic band (CI-NEB)
@@ -216,25 +215,27 @@ class Options:
     max_newbonds = 0
 
     optimization = True
-    neb = False
     calculator = CALCULATOR
     theory_level = None        # set later in _calculator_setup()
     procs = None               # set later in _calculator_setup()
     openbabel_opt = OPENBABEL_OPT_BOOL
     openbabel_level = 'UFF'
 
-    suprafacial = False
+    neb = False
     nci = False
-    only_refined = False
     shrink = False
+    metadynamics = False
+    suprafacial = False
+    only_refined = False
     keep_enantiomers = False
     double_bond_protection = False
 
     fix_angles_in_deformation = False
-    # not possible to set manually through a keyword.
-    # Monomolecular have it on to prevent scrambling,
-    # but better to leave it off for less severe
-    # deformations (faster convergence)
+    # Not possible to set manually through a keyword.
+    # Monomolecular embeds have it on to prevent
+    # scrambling, but better to leave it off for
+    # less severe deformations, since convergence
+    # is faster
 
     kcal_thresh = None
     bypass = False
@@ -246,10 +247,19 @@ class Options:
 
     def __repr__(self):
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
-        d.pop('bypass')
-        d.pop('let')
-        d.pop('debug')
-        d.pop('check_structures')
+        
+        do_not_repr = (
+            'bypass',
+            'check_structures',
+            'debug',
+            'let',
+            'metadynamics',
+            'nci',
+            'neb',
+        )
+        
+        for name in do_not_repr:
+            d.pop(name)
 
         if self.kcal_thresh is None:
             d.pop('kcal_thresh')
@@ -519,6 +529,11 @@ class Docker:
                     kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('CALC')]
                     self.options.calculator = kw.split('=')[1]
 
+                if 'MTD' in keywords_list:
+                    if self.options.calculator != 'XTB':
+                        raise InputError(('Metadynamics augmentation can only be run with the XTB calculator.\n'
+                                          'Change it in settings.py or use the CALC=XTB keyword.'))
+                    self.options.metadynamics = True
 
         except SyntaxError as e:
             raise e
@@ -908,20 +923,12 @@ class Docker:
         Set up the calculator to be used with default theory levels.
         '''
         # Checking that calculator is specified correctly
-        if self.options.calculator not in ('MOPAC', 'ORCA', 'GAUSSIAN'):
+        if self.options.calculator not in ('MOPAC', 'ORCA', 'GAUSSIAN','XTB'):
             raise SyntaxError(f'\'{self.options.calculator}\' is not a valid calculator. Change its value from the parameters.py file or with the CALC keyword.')
 
         # Setting default theory level if user did not specify it
         if self.options.theory_level is None:
-
-            if self.options.calculator == 'MOPAC':
-                self.options.theory_level = MOPAC_DEFAULT_LEVEL
-
-            elif self.options.calculator == 'ORCA':
-                self.options.theory_level = ORCA_DEFAULT_LEVEL
-
-            elif self.options.calculator == 'GAUSSIAN':
-                self.options.theory_level = GAUSSIAN_DEFAULT_LEVEL
+            self.options.theory_level = DEFAULT_LEVELS[CALCULATOR]
 
         # Setting up procs number from settings if user did not specify another value
         if self.options.procs is None:
@@ -1261,8 +1268,7 @@ class Docker:
         
         ################################################# EXIT STATUS
 
-        if False in self.exit_status:
-            self.log(f'Successfully refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at UFF level. Non-refined structures are kept anyway.')
+        self.log(f'Successfully pre-refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at UFF level.')
         
         ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
 
@@ -1322,12 +1328,13 @@ class Docker:
             except Exception as e:
                 raise e
 
-            t_end_opt = time.time()
-            self.log(f'    - {self.options.calculator} {self.options.theory_level} optimization: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
+            self.log((f'    - {self.options.calculator} {self.options.theory_level} optimization: Structure {i+1} {exit_str} - '
+                      f'took {time_to_string(time.time()-t_start_opt)}'), p=False)
 
         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
-        t_end = time.time()
-        self.log(f'{self.options.calculator} {self.options.theory_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        
+        self.log((f'{self.options.calculator} {self.options.theory_level} optimization took '
+                  f'{time_to_string(time.time()-t_start)} (~{time_to_string((time.time()-t_start)/len(self.structures))} per structure)'))
 
         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
@@ -1336,13 +1343,17 @@ class Docker:
 
         ################################################# REFINING: BONDING DISTANCES
 
+        self.write_structures('TS_guesses_unrefined', energies=False, p=False)
+        self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures before distance refinement.\n')
+
         self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level} level)')
 
-        self.write_structures('TS_guesses_unrefined', energies=False)
-
         if self.options.openbabel_opt:
-            os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
-            # We don't need the pre-optimized structures anymore
+            try:
+                os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
+                # We don't need the pre-optimized structures anymore
+            except:
+                pass
 
         self._set_target_distances()
 
@@ -1352,13 +1363,12 @@ class Docker:
 
                 traj = f'refine_{i}.traj' if self.options.debug else None
 
-                t_start_opt = time.time()
                 new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
                                                                                         structure,
                                                                                         self.atomnos,
                                                                                         self.constrained_indexes[i],
                                                                                         self.graphs,
-                                                                                        method=self.options.theory_level,
+                                                                                        title=i,
                                                                                         max_newbonds=self.options.max_newbonds,
                                                                                         traj=traj
                                                                                         )
@@ -1366,9 +1376,6 @@ class Docker:
                 if self.exit_status[i]:
                     self.structures[i] = new_structure
                     self.energies[i] = new_energy
-                    exit_str = 'REFINED'
-                else:
-                    exit_str = 'SCRAMBLED'
                                                                                                                         
             except ValueError as e:
                 # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
@@ -1376,10 +1383,6 @@ class Docker:
                 # The easiest solution is to reject the structure and go on. TODO-check
                 self.log(e)
                 self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
-
-            finally:
-                t_end_opt = time.time()
-                self.log(f'    - {self.options.calculator} {self.options.theory_level} refinement: Structure {i+1} {exit_str} - took {time_to_string(t_end_opt-t_start_opt)}', p=False)
         
         loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
         t_end = time.time()
@@ -1438,6 +1441,40 @@ class Docker:
         # since we have the refined structures, we can get rid of the unrefined ones
 
         self.log(f'Wrote {len(self.structures)} rough TS structures to {self.outname} file.\n')
+
+    def metadynamics_augmentation(self):
+        '''
+        Runs a metadynamics simulation (MTD) through
+        the XTB program for each structure in self.structure.
+        New structures are obtained from the simulations, minimized
+        in energy and added to self. structures.
+        '''
+
+        self.log(f'--> Performing XTB Metadynamic Augmentation of TS candidates')
+
+        before = len(self.structures)
+        t_start_run = time.time()
+
+        for s, (structure, constrained_indexes) in enumerate(zip(deepcopy(self.structures), deepcopy(self.constrained_indexes))):
+
+            loadbar(s+1, before, f'Running MTD {s+1}/{before} ')
+            t_start = time.time()
+
+            new_structures = xtb_metadyn_augmentation(structure,
+                                                      self.atomnos,
+                                                      constrained_indexes=constrained_indexes,
+                                                      new_structures=5,
+                                                      title=s)
+
+            self.structures = np.concatenate((self.structures, new_structures))
+            self.energies = np.concatenate((self.energies, [0 for _ in range(len(new_structures))]))
+            self.constrained_indexes = np.concatenate((self.constrained_indexes, [constrained_indexes for _ in range(len(new_structures))]))
+        
+            self.log(f'   - Structure {s+1} - {len(new_structures)} new conformers ({time_to_string(time.time()-t_start)})', p=False)
+
+        self.exit_status = np.array([True for _ in range(len(self.structures))], dtype=bool)
+
+        self.log(f'Metadynamics Augmentation completed - found {len(self.structures)-before} new conformers ({time_to_string(time.time()-t_start_run)})\n')
 
     def hyperneb(self):
         '''
@@ -1630,7 +1667,7 @@ class Docker:
 
         self.log(f'Wrote VMD {self.vmd_name} file\n')
 
-    def write_structures(self, tag, indexes=None, energies=True):
+    def write_structures(self, tag, indexes=None, energies=True, p=True):
         '''
         '''
 
@@ -1649,7 +1686,9 @@ class Docker:
                     title += f' - Rel. E. = {round(rel_e[i], 3)} kcal/mol'
 
                 write_xyz(structure, self.atomnos, f, title=title)
-        self.log(f'Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
+
+        if p:
+            self.log(f'Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
 
     def run(self):
         '''
@@ -1706,6 +1745,14 @@ class Docker:
                 self.log(s)
                 clean_directory()
                 quit()
+
+            ##################### AUGMENTATION - METADYNAMICS
+
+            if self.options.metadynamics:
+
+                self.metadynamics_augmentation()
+                self.optimization_refining()
+                self.similarity_refining()
 
             ##################### POST TSCODE - NEB, NCI, VMD
 
