@@ -105,53 +105,52 @@ def get_ase_calc(calculator, procs, method):
             raise Exception('Cannot import xtb python bindings. Install them with:\n>>> conda install -c conda-forge xtb-python\n')
         return XTB(method=method)
 
-    else:
-        
-        command = COMMANDS[calculator]
+    
+    command = COMMANDS[calculator]
 
-        if calculator == 'MOPAC':
-            return MOPAC(label='temp',
-                        command=f'{command} temp.mop > temp.cmdlog 2>&1',
-                        method=method)
+    if calculator == 'MOPAC':
+        return MOPAC(label='temp',
+                    command=f'{command} temp.mop > temp.cmdlog 2>&1',
+                    method=method)
 
-        elif calculator == 'ORCA':
-            if procs > 1:
-                orcablocks = f'%pal nprocs {procs} end'
-                return ORCA(label='temp',
-                            command=f'{command} temp.inp > temp.out 2>&1',
-                            orcasimpleinput=method,
-                            orcablocks=orcablocks)
-            else:
-                return ORCA(label='temp',
-                            command=f'{command} temp.inp > temp.out 2>&1',
-                            orcasimpleinput=method)
+    elif calculator == 'ORCA':
+        if procs > 1:
+            orcablocks = f'%pal nprocs {procs} end'
+            return ORCA(label='temp',
+                        command=f'{command} temp.inp > temp.out 2>&1',
+                        orcasimpleinput=method,
+                        orcablocks=orcablocks)
+        else:
+            return ORCA(label='temp',
+                        command=f'{command} temp.inp > temp.out 2>&1',
+                        orcasimpleinput=method)
 
-        elif calculator == 'GAUSSIAN':
+    elif calculator == 'GAUSSIAN':
 
-            # firstline = method if procs == 1 else f'%nprocshared={procs}\n{method}'
+        # firstline = method if procs == 1 else f'%nprocshared={procs}\n{method}'
 
-            calc = Gaussian(label='temp',
-                            command=f'{command} temp.com',
-                            method=method,
-                            nprocshared=procs,
-                            mem=MEM
-                            )
+        calc = Gaussian(label='temp',
+                        command=f'{command} temp.com',
+                        method=method,
+                        nprocshared=procs,
+                        mem=MEM
+                        )
 
-            if 'g09' in command:
+        if 'g09' in command:
 
-                from ase.io import read
-                def g09_read_results(self=calc):
-                    output = read(self.label + '.out', format='gaussian-out')
-                    self.calc = output.calc
-                    self.results = output.calc.results
+            from ase.io import read
+            def g09_read_results(self=calc):
+                output = read(self.label + '.out', format='gaussian-out')
+                self.calc = output.calc
+                self.results = output.calc.results
 
-                calc.read_results = g09_read_results
+            calc.read_results = g09_read_results
 
-                # Adapting for g09 outputting .out files instead of g16 .log files.
-                # This is a bad fix and the issue should be corrected in
-                # the ASE source code: pull request on GitHub pending
+            # Adapting for g09 outputting .out files instead of g16 .log files.
+            # This is a bad fix and the issue should be corrected in
+            # the ASE source code: pull request on GitHub pending
 
-                return calc
+            return calc
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])

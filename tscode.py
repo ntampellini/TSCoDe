@@ -1352,7 +1352,7 @@ class Docker:
             try:
                 os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
                 # We don't need the pre-optimized structures anymore
-            except:
+            except FileNotFoundError:
                 pass
 
         self._set_target_distances()
