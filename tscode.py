@@ -267,13 +267,8 @@ class Options:
         if not OPENBABEL_OPT_BOOL:
             d.pop('openbabel_level')
 
-        if self.procs == 1:
+        if self.procs == 1 or self.calculator not in ('ORCA', ' GAUSSIAN'):
             d.pop('procs')
-
-        # if len(self.objects) == 1:
-        #     d.pop('rotation_range')
-        #     d.pop('rotation_steps')
-        #     d.pop('rigid')
 
         padding = 1 + max([len(var) for var in d])
 
@@ -750,6 +745,16 @@ class Docker:
                         mask = np.array([i in to_keep for i in norms])
                         mol.pivots = mol.pivots[mask]
                         break
+
+        if mol.vicinal:
+            pivots_lengths = [np.linalg.norm(pivot.pivot) for pivot in mol.pivots]
+            shortest_length = min(pivots_lengths)
+            mask = np.array([i - shortest_length < 1e-5 for i in pivots_lengths])
+            mol.pivots = mol.pivots[mask]
+        # if mol is vicinal (two connected reactive centers, reacting with sigma bond)
+        # then remove all pivots that are not the shortest. This ensures a sort of 
+        # "suprafaciality" to the pivots used, preventing the embed of structures that
+        # would surely compenetrate
 
     def _get_pivots(self, mol):
         '''
@@ -1333,6 +1338,8 @@ class Docker:
 
         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
         
+        self.log(f'Successfully optimized {len([b for b in self.exit_status if b])}/{len(self.structures)} structures. Non-optimized ones will not be discarded.')
+
         self.log((f'{self.options.calculator} {self.options.theory_level} optimization took '
                   f'{time_to_string(time.time()-t_start)} (~{time_to_string((time.time()-t_start)/len(self.structures))} per structure)'))
 
@@ -1491,12 +1498,11 @@ class Docker:
 
             try:
 
-                self.structures[i], self.energies[i] = hyperNEB(structure,
+                self.structures[i], self.energies[i] = hyperNEB(self,
+                                                                structure,
                                                                 self.atomnos,
                                                                 self.ids,
                                                                 self.constrained_indexes[i],
-                                                                reag_prod_method=f'{self.options.theory_level}',
-                                                                NEB_method=f'{self.options.theory_level} GEO-OK',
                                                                 title=f'structure_{i+1}')
 
                 exit_str = 'COMPLETED'
@@ -1624,11 +1630,22 @@ class Docker:
 
             head = ''
             for i, mol in enumerate(self.objects):
-                descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A)' for atom in mol.reactive_atoms_classes_dict.values()]
+                descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A, {len(atom.center)} centers)' for atom in mol.reactive_atoms_classes_dict.values()]
                 t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
-                head += f'    {i+1}. {mol.name}:\n        {t}\n'
+               
+                pivot_line = ''
+                if hasattr(mol, 'pivots'):
+                    pivot_line += f' -> {len(mol.pivots)} pivots'
 
-            self.log('--> Input structures, reactive indexes and reactive atoms TSCoDe type and orbital dimensions:\n' + head)
+                    if mol.vicinal:
+                        pivot_line += ', vicinal'
+
+                    if mol.sigmatropic:
+                        pivot_line += ', sigmatropic'
+
+                head += f'\n    {i+1}. {mol.name}{pivot_line}\n        {t}\n'
+
+            self.log('--> Input structures & reactive indexes data:\n' + head)
 
         self.log(f'--> Calculation options used were:')
         for line in str(self.options).split('\n'):

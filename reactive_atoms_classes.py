@@ -16,6 +16,7 @@ GNU General Public License for more details.
 '''
 
 import numpy as np
+from copy import deepcopy
 from parameters import orb_dim_dict
 from utils import (
                    pt,
@@ -27,10 +28,6 @@ from utils import (
 
 
 class Single:
-    '''
-    '''
-    def __init__(self):
-        pass
     
     def __repr__(self):
         return 'Single Bond'
@@ -42,10 +39,35 @@ class Single:
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = neighbors(mol.graph, i)
 
-
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
         self.coord = mol.atomcoords[atomcoords_index][i]
         self.other = mol.atomcoords[atomcoords_index][neighbors_indexes][0]
+
+        if not mol.vicinal:
+            self.orb_vecs = np.array([norm(self.coord - self.other)])
+
+        else:
+            other_reactive_indexes = list(mol.reactive_indexes)
+            other_reactive_indexes.remove(i)
+            for index in other_reactive_indexes:
+                    if index in neighbors_indexes:
+                        parnter_index = index
+                        break
+            # obtain the reference partner index
+
+            partner = mol.atomcoords[atomcoords_index][parnter_index]
+            pivot = norm(partner - self.coord)
+
+            neighbors_of_partner = neighbors(mol.graph, parnter_index)
+            neighbors_of_partner.remove(i)
+            orb_vec = norm(mol.atomcoords[atomcoords_index][neighbors_of_partner[0]] - partner)
+            orb_vec = orb_vec - orb_vec @ pivot * pivot
+
+            steps = 3 # number of total orbitals
+            self.orb_vecs = np.array([rot_mat_from_pointer(pivot, angle+60) @ orb_vec for angle in range(0,360,int(360/steps))])
+            # orbitals are staggered in relation to sp3 substituents
+
+            self.orb_vers = norm(self.orb_vecs[0])
 
         if update:
             if orb_dim is None:
@@ -56,16 +78,11 @@ class Single:
                     orb_dim = np.linalg.norm(self.coord - self.other)
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using the bonding distance ({round(orb_dim, 3)} A).')
 
-            self.orb_vecs = np.array([norm(self.coord - self.other)])
-            self.center = np.array([orb_dim * self.orb_vecs[0] + self.coord])
+            self.center = orb_dim * self.orb_vecs + self.coord
 
 
 class Sp2:
-    '''
-    '''
-    def __init__(self):
-        pass
-
+    
     def __repr__(self):
         return f'sp2'
 
@@ -104,63 +121,80 @@ class Sp2:
 
 
 class Sp3:
-    '''
-    '''
-    def __init__(self):
-        pass
     
     def __repr__(self):
         return 'sp3'
 
     def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
-        '''
-        '''
+
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = neighbors(mol.graph, i)
-        
-
-
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
         self.coord = mol.atomcoords[atomcoords_index][i]
         self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+        
+        if not mol.vicinal:
 
-        if not hasattr(self, 'leaving_group_index'):
-            self.leaving_group_index = None
+            if not hasattr(self, 'leaving_group_index'):
+                self.leaving_group_index = None
 
-        if len([atom for atom in self.neighbors_symbols if atom in ['O', 'N', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
-            self.leaving_group_coords = self.others[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
+            if len([atom for atom in self.neighbors_symbols if atom in ['O', 'N', 'Cl', 'Br', 'I']]) == 1: # if we can tell where is the leaving group
+                self.leaving_group_coords = self.others[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom in ['O', 'Cl', 'Br', 'I']][0])]
 
-        elif len([atom for atom in self.neighbors_symbols if atom not in ['H']]) == 1: # if no clear leaving group but we only have one atom != H
-            self.leaving_group_coords = self.others[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom not in ['H']][0])]
+            elif len([atom for atom in self.neighbors_symbols if atom not in ['H']]) == 1: # if no clear leaving group but we only have one atom != H
+                self.leaving_group_coords = self.others[self.neighbors_symbols.index([atom for atom in self.neighbors_symbols if atom not in ['H']][0])]
 
-        else: # if we cannot infer, ask user if we didn't have already 
-            try:
-                self.leaving_group_coords = self._set_leaving_group(mol, neighbors_indexes)
+            else: # if we cannot infer, ask user if we didn't have already 
+                try:
+                    self.leaving_group_coords = self._set_leaving_group(mol, neighbors_indexes)
 
-            except Exception:
-            # if something goes wrong, we fallback to command line input for reactive atom index collection
+                except Exception:
+                # if something goes wrong, we fallback to command line input for reactive atom index collection
 
-                if self.leaving_group_index is None:
+                    if self.leaving_group_index is None:
 
-                    while True:
+                        while True:
 
-                        self.leaving_group_index = input(f'Please insert the index of the leaving group atom bonded to the sp3 reactive atom (index {self.index}) of molecule {mol.rootname} : ')
-                        
-                        if self.leaving_group_index == '' or self.leaving_group_index.lower().islower():
-                            pass
-                        
-                        elif int(self.leaving_group_index) in neighbors_indexes:
-                            self.leaving_group_index = int(self.leaving_group_index)
-                            break
+                            self.leaving_group_index = input(f'Please insert the index of the leaving group atom bonded to the sp3 reactive atom (index {self.index}) of molecule {mol.rootname} : ')
+                            
+                            if self.leaving_group_index == '' or self.leaving_group_index.lower().islower():
+                                pass
+                            
+                            elif int(self.leaving_group_index) in neighbors_indexes:
+                                self.leaving_group_index = int(self.leaving_group_index)
+                                break
 
-                        else:
-                            print(f'Atom {self.leaving_group_index} is not bonded to the sp3 center with index {self.index}.')
-                
-                self.leaving_group_coords = self.others[neighbors_indexes.index(self.leaving_group_index)]
+                            else:
+                                print(f'Atom {self.leaving_group_index} is not bonded to the sp3 center with index {self.index}.')
+                    
+                    self.leaving_group_coords = self.others[neighbors_indexes.index(self.leaving_group_index)]
 
-        self.orb_vecs = np.array([self.coord - self.leaving_group_coords])
-        self.orb_vers = norm(self.orb_vecs[0])
+            self.orb_vecs = np.array([self.coord - self.leaving_group_coords])
+            self.orb_vers = norm(self.orb_vecs[0])
+
+        else: # Sigma bond type
+
+            other_reactive_indexes = list(mol.reactive_indexes)
+            other_reactive_indexes.remove(i)
+            for index in other_reactive_indexes:
+                    if index in neighbors_indexes:
+                        parnter_index = index
+                        break
+            # obtain the reference partner index
+
+            pivot = norm(mol.atomcoords[atomcoords_index][parnter_index] - self.coord)
+
+            other_neighbors = deepcopy(neighbors_indexes)
+            other_neighbors.remove(parnter_index)
+            orb_vec = norm(mol.atomcoords[atomcoords_index][other_neighbors[0]] - self.coord)
+            orb_vec = orb_vec - orb_vec @ pivot * pivot
+
+            steps = 3 # number of total orbitals
+            self.orb_vecs = np.array([rot_mat_from_pointer(pivot, angle+60) @ orb_vec for angle in range(0,360,int(360/steps))])
+            # orbitals are staggered in relation to sp3 substituents
+
+            self.orb_vers = norm(self.orb_vecs[0])
 
         if update:
             if orb_dim is None:
@@ -171,7 +205,7 @@ class Sp3:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
-            self.center = np.array([orb_dim * norm(self.orb_vecs[0]) + self.coord])
+            self.center = np.array([orb_dim * norm(vec) + self.coord for vec in self.orb_vecs])
 
     def _set_leaving_group(self, mol, neighbors_indexes):
         '''
@@ -213,11 +247,7 @@ class Sp3:
 
 
 class Ether:
-    '''
-    '''
-    def __init__(self):
-        pass
-    
+       
     def __repr__(self):
         return 'Ether'
 
@@ -256,10 +286,6 @@ class Ether:
 
 
 class Ketone:
-    '''
-    '''
-    def __init__(self):
-        pass
     
     def __repr__(self):
         return 'Ketone'
@@ -335,11 +361,7 @@ class Ketone:
 
 
 class Imine:
-    '''
-    '''
-    def __init__(self):
-        pass
-    
+        
     def __repr__(self):
         return 'Imine'
 
@@ -381,17 +403,12 @@ class Imine:
 
 
 class Sp_or_carbene:
-    '''
-    '''
-    def __init__(self):
-        pass
-    
+        
     def __repr__(self):
         return self.type
 
     def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
-        '''
-        '''
+
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = neighbors(mol.graph, i)
@@ -507,24 +524,16 @@ class Sp_or_carbene:
 
 
 class Metal:
-    '''
-    '''
-
-    def __init__(self):
-        pass
-
+    
     def __repr__(self):
         return 'Metal'
 
     def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
-        '''
-        '''
+
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = neighbors(mol.graph, i)
         
-
-
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
         self.coord = mol.atomcoords[atomcoords_index][i]
         self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
@@ -532,13 +541,17 @@ class Metal:
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
 
         v1 = self.vectors[0]
+        # v1 connects first bonded atom to the metal itself
 
         neighbor_of_neighbor_index = neighbors(mol.graph, neighbors_indexes[0])[0]
         v2 = mol.atomcoords[atomcoords_index][neighbor_of_neighbor_index] - self.coord
+        # v2 connects first neighbor of the first neighbor to the metal itself
 
         self.orb_vec = norm(rot_mat_from_pointer(np.cross(v1, v2), 120) @ v1)
+        # setting the pointer (orb_vec) so that orbitals are oriented correctly
+        # (Lithium enolate in mind)
 
-        steps = 4
+        steps = 4 # number of total orbitals
         self.orb_vecs = np.array([rot_mat_from_pointer(v1, angle) @ self.orb_vec for angle in range(0,360,int(360/steps))])
 
         if update:
@@ -547,16 +560,14 @@ class Metal:
             
             self.center = (self.orb_vecs * orb_dim) + self.coord
 
-# class Sigma_bond: # when the nucleophile is a sigma bond!
-
 # Keys are made of atom symbol and number of bonds that it makes
 atom_type_dict = {
             'H1' : Single(),
 
             'B3' : Sp2(),
-            # 'B4' : This is probably hard and would require a complex reactive atom class
+            'B4' : Sp3(),
 
-            'C1' : Single(), # deprotonated terminal alkyne. TODO - what if it is a carbylidene? Very rare by the way...
+            'C1' : Single(), # deprotonated terminal alkyne. What if it is a carbylidene? Very rare by the way...
             'C2' : Sp_or_carbene(), # sp if straight, carbene if bent
             'C3' : Sp2(), # double ball
             'C4' : Sp3(), # one ball, on the back of the leaving group. If we can't tell which one it is, we ask user

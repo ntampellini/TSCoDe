@@ -26,7 +26,7 @@ from rmsd import kabsch
 from cclib.io import ccread
 from numpy.linalg import LinAlgError
 
-from utils import is_sigmatropic, pt
+from utils import is_sigmatropic, is_vicinal, pt
 from reactive_atoms_classes import atom_type_dict
 
 class CCReadError(Exception):
@@ -161,11 +161,16 @@ class Hypermolecule:
         # show_graph(self)
 
         if self.hyper:
+
+            self.vicinal, self.sigmatropic = None, None
+            
+
             self._inspect_reactive_atoms()
             # sets reactive atoms properties
 
             self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
             self.sigmatropic = is_sigmatropic(self)
+            self.vicinal = is_vicinal(self)
 
             for index, reactive_atom in self.reactive_atoms_classes_dict.items():   
                 reactive_atom.init(self, index, update=True)

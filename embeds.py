@@ -385,22 +385,9 @@ def cyclical_embed(self):
                                         mol,
                                         pivot,
                                         0.9*maxval,
-                                        method=f'{self.options.theory_level}',
                                         title=f'{mol.rootname} - pivot {p}',
                                         traj=traj
                                         )
-
-                    # ase_view(bent_mol)
-
-                    ###################################### DEBUGGING PURPOSES
-
-                    # for p in bent_mol.pivots:
-                    #     if p.index == pivot.index:
-                    #         new_pivot = p
-                    # now = np.linalg.norm(new_pivot.pivot)
-                    # self.log(f'Corrected Triangle: Side was {round(norms[index], 3)} A, now it is {round(now, 3)}, {round(now/maxval, 3)} % of maximum value for triangle creation', p=False)
-                    
-                    #########################################################
 
                     thread_objects[index] = bent_mol
 
@@ -460,7 +447,6 @@ def cyclical_embed(self):
                                                 mol,
                                                 pivots[i],
                                                 target_length,
-                                                method=f'{self.options.theory_level}',
                                                 title=f'{mol.rootname} - pivot {p}',
                                                 traj=traj
                                                 )
@@ -508,8 +494,6 @@ def cyclical_embed(self):
 
                     constrained_indexes.append(ids)
                     # Save indexes to be constrained later in the optimization step
-
-                    # orb_list = []
 
                     for i, vec_pair in enumerate(vecs):
                     # setting molecular positions and rotations (embedding)
@@ -565,29 +549,6 @@ def cyclical_embed(self):
                         # overall position is given by superimposing mean of active pivot (connecting orbitals)
                         # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
 
-                        # orb_list.append(start)
-                        # orb_list.append(end)
-
-                    ################# DEBUGGING OUTPUT
-
-                    # with open('orbs.xyz', 'a') as f:
-                    #     an = np.array([3 for _ in range(len(orb_list))])
-                    #     write_xyz(np.array(orb_list), an, f)
-
-                    # totalcoords = np.concatenate([[mol.rotation @ v + mol.position for v in mol.atomcoords[0]] for mol in thread])
-                    # totalatomnos = np.concatenate([mol.atomnos for mol in thread])
-                    # total_reactive_indexes = np.array(ids).ravel()
-
-                    # with open('debug_step.xyz', 'w') as f:
-                    #     write_xyz(totalcoords, totalatomnos, f)
-                    #     # write_xyz(totalcoords[total_reactive_indexes], totalatomnos[total_reactive_indexes], f)
-
-                    # # os.system('vmd debug_step.xyz')
-                    # os.system(r'vmd -e C:\Users\Nik\Desktop\Coding\TSCoDe\Resources\tri\temp_bonds.vmd')
-                    # quit()
-                    # TODO - clean
-
-
     loadbar(1, 1, prefix=f'Embedding structures ')
 
     self.dispositions_constrained_indexes = np.array(constrained_indexes)
@@ -619,7 +580,6 @@ def monomolecular_embed(self):
                             pivot,
                             1, # bend until we are within 1 A to
                                # the target distance between atoms
-                            method=f'{self.options.theory_level}',
                             title=f'{mol.rootname} - pivot {p}',
                             traj=traj,
                             check=False, # avoid returning the non-bent molecule,

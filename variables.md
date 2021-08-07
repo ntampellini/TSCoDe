@@ -14,7 +14,8 @@
  'name': str, relative path to file
  'orb_vers': array, shape = (N,3) with all orbital versors, for alignment purposes. sp2 orbitals contribute with two versors, single bond orbitals with one. Versors start at reactive atom and end at the relative self.center point.
  'position': array, shape = (3,) - position of molecular center, in Angstroms, used to place molecule in a TS
- 'reactive_atoms_classes_dict': dict of classes, one for each reactive atom index specified. Each of these objects has the attributes described below.
+ 'reactive_atoms_classes_dict': dict of classes, one for each reactive atom index specified. Key is atom number and value is the reactive atom class.
+                                Each of these objects has the attributes described below.
  'reactive_indexes': array, shape = (N,) - containing all reactive atoms indexes
  'rootname': name, but stripped of its extension
  'rotation': array, shape = (3,3), rotation matrix specifying molecule rotation. To be used in TS building.

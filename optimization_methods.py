@@ -39,7 +39,6 @@ from settings import COMMANDS, MEM
 from parameters import nci_dict
 from hypermolecule_class import graphize
 from utils import (
-                   HiddenPrints,
                    center_of_mass,
                    clean_directory,
                    diagonalize,
@@ -102,7 +101,9 @@ def get_ase_calc(calculator, procs, method):
         try:
             from xtb.ase.calculator import XTB
         except ImportError:
-            raise Exception('Cannot import xtb python bindings. Install them with:\n>>> conda install -c conda-forge xtb-python\n')
+            raise Exception(('Cannot import xtb python bindings. Install them with:\n'
+                             '>>> conda install -c conda-forge xtb-python\n'
+                             '(See https://github.com/grimme-lab/xtb-python)'))
         return XTB(method=method)
 
     
@@ -667,9 +668,15 @@ def dump(filename, images, atomnos):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
 
-def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_graphs, title=0, max_newbonds=0, traj=None):
+def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_graphs, title=0, traj=None):
     '''
-    TODO - desc
+    docker: TSCoDe docker object
+    structure: TS candidate coordinates to be adjusted
+    atomnos: 1-d array with element numbering for the TS
+    constrained_indexes: (n,2)-shaped array of indexes to be distance constrained
+    mols_graphs: list of NetworkX graphs, ordered as the single molecules in the TS
+    title: number to be used for referring to this structure in the docker log
+    traj: if set to a string, traj+'.traj' is used as a filename for the refinement trajectory.
     '''
     atoms = Atoms(atomnos, positions=structure)
 
@@ -690,16 +697,25 @@ def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_gr
 
     new_structure = atoms.get_positions()
 
-    success = scramble_check(new_structure, atomnos, mols_graphs, max_newbonds=max_newbonds)
+    success = scramble_check(new_structure, atomnos, mols_graphs)
     exit_str = 'REFINED' if success else 'SCRAMBLED'
 
     docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
 
     return new_structure, atoms.get_total_energy(), success
 
-def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-OK', title='temp', optimizer=LBFGS, logfile=None):
+def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None):
     '''
-    TODO:REDO COMPLETELY
+    docker: tscode docker object
+    reagents: coordinates for the atom arrangement to be used as reagents
+    products: coordinates for the atom arrangement to be used as products
+    atomnos: 1-d array of atomic numbers
+    n_images: number of optimized images connecting reag/prods
+    title: name used to write the final MEP as a .xyz file
+    optimizer: ASE optimizer to be used in 
+    logfile: filename to dump the optimization data to. If None, no file is written.
+
+    return: 2- element tuple with coodinates of highest point along the MEP and its energy in kcal/mol
     '''
 
     first = Atoms(atomnos, positions=reagents)
@@ -709,25 +725,27 @@ def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-
     images += [first.copy() for i in range(n_images)]
     images += [last]
 
-    neb = DyNEB(images, fmax=fmax, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
+    neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
     neb.interpolate()
 
     dump(f'{title}_MEP_guess.xyz', images, atomnos)
     
+    neb_method = docker.options.theory_level + (' GEO-OK' if docker.options.calc == 'MOPAC' else '')
+    # avoid MOPAC from rejecting structures with atoms too close to each other
+
     # Set calculators for all images
     for i, image in enumerate(images):
-        image.calc = MOPAC(label='temp', command=f'{COMMANDS["MOPAC"]} temp.mop > temp.cmdlog 2>&1', method=method)
+        image.calc = get_ase_calc(docker.options.calculator, docker.options.procs, neb_method)
 
     # Set the optimizer and optimize
     try:
         with optimizer(neb, maxstep=0.1, logfile=logfile) as opt:
 
-            # with suppress_stdout_stderr():
-            # with HiddenPrints():
-            opt.run(fmax=fmax, steps=20)
+            opt.run(fmax=0.05, steps=20)
+            # some free relaxation before starting to climb
 
             neb.climb = True
-            opt.run(fmax=fmax, steps=500)
+            opt.run(fmax=0.05, steps=500)
 
     except Exception as e:
         print(f'Stopped NEB for {title}:')
@@ -744,14 +762,14 @@ def ase_neb(reagents, products, atomnos, n_images=6, fmax=0.05, method='PM7 GEO-
 
     return images[ts_id].get_positions(), images[ts_id].get_total_energy()
 
-def hyperNEB(coords, atomnos, ids, constrained_indexes, reag_prod_method ='PM7', NEB_method='PM7 GEO-OK', title='temp'):
+def hyperNEB(docker, coords, atomnos, ids, constrained_indexes, title='temp'):
     '''
     Turn a geometry close to TS to a proper TS by getting
     reagents and products and running a climbing image NEB calculation through ASE.
     '''
 
-    reagents = get_reagent(coords, atomnos, ids, constrained_indexes, method=reag_prod_method)
-    products = get_product(coords, atomnos, ids, constrained_indexes, method=reag_prod_method)
+    reagents = get_reagent(coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
+    products = get_product(coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
     # get reagents and products for this reaction
 
     reagents -= np.mean(reagents, axis=0)
@@ -762,14 +780,16 @@ def hyperNEB(coords, atomnos, ids, constrained_indexes, reag_prod_method ='PM7',
     products = np.array([aligment_rotation @ v for v in products])
     # rotating the two structures to minimize differences
 
-    ts_coords, ts_energy = ase_neb(reagents, products, atomnos, method=NEB_method, optimizer=LBFGS, title=title)
+    ts_coords, ts_energy = ase_neb(docker, reagents, products, atomnos, title=title)
     # Use these structures plus the TS guess to run a NEB calculation through ASE
 
     return ts_coords, ts_energy
 
 def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
-    TODO:desc
+    Part of the automatic NEB implementation.
+    Returns a structure that presumably is the association reaction product
+    ([cyclo]additions reactions in mind)
     '''
 
     bond_factor = 1.2
@@ -862,7 +882,9 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
 
 def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
-    TODO:desc
+    Part of the automatic NEB implementation.
+    Returns a structure that presumably is the association reaction reagent.
+    ([cyclo]additions reactions in mind)
     '''
 
     bond_factor = 1.5
@@ -1190,19 +1212,27 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
 
     return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
 
-def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp', traj=None, check=True):
+def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, check=True):
     '''
-    threshold: float (A)
+    docker: TSCoDe docker object
+    original_mol: Hypermolecule object to be bent
+    pivot: pivot connecting two Hypermolecule orbitals to be approached/distanced
+    threshold: target distance for the specified pivot, in Angstroms
+    title: name to be used for referring to this structure in the docker log
+    traj: if set to a string, traj+'.traj' is used as a filename for the bending trajectory.
+          not only the atoms will be printed, but also all the orbitals and the active pivot.
+    check: if True, after bending checks that the bent structure did not scramble.
+           If it did, returns the initial molecule.
     '''
 
     identifier = np.sum(original_mol.atomcoords[0])
 
-    try:
-        return docker.ase_bent_mols_dict[(identifier, pivot.index, round(threshold, 3))]
-    except (KeyError, AttributeError):
-        # ignore structure cacheing either if we do not already have
-        # this structure (KeyError) or we never set up the bent mols dict
-        pass
+    if hasattr(docker, 'bent_mols_dict'):
+        try:
+            return docker.ase_bent_mols_dict[(identifier, pivot.index, round(threshold, 3))]
+        except KeyError:
+            # ignore structure cacheing if we do not already have this structure 
+            pass
 
     if traj is not None:
 
@@ -1253,12 +1283,11 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
 
         atoms = Atoms(mol.atomnos, positions=mol.atomcoords[0])
 
-        atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, method)
+        atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, docker.options.theory_level)
         
         if traj is not None:
             traj_obj = Trajectory(traj + f'_conf{conf}.traj', mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]), active_pivot))
             traj_obj.write()
-            # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
         unproductive_iterations = 0
         break_reason = 'MAX ITER'
@@ -1296,7 +1325,6 @@ def ase_bend(docker, original_mol, pivot, threshold, method='PM7', title='temp',
             if traj is not None:
                 traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
                 traj_obj.write()
-                # write_xyz_orb(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
 
             # check if we are stuck
             if np.max(np.abs(np.linalg.norm(atoms.get_positions() - mol.atomcoords[0], axis=1))) < 0.01:
@@ -1501,7 +1529,6 @@ def parse_xtb_out(filename):
         coords[l] = line.split()[:-1]
 
     return coords * 0.529177249 # Bohrs to Angstroms
-
 
 from settings import OPENBABEL_OPT_BOOL
 

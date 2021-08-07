@@ -406,12 +406,12 @@ def neighbors(graph, index):
 
 def is_sigmatropic(mol):
     '''
-    An hypermolecule is considered sigmatropic when:
+    A hypermolecule is considered sigmatropic when:
     - has 2 reactive atoms
     - they are of sp2 or analogous types
     - they are connected, or at least one path connecting them
       is made up of atoms that do not make more than three bonds each
-    - they are less than 3 A apart (cisoid propenal makes it, transoid do not)
+    - they are less than 3 A apart (cisoid propenal makes it, transoid does not)
 
     Used to set the mol.sigmatropic attribute, that affects orbital
     building (p or n lobes) for Ketone and Imine reactive atoms classes.
@@ -443,4 +443,29 @@ def is_sigmatropic(mol):
 
                     if full_sp2:
                         return True
+    return False
+
+def is_vicinal(mol):
+    '''
+    A hypermolecule is considered vicinal when:
+    - has 2 reactive atoms
+    - they are of sp3 or Single Bond type
+    - they are bonded
+
+    Used to set the mol.vicinal attribute, that affects orbital
+    building (BH4 or agostic-like behavior) for Sp3 and Single Bond reactive atoms classes.
+    '''
+    vicinal_types = (
+                'sp3',
+                'Single Bond',
+                )
+
+    if len(mol.reactive_indexes) == 2:
+
+        i1, i2 = mol.reactive_indexes
+
+        if all([str(r_atom) in vicinal_types for r_atom in mol.reactive_atoms_classes_dict.values()]):
+            if i1 in neighbors(mol.graph, i2):
+                return True
+
     return False
