@@ -307,7 +307,7 @@ def cyclical_embed(self):
         self.ase_bent_mols_dict = {}
         # used as molecular cache for ase_bend
         # keys are tuples with: ((identifier, pivot.index, target_pivot_length), obtained with:
-        # (np.sum(original_mol.atomcoords[0]), pivot.index, threshold)
+        # (np.sum(original_mol.atomcoords[0]), sorted(pivot.index), round(threshold,3))
 
     if not self.options.let:
         for mol in self.objects:
@@ -336,7 +336,7 @@ def cyclical_embed(self):
 
         if len(norms) == 2:
 
-            if abs(norms[0] - norms[1]) < 1:
+            if abs(norms[0] - norms[1]) < 2.5:
                 norms_type = 'digon'
 
             else:

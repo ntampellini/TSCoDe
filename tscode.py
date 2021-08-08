@@ -1374,9 +1374,7 @@ class Docker:
                                                                                         structure,
                                                                                         self.atomnos,
                                                                                         self.constrained_indexes[i],
-                                                                                        self.graphs,
                                                                                         title=i,
-                                                                                        max_newbonds=self.options.max_newbonds,
                                                                                         traj=traj
                                                                                         )
 
@@ -1670,7 +1668,7 @@ class Docker:
         path = os.path.join(os.getcwd(), self.vmd_name)
         with open(path, 'w') as f:
             s = ('display resetview\n' +
-                'mol new {%s.xyz}\n' % (path.strip('.vmd')) +
+                'mol new {./%s.xyz}\n' % (self.vmd_name.rstrip('.vmd')) +
                 'mol selection index %s\n' % (' '.join([str(i) for i in indexes])) +
                 'mol representation CPK 0.7 0.5 50 50\n' +
                 'mol color ColorID 7\n' +

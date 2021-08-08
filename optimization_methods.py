@@ -557,7 +557,7 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', title=
             clean_directory()
             os.remove(outname)
 
-            for filename in ('gfnff_topo', 'charges', 'wbo', 'xtbrestart', 'xtbtopo.mol'):
+            for filename in ('gfnff_topo', 'charges', 'wbo', 'xtbrestart', 'xtbtopo.mol', '.xtboptok'):
                 try:
                     os.remove(filename)
                 except FileNotFoundError:
@@ -614,7 +614,7 @@ def optimize(calculator, TS_structure, TS_atomnos, mols_graphs, constrained_inde
 
 
     if success:
-        success = scramble_check(opt_coords, TS_atomnos, mols_graphs, max_newbonds=max_newbonds)
+        success = scramble_check(opt_coords, TS_atomnos, constrained_indexes, mols_graphs, max_newbonds=max_newbonds)
 
     return opt_coords, energy, success
 
@@ -632,7 +632,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
     return True
 
-def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=0) -> bool:
+def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_newbonds=0) -> bool:
     '''
     Check if a transition state structure has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the
@@ -648,14 +648,16 @@ def scramble_check(TS_structure, TS_atomnos, mols_graphs, max_newbonds=0) -> boo
             pos += len(mols_graphs[i-1].nodes)
             i -= 1
 
-        for bond in [(a+pos, b+pos) for a, b in list(graph.edges) if a != b]:
+        for bond in [tuple(sorted((a+pos, b+pos))) for a, b in list(graph.edges) if a != b]:
             bonds.append(bond)
 
     bonds = set(bonds)
     # creating bond set containing all bonds present in the desired transition state
 
-    new_bonds = {(a, b) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
+    new_bonds = {tuple(sorted((a, b))) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
+    delta_bonds -= {tuple(sorted(pair)) for pair in constrained_indexes}
+    # removing constrained indexes couples: they are not counted as scrambled bonds
 
     if len(delta_bonds) > max_newbonds:
         return False
@@ -668,7 +670,7 @@ def dump(filename, images, atomnos):
                     coords = image.get_positions()
                     write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
 
-def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_graphs, title=0, traj=None):
+def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, title=0, traj=None):
     '''
     docker: TSCoDe docker object
     structure: TS candidate coordinates to be adjusted
@@ -697,7 +699,7 @@ def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, mols_gr
 
     new_structure = atoms.get_positions()
 
-    success = scramble_check(new_structure, atomnos, mols_graphs)
+    success = scramble_check(new_structure, atomnos, constrained_indexes, docker.graphs)
     exit_str = 'REFINED' if success else 'SCRAMBLED'
 
     docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
@@ -1229,7 +1231,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
     if hasattr(docker, 'bent_mols_dict'):
         try:
-            return docker.ase_bent_mols_dict[(identifier, pivot.index, round(threshold, 3))]
+            return docker.ase_bent_mols_dict[(identifier, sorted(pivot.index), round(threshold, 3))]
         except KeyError:
             # ignore structure cacheing if we do not already have this structure 
             pass
@@ -1395,7 +1397,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
     # add result to cache (if we have it) so we avoid recomputing it
     if hasattr(docker, "ase_bent_mols_dict"):
-        docker.ase_bent_mols_dict[(identifier, pivot.index, round(threshold, 3))] = final_mol
+        docker.ase_bent_mols_dict[(identifier, sorted(pivot.index), round(threshold, 3))] = final_mol
 
     return final_mol
 
@@ -1583,6 +1585,6 @@ if OPENBABEL_OPT_BOOL:
 
         opt_coords = ccread(outname).atomcoords[0]
 
-        success = scramble_check(opt_coords, atomnos, graphs)
+        success = scramble_check(opt_coords, atomnos, constrained_indexes, graphs)
 
         return opt_coords, success
