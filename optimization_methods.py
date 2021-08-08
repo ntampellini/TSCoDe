@@ -1229,9 +1229,9 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
     identifier = np.sum(original_mol.atomcoords[0])
 
-    if hasattr(docker, 'bent_mols_dict'):
+    if hasattr(docker, "ase_bent_mols_dict"):
         try:
-            return docker.ase_bent_mols_dict[(identifier, sorted(pivot.index), round(threshold, 3))]
+            return docker.ase_bent_mols_dict[(identifier, tuple(sorted(pivot.index)), round(threshold, 3))]
         except KeyError:
             # ignore structure cacheing if we do not already have this structure 
             pass
@@ -1397,7 +1397,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
     # add result to cache (if we have it) so we avoid recomputing it
     if hasattr(docker, "ase_bent_mols_dict"):
-        docker.ase_bent_mols_dict[(identifier, sorted(pivot.index), round(threshold, 3))] = final_mol
+        docker.ase_bent_mols_dict[(identifier, tuple(sorted(pivot.index)), round(threshold, 3))] = final_mol
 
     return final_mol
 

@@ -162,15 +162,14 @@ class Hypermolecule:
 
         if self.hyper:
 
-            self.vicinal, self.sigmatropic = None, None
-            
+            self.sp3_sigmastar, self.sigmatropic = None, None
 
             self._inspect_reactive_atoms()
             # sets reactive atoms properties
 
             self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
             self.sigmatropic = is_sigmatropic(self)
-            self.vicinal = is_vicinal(self)
+            self.sp3_sigmastar = is_vicinal(self)
 
             for index, reactive_atom in self.reactive_atoms_classes_dict.items():   
                 reactive_atom.init(self, index, update=True)

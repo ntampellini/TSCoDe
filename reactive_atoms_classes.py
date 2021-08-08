@@ -43,7 +43,7 @@ class Single:
         self.coord = mol.atomcoords[atomcoords_index][i]
         self.other = mol.atomcoords[atomcoords_index][neighbors_indexes][0]
 
-        if not mol.vicinal:
+        if not mol.sp3_sigmastar:
             self.orb_vecs = np.array([norm(self.coord - self.other)])
 
         else:
@@ -134,7 +134,7 @@ class Sp3:
         self.coord = mol.atomcoords[atomcoords_index][i]
         self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
         
-        if not mol.vicinal:
+        if not mol.sp3_sigmastar:
 
             if not hasattr(self, 'leaving_group_index'):
                 self.leaving_group_index = None

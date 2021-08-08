@@ -452,7 +452,7 @@ def is_vicinal(mol):
     - they are of sp3 or Single Bond type
     - they are bonded
 
-    Used to set the mol.vicinal attribute, that affects orbital
+    Used to set the mol.sp3_sigmastar attribute, that affects orbital
     building (BH4 or agostic-like behavior) for Sp3 and Single Bond reactive atoms classes.
     '''
     vicinal_types = (

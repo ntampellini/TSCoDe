@@ -746,15 +746,15 @@ class Docker:
                         mol.pivots = mol.pivots[mask]
                         break
 
-        if mol.vicinal:
+        if mol.sp3_sigmastar:
             pivots_lengths = [np.linalg.norm(pivot.pivot) for pivot in mol.pivots]
             shortest_length = min(pivots_lengths)
-            mask = np.array([i - shortest_length < 1e-5 for i in pivots_lengths])
+            mask = np.array([(i - shortest_length) < 1e-5 for i in pivots_lengths])
             mol.pivots = mol.pivots[mask]
-        # if mol is vicinal (two connected reactive centers, reacting with sigma bond)
-        # then remove all pivots that are not the shortest. This ensures a sort of 
-        # "suprafaciality" to the pivots used, preventing the embed of structures that
-        # would surely compenetrate
+        # if mol is reacting with a sigmastar orbital (two connected reactive Sp3/Single
+        # Bond centers) then remove all pivots that are not the shortest. This ensures
+        # a sort of "suprafaciality" to the pivots used, preventing the embed of
+        # structures that would surely compenetrate
 
     def _get_pivots(self, mol):
         '''
@@ -1635,8 +1635,8 @@ class Docker:
                 if hasattr(mol, 'pivots'):
                     pivot_line += f' -> {len(mol.pivots)} pivots'
 
-                    if mol.vicinal:
-                        pivot_line += ', vicinal'
+                    if mol.sp3_sigmastar:
+                        pivot_line += ', sp3_sigmastar'
 
                     if mol.sigmatropic:
                         pivot_line += ', sigmatropic'
