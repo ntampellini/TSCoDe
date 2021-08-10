@@ -10,7 +10,7 @@ with open('CHANGELOG.md', 'r') as f:
 
 setup(
     name='tscode',
-    version='0.0.2',
+    version='0.0.3',
     description='Computational chemistry general purpose transition state builder',
     keywords=['computational chemistry', 'ASE', 'transition state', 'xtb'],
     # py_modules=[
@@ -51,6 +51,7 @@ setup(
         'cclib==1.7',
         'ase==3.21.1',
         'sella==1.0.0',
+        'sphinxemoji==0.1.8',
     ],
 
     url='https://www.github.com/ntampellini/tscode',

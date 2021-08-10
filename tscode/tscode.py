@@ -14,7 +14,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-Version 0.0.2 - First Release
+Version 0.0.3 - Public Beta
 
 https://github.com/ntampellini/TSCoDe
 
@@ -300,7 +300,7 @@ class Docker:
         s ='\n*************************************************************\n'
         s += '*      TSCoDe: Transition State Conformational Docker       *\n'
         s += '*************************************************************\n'
-        s += '*               Version 0.0.2 - First Release               *\n'
+        s += '*                Version 0.0.3 - Public Beta                *\n'
         s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
         s += '*************************************************************\n'
 
@@ -1806,8 +1806,6 @@ class Docker:
 
 if __name__ == '__main__':
 
-    import sys
-    import os
     import argparse
 
     usage = '''python -m tscode [-h] [-s] [-t] inputfile [-n NAME]

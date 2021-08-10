@@ -121,10 +121,9 @@ def get_ase_calc(calculator, procs, method):
                         command=f'{command} temp.inp > temp.out 2>&1',
                         orcasimpleinput=method,
                         orcablocks=orcablocks)
-        else:
-            return ORCA(label='temp',
-                        command=f'{command} temp.inp > temp.out 2>&1',
-                        orcasimpleinput=method)
+        return ORCA(label='temp',
+                    command=f'{command} temp.inp > temp.out 2>&1',
+                    orcasimpleinput=method)
 
     elif calculator == 'GAUSSIAN':
 
