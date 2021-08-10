@@ -15,6 +15,7 @@ GNU General Public License for more details.
 
 '''
 from copy import deepcopy
+from ase.constraints import ExpCellFilter
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -391,8 +392,16 @@ def cyclical_embed(self):
 
                     thread_objects[index] = bent_mol
 
-                    pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
-                    # updating the active pivot for each molecule for this run
+                    try:
+                        pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+                        # updating the active pivot for each molecule for this run
+                    except IndexError:
+                        raise Exception((f'The number of pivots for molecule {index} ({bent_mol.name}) most likely decreased during ' +
+                                          'its bending, causing this error. Adding the RIGID (and maybe also SHRINK) keyword to the ' +
+                                          'input file should solve the issue. I do not think this should ever happen under common ' +
+                                          'circumstances, but if it does, it may be reasonable to print a statement on the log, ' +
+                                          'discard the bent molecule, and then proceed with the embed. If you see this error, ' +
+                                          'please report your input and structures on a GitHub issue. Thank you.'))
                     
                     norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
                     # updating the pivots norms to feed into the polygonize function

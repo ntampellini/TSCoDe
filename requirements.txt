@@ -1,9 +1,0 @@
-matplotlib==3.4.2
-periodictable==1.6.0
-networkx==2.5.1
-numpy==1.20.3
-scipy==1.6.3
-rmsd==1.4
-cclib==1.7
-ase==3.21.1
-sella==1.0.0

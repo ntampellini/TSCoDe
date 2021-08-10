@@ -1,0 +1,6 @@
+include CHANGELOG.md
+include README.md
+include LICENSE
+include tscode/*
+include tests/*
+include docs/*

@@ -35,7 +35,7 @@ from ase.calculators.gaussian import Gaussian
 from ase.constraints import FixInternals
 from scipy.spatial.transform import Rotation as R
 
-from settings import COMMANDS, MEM
+from settings import COMMANDS, MEM_GB
 from parameters import nci_dict
 from hypermolecule_class import graphize
 from utils import (
@@ -134,7 +134,7 @@ def get_ase_calc(calculator, procs, method):
                         command=f'{command} temp.com',
                         method=method,
                         nprocshared=procs,
-                        mem=MEM
+                        mem=str(MEM_GB)+'GB',
                         )
 
         if 'g09' in command:
@@ -452,8 +452,8 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
 
     s = ''
 
-    if MEM is not None:
-        s += f'%mem{MEM}GB\n'
+    if MEM_GB is not None:
+        s += f'%mem{MEM_GB}GB\n'
 
     if procs > 1:
         s += f'%nprocshared={procs}\n'
@@ -1471,12 +1471,12 @@ def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_stru
 
     s = (
         '$md\n'
-        '   time=%s\n' % (new_structures+1) +
+        '   time=%s\n' % (new_structures) +
         '   step=1\n'
         '   temp=300\n'
         '$end\n'
         '$metadyn\n'
-        '   save=%s\n' % (new_structures+1) + # extra one is the starting one
+        '   save=%s\n' % (new_structures) +
         '$end'
         )
          
@@ -1490,7 +1490,7 @@ def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_stru
         f.write(s)
 
     try:
-        check_call(f'xtb --md --input temp.inp temp.xyz --gfnff > temp.log 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
+        check_call(f'xtb --md --input temp.inp temp.xyz --gfnff > Structure{title}_MTD.log 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
 
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
@@ -1503,14 +1503,13 @@ def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_stru
         os.remove(name)
 
     for filename in ('gfnff_topo', 'xtbmdoc', 'mdrestart'):
-                try:
-                    os.remove(filename)
-                except FileNotFoundError:
-                    pass
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            pass
 
     # if debug:
     os.rename('xtb.trj', f'Structure{title}_MTD_traj.xyz')
-    os.rename('temp.log', f'Structure{title}_MTD.log')
 
     # else:
     #     os.remove('xtb.traj')  

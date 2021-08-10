@@ -14,7 +14,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-Version 0.00 - Pre-release
+Version 0.0.2 - First Release
 
 https://github.com/ntampellini/TSCoDe
 
@@ -65,7 +65,6 @@ from utils import (
                    write_xyz,
                    ZeroCandidatesError
                    )
-
 
 from python_functions import prune_conformers, compenetration_check
 # These could in the future be boosted via Cython or Julia, but they
@@ -301,7 +300,7 @@ class Docker:
         s ='\n*************************************************************\n'
         s += '*      TSCoDe: Transition State Conformational Docker       *\n'
         s += '*************************************************************\n'
-        s += '*                 Version 0.00 - Test pre-release           *\n'
+        s += '*               Version 0.0.2 - First Release               *\n'
         s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
         s += '*************************************************************\n'
 
@@ -526,8 +525,8 @@ class Docker:
 
                 if 'MTD' in keywords_list:
                     if self.options.calculator != 'XTB':
-                        raise InputError(('Metadynamics augmentation can only be run with the XTB calculator.\n'
-                                          'Change it in settings.py or use the CALC=XTB keyword.'))
+                        raise SystemExit(('Metadynamics augmentation can only be run with the XTB calculator.\n'
+                                          'Change it in settings.py or use the CALC=XTB keyword.\n'))
                     self.options.metadynamics = True
 
         except SyntaxError as e:
@@ -719,8 +718,8 @@ class Docker:
         # respectively. Apply bridging carboxylic acid correction.
             symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict.values()]
             if 'H' in symbols:
-                if 'O' in symbols or 'S' in symbols:
-                    if max([np.linalg.norm(p.pivot) for p in mol.pivots]) < 4.5:
+                if ('O' in symbols) or ('S' in symbols):
+                    if max([np.linalg.norm(p.pivot)/self.options.shrink_multiplier for p in mol.pivots]) < 4.5:
                         class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict.values()]
                         if 'Single Bond' in class_types and 'Ketone' in class_types:
                         # if we have a bridging acid, remove the longest of the two pivots,
@@ -1290,7 +1289,7 @@ class Docker:
                         
     def optimization_refining(self):
         '''
-        Refines structures by constrained optimizations with the MOPAC calculator,
+        Refines structures by constrained optimizations with the active calculator,
         discarding similar ones and scrambled ones.
         '''
 
@@ -1363,6 +1362,7 @@ class Docker:
                 pass
 
         self._set_target_distances()
+        t_start = time.time()
 
         for i, structure in enumerate(deepcopy(self.structures)):
             loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
@@ -1455,14 +1455,14 @@ class Docker:
         in energy and added to self. structures.
         '''
 
-        self.log(f'--> Performing XTB Metadynamic Augmentation of TS candidates')
+        self.log(f'--> Performing XTB Metadynamic augmentation of TS candidates')
 
         before = len(self.structures)
         t_start_run = time.time()
 
         for s, (structure, constrained_indexes) in enumerate(zip(deepcopy(self.structures), deepcopy(self.constrained_indexes))):
 
-            loadbar(s+1, before, f'Running MTD {s+1}/{before} ')
+            loadbar(s, before, f'Running MTD {s+1}/{before} ')
             t_start = time.time()
 
             new_structures = xtb_metadyn_augmentation(structure,
@@ -1477,9 +1477,10 @@ class Docker:
         
             self.log(f'   - Structure {s+1} - {len(new_structures)} new conformers ({time_to_string(time.time()-t_start)})', p=False)
 
+        loadbar(before, before, f'Running MTD {before}/{before} ')
         self.exit_status = np.array([True for _ in range(len(self.structures))], dtype=bool)
 
-        self.log(f'Metadynamics Augmentation completed - found {len(self.structures)-before} new conformers ({time_to_string(time.time()-t_start_run)})\n')
+        self.log(f'Metadynamics augmentation completed - found {len(self.structures)-before} new conformers ({time_to_string(time.time()-t_start_run)})\n')
 
     def hyperneb(self):
         '''
@@ -1628,7 +1629,9 @@ class Docker:
 
             head = ''
             for i, mol in enumerate(self.objects):
-                descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A, {len(atom.center)} centers)' for atom in mol.reactive_atoms_classes_dict.values()]
+                descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A, ' +
+                        f'{len(atom.center)} center{"s" if len(atom.center) > 1 else ""})' for atom in mol.reactive_atoms_classes_dict.values()]
+
                 t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
                
                 pivot_line = ''
@@ -1804,23 +1807,46 @@ class Docker:
 if __name__ == '__main__':
 
     import sys
+    import os
+    import argparse
 
-    if len(sys.argv) < 2 or len(sys.argv[1].split('.')) == 1:
+    usage = '''python -m tscode [-h] [-s] [-t] inputfile [-n NAME]
+        
+        positional arguments:
+          inputfile               Input filename, can be any text file.
 
-        print('\n\tTSCoDe correct usage:\n\n\tpython tscode.py input.txt\n\n\tSee documentation for input formatting.\n')
+        optional arguments:
+          -h, --help              Show this help message and exit.
+          -s, --setup             Guided setup of the calculation settings.
+          -t, --test              Perform some tests to check the TSCoDe installation.
+          -n NAME, --name NAME    Custom name for the run.\n'''
+
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument("-s", "--setup", help="Guided setup of the calculation settings.", action="store_true")
+    parser.add_argument("-t", "--test", help="Perform some tests to check the TSCoDe installation.", action="store_true")
+    parser.add_argument("inputfile", help="Input filename, can be any text file.", action='store', nargs='?', default=None)
+    parser.add_argument("-n", "--name", help="Custom name for the run.", action='store', required=False)
+    args = parser.parse_args()
+
+    if (not (args.test or args.setup)) and args.inputfile is None:
+        parser.error("One of the following arguments are required: inputfile, -t, -s.")
+
+    if args.setup:
+        from modify_settings import run_setup
+        run_setup()
+        print('\nTSCoDe setup performed correctly.')
         quit()
 
-    filename = os.path.realpath(sys.argv[1])
-    
+    if args.test:
+        from tests import run_tests
+        run_tests()
+        quit()
+
+    filename = os.path.realpath(args.inputfile)
+
     os.chdir(os.path.dirname(filename))
 
-    if len(sys.argv) > 2:
-        stamp = sys.argv[2]
-
-    else:
-        stamp = None
-
-    docker = Docker(filename, stamp)
+    docker = Docker(filename, args.name)
     # initialize docker from input file
 
     docker.run()
