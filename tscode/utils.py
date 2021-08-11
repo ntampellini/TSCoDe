@@ -469,3 +469,68 @@ def is_vicinal(mol):
                 return True
 
     return False
+
+def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
+    '''
+    Checks if two molecules have the same bonds between the same atomic indexes
+    '''
+    old_bonds = {(a, b) for a, b in list(graphize(old_coords, atomnos).edges) if a != b}
+    new_bonds = {(a, b) for a, b in list(graphize(new_coords, atomnos).edges) if a != b}
+
+    delta_bonds = (old_bonds | new_bonds) - (old_bonds & new_bonds)
+
+    if len(delta_bonds) > max_newbonds:
+        return False
+
+    return True
+
+def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_newbonds=0) -> bool:
+    '''
+    Check if a transition state structure has scrambled during some optimization
+    steps. If more than a given number of bonds changed (formed or broke) the
+    structure is considered scrambled, and the method returns False.
+    '''
+    assert len(TS_structure) == sum([len(graph.nodes) for graph in mols_graphs])
+
+    bonds = []
+    for i, graph in enumerate(mols_graphs):
+
+        pos = 0
+        while i != 0:
+            pos += len(mols_graphs[i-1].nodes)
+            i -= 1
+
+        for bond in [tuple(sorted((a+pos, b+pos))) for a, b in list(graph.edges) if a != b]:
+            bonds.append(bond)
+
+    bonds = set(bonds)
+    # creating bond set containing all bonds present in the desired transition state
+
+    new_bonds = {tuple(sorted((a, b))) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
+    delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
+    delta_bonds -= {tuple(sorted(pair)) for pair in constrained_indexes}
+    # removing constrained indexes couples: they are not counted as scrambled bonds
+
+    if len(delta_bonds) > max_newbonds:
+        return False
+
+    return True
+
+def graphize(coords, atomnos):
+    '''
+    :params coords: atomic coordinates as 3D vectors
+    :params atomnos: atomic numbers as a list
+    :return connectivity graph
+    '''
+    def d_min(e1, e2):
+        return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
+        # return 0.2 + (pt[e1].covalent_radius + pt[e2].covalent_radius)
+    # if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
+
+    matrix = np.zeros((len(coords),len(coords)))
+    for i, _ in enumerate(coords):
+        for j in range(i,len(coords)):
+            if np.linalg.norm(coords[i]-coords[j]) < d_min(atomnos[i], atomnos[j]):
+                matrix[i][j] = 1
+
+    return nx.from_numpy_matrix(matrix)

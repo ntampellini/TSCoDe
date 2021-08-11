@@ -9,7 +9,7 @@
 ### 0.0.3 (10 Aug 2021)
 - setup.py bugfix.
 
-### 0.0.4 (11 Aug 2021)
+### 0.0.4 (Testing)
 - SADDLE keyword implementation.
 - Added keywords print at top of log
-- Refactored some complex to read code
+- Significant code refactoring

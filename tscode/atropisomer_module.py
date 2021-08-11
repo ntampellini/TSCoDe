@@ -25,10 +25,11 @@ from networkx.algorithms.components.connected import connected_components
 from networkx.algorithms.shortest_paths.generic import shortest_path
 
 from hypermolecule_class import graphize, align_structures
-from optimization_methods import get_ase_calc, molecule_check, ase_saddle
+from ase_manipulations import get_ase_calc, ase_saddle
 from utils import (
     dihedral,
     clean_directory,
+    molecule_check,
     loadbar,
     time_to_string,
     write_xyz,

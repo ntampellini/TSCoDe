@@ -31,7 +31,7 @@ from utils import (
                    vec_angle,
                   )
 
-from optimization_methods import ase_bend
+from ase_manipulations import ase_bend
 
 def string_embed(self):
     '''

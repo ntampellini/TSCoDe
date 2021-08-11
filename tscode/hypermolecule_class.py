@@ -26,7 +26,7 @@ from rmsd import kabsch
 from cclib.io import ccread
 from numpy.linalg import LinAlgError
 
-from utils import is_sigmatropic, is_vicinal, pt
+from utils import is_sigmatropic, is_vicinal, pt, graphize
 from reactive_atoms_classes import atom_type_dict
 
 class CCReadError(Exception):
@@ -70,25 +70,6 @@ def align_structures(structures:np.array, indexes=None):
         output[t+1] = np.array([matrix @ vector for vector in target])
 
     return output
-
-def graphize(coords, atomnos):
-    '''
-    :params coords: atomic coordinates as 3D vectors
-    :params atomnos: atomic numbers as a list
-    :return connectivity graph
-    '''
-    def d_min(e1, e2):
-        return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
-        # return 0.2 + (pt[e1].covalent_radius + pt[e2].covalent_radius)
-    # if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
-
-    matrix = np.zeros((len(coords),len(coords)))
-    for i, _ in enumerate(coords):
-        for j in range(i,len(coords)):
-            if np.linalg.norm(coords[i]-coords[j]) < d_min(atomnos[i], atomnos[j]):
-                matrix[i][j] = 1
-
-    return nx.from_numpy_matrix(matrix)
 
 class Hypermolecule:
     '''

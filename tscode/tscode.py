@@ -45,9 +45,6 @@ from parameters import orb_dim_dict
 from embeds import monomolecular_embed, string_embed, cyclical_embed, dihedral_embed
 from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
-                                  ase_adjust_spacings,
-                                  ase_saddle,
-                                  get_nci,
                                   hyperNEB,
                                   MopacReadError,
                                   optimize,
@@ -55,6 +52,12 @@ from optimization_methods import (
                                   scramble,
                                   xtb_metadyn_augmentation,
                                   )
+
+from ase_manipulations import (
+                               ase_adjust_spacings,
+                               ase_saddle,
+                              )
+
 from utils import (
                    ase_view,
                    cartesian_product,
@@ -65,6 +68,8 @@ from utils import (
                    write_xyz,
                    ZeroCandidatesError
                    )
+
+from nci import get_nci
 
 from python_functions import prune_conformers, compenetration_check
 # These could in the future be boosted via Cython or Julia, but they
@@ -485,8 +490,8 @@ class Docker:
                 if 'RIGID' in keywords_simple:
                     self.options.rigid = True
 
-                if 'NONCI' in keywords_simple:
-                    self.options.nci = False
+                if 'NCI' in keywords_simple:
+                    self.options.nci = True
 
                 if 'ONLYREFINED' in keywords_simple:
                     self.options.only_refined = True
@@ -1639,7 +1644,7 @@ class Docker:
 
     def print_nci(self):
         '''
-        Prints the non-covalent interactions guesses for final structures.
+        Prints and logs the non-covalent interactions guesses for final structures.
         '''
         self.log('--> Non-covalent interactions spotting')
         self.nci = []
@@ -1697,7 +1702,7 @@ class Docker:
                
                 pivot_line = ''
                 if hasattr(mol, 'pivots'):
-                    pivot_line += f' -> {len(mol.pivots)} pivots'
+                    pivot_line += f' -> {len(mol.pivots)} pivot{"s" if len(mol.pivots) > 1 else ""}'
 
                     if mol.sp3_sigmastar:
                         pivot_line += ', sp3_sigmastar'
