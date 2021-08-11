@@ -89,6 +89,7 @@ After installation, run the guided utility to set up calculation settings (sugge
     python -m tscode --setup
 
 Defaults:
+
 -  OpenBabel FF support is turned off.
 -  Calculator is XTB
 

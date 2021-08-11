@@ -29,6 +29,6 @@ TSCoDe is written in pure Python. It leverages the numpy library to do the linea
 -  XTB (>=6.3)
 
 ## Documentation
-Documentation on how to install and use the program can be found on [readthedocs]().
+Documentation on how to install and use the program can be found on [readthedocs](https://tscode.readthedocs.io/en/latest/).
 
 

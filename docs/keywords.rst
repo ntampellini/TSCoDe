@@ -115,6 +115,9 @@ one is accepted, like in ``DIST``.
    Manually specify the rotation range to be explored around the
    structure pivot. Default is 90. Syntax: ``ROTRANGE=90``
 
+-  **SADDLE** - After embed and refinement, optimize structures to the 
+   closest first order saddle point using the `Sella <https://github.com/zadorlab/sella>`__ library through ASE.
+
 -  **SHRINK** - Exaggerate orbital dimensions during embed, scaling
    them by a specified factor. If used as a single keyword (``SHRINK``),
    orbital dimensions are scaled by a factor of one and a half. A syntax
