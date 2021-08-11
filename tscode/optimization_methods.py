@@ -347,7 +347,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
 
     if read_output:
 
-        inv_order = [order.index(i) for i in range(len(order))]
+        inv_order = [order.index(i) for i, _ in enumerate(order)]
         # undoing the atomic scramble that was needed by the mopac input requirements
 
         opt_coords, energy, success = read_mop_out(f'{title}.out')
@@ -749,7 +749,7 @@ def ase_saddle(coords, atomnos, calculator, method, procs=1, title='temp', logfi
     # if logfile is not None:
     #     logfile.write('\n')
 
-    return new_structure, energy
+    return new_structure, energy, None
 
 def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None):
     '''
@@ -862,7 +862,7 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
         reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
         # distances between reactive atoms
 
-        while not np.all([reactive_dists[i] < threshold_dists[i] for i in range(len(constrained_indexes))]):
+        while not np.all([reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indexes)]):
             # print('Reactive distances are', reactive_dists)
 
             coords[:ids[0]] += motion*step_size
@@ -876,7 +876,7 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
 
         new_reactive_dists = [np.linalg.norm(newcoords[a] - newcoords[b]) for a, b in constrained_indexes]
 
-        if np.all([new_reactive_dists[i] < threshold_dists[i] for i in range(len(constrained_indexes))]):
+        if np.all([new_reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indexes)]):
         # return the freely optimized structure only if the reagents did not repel each other
         # during the optimization, otherwise return the last coords, where partners were close
             return newcoords
@@ -1012,13 +1012,13 @@ def get_nci(coords, atomnos, constrained_indexes, ids):
     symbols = [pt[i].symbol for i in atomnos]
     constrained_indexes = constrained_indexes.ravel()
 
-    for i1 in range(len(coords)):
+    for i1, _ in enumerate(coords):
     # check atomic pairs (O-H, N-H, ...)
 
             start_of_next_mol = cum_ids[next(i for i,n in enumerate(np.cumsum(ids)) if i1 < n)]
             # ensures that we are only taking into account intermolecular NCIs
 
-            for i2 in range(len(coords[start_of_next_mol:])):
+            for i2, _ in enumerate(coords[start_of_next_mol:]):
                 i2 += start_of_next_mol
 
                 if i1 not in constrained_indexes:
@@ -1045,7 +1045,7 @@ def get_nci(coords, atomnos, constrained_indexes, ids):
     aromatic_centers = []
     masks = []
 
-    for mol in range(len(ids)):
+    for mol, _ in enumerate(ids):
 
         if mol == 0:
             mol_mask = slice(0, cum_ids[0])
@@ -1291,7 +1291,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
             if pivot is not None:
                 positions = np.concatenate((positions, [pivot.start], [pivot.end]))
 
-            symbols = list(atoms.numbers) + [0 for _ in range(len(orbitals))]
+            symbols = list(atoms.numbers) + [0 for _ in orbitals]
 
             if pivot is not None:
                 symbols += [9 for _ in range(2)]
@@ -1313,7 +1313,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
     neighbors_of_2 = list([(a, b) for a, b in original_mol.graph.adjacency()][i2][1].keys())
     neighbors_of_2.remove(i2)
 
-    mols = [deepcopy(original_mol) for _ in range(len(original_mol.atomcoords))]
+    mols = [deepcopy(original_mol) for _ in original_mol.atomcoords]
     for m, mol in enumerate(mols):
         mol.atomcoords = np.array([mol.atomcoords[m]])
 
@@ -1459,7 +1459,7 @@ def get_inertia_moments(coords, atomnos):
     for i in range(3):
         for j in range(3):
             k = kronecker_delta(i,j)
-            inertia_moment_matrix[i][j] = np.sum([pt[atomnos[n]].mass*((np.linalg.norm(coords[n])**2)*k - coords[n][i]*coords[n][j]) for n in range(len(atomnos))])
+            inertia_moment_matrix[i][j] = np.sum([pt[atomnos[n]].mass*((np.linalg.norm(coords[n])**2)*k - coords[n][i]*coords[n][j]) for n, _ in enumerate(atomnos)])
 
     inertia_moment_matrix = diagonalize(inertia_moment_matrix)
 

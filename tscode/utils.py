@@ -334,8 +334,8 @@ def center_of_mass(coords, atomnos):
     '''
     Returns the center of mass for the atomic system.
     '''
-    return (np.sum([coords[i]*pt[atomnos[i]].mass for i in range(len(atomnos))], axis=0) /
-            np.sum([pt[atomnos[i]].mass for i in range(len(atomnos))]))
+    return (np.sum([coords[i]*pt[atomnos[i]].mass for i, _ in enumerate(atomnos)], axis=0) /
+            np.sum([pt[atomnos[i]].mass for i, _ in enumerate(atomnos)]))
 
 def kronecker_delta(i, j):
     if i == j:
@@ -364,7 +364,7 @@ def get_double_bonds_indexes(coords, atomnos):
     atomnos = atomnos[mask]
     output = []
 
-    for i1 in range(len(coords)):
+    for i1, _ in enumerate(coords):
         for i2 in range(i1+1, len(coords)):
             dist = np.linalg.norm(coords[i1] - coords[i2])
             tag = ''.join(sorted([pt[atomnos[i1]].symbol,

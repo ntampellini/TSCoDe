@@ -52,7 +52,7 @@ def align_structures(structures:np.array, indexes=None):
     indexes = slice(0,len(reference)) if indexes is None else indexes
 
     reference -= np.mean(reference[indexes], axis=0)
-    for t in range(len(targets)):
+    for t, _ in enumerate(targets):
         targets[t] -= np.mean(targets[t,indexes], axis=0)
 
     output = np.zeros(structures.shape)
@@ -83,7 +83,7 @@ def graphize(coords, atomnos):
     # if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
 
     matrix = np.zeros((len(coords),len(coords)))
-    for i in range(len(coords)):
+    for i, _ in enumerate(coords):
         for j in range(i,len(coords)):
             if np.linalg.norm(coords[i]-coords[j]) < d_min(atomnos[i], atomnos[j]):
                 matrix[i][j] = 1
@@ -261,7 +261,7 @@ class Hypermolecule:
         self.energies = [0 for _ in self.atomcoords]
 
         self.hypermolecule_atomnos = []
-        clusters = {i:{} for i in range(len((self.atomnos)))}  # {atom_index:{cluster_number:[position,times_found]}}
+        clusters = {i:{} for i, _ in enumerate(self.atomnos)}  # {atom_index:{cluster_number:[position,times_found]}}
         for i, atom_number in enumerate(self.atomnos):
             atoms_arrangement = [conformer[i] for conformer in self.atomcoords]
             cluster_number = 0
@@ -280,10 +280,10 @@ class Hypermolecule:
                         clusters[i][max(clusters[i].keys())+1] = [atom, weight]
                         self.hypermolecule_atomnos.append(atom_number)
 
-        self.weights = [[] for _ in range(len(self.atomnos))]
+        self.weights = [[] for _ in self.atomnos]
         self.hypermolecule = []
 
-        for i in range(len(self.atomnos)):
+        for i, _ in enumerate(self.atomnos):
             for _, data in clusters[i].items():
                 self.weights[i].append(data[1])
                 self.hypermolecule.append(data[0])

@@ -568,7 +568,7 @@ class Docker:
 
         parsed = []
         unlabeled_list = []
-        self.pairings_dict = {i:[] for i in range(len(self.objects))}
+        self.pairings_dict = {i:[] for i, _ in enumerate(self.objects)}
 
         for i, line in enumerate(lines):
         # now i is also the molecule index in self.objects
@@ -701,7 +701,7 @@ class Docker:
                 raise SyntaxError(f'Letter \'{letter}\' is specified in DIST but not present in molecules string.')
 
 
-            for index in range(len(self.objects)):
+            for index, _ in enumerate(self.objects):
                 for pairing in self.pairings_dict[index]:
 
         # for each pairing specified by the user, check each pairing recorded
@@ -1485,13 +1485,13 @@ class Docker:
                                                       title=s)
 
             self.structures = np.concatenate((self.structures, new_structures))
-            self.energies = np.concatenate((self.energies, [0 for _ in range(len(new_structures))]))
-            self.constrained_indexes = np.concatenate((self.constrained_indexes, [constrained_indexes for _ in range(len(new_structures))]))
+            self.energies = np.concatenate((self.energies, [0 for _ in new_structures]))
+            self.constrained_indexes = np.concatenate((self.constrained_indexes, [constrained_indexes for _ in new_structures]))
         
             self.log(f'   - Structure {s+1} - {len(new_structures)} new conformers ({time_to_string(time.time()-t_start)})', p=False)
 
         loadbar(before, before, f'Running MTD {before}/{before} ')
-        self.exit_status = np.array([True for _ in range(len(self.structures))], dtype=bool)
+        self.exit_status = np.array([True for _ in self.structures], dtype=bool)
 
         self.log(f'Metadynamics augmentation completed - found {len(self.structures)-before} new conformers ({time_to_string(time.time()-t_start_run)})\n')
 
@@ -1582,15 +1582,15 @@ class Docker:
 
             try:
 
-                self.structures[i], self.energies[i] = ase_saddle(structure,
-                                                                self.atomnos,
-                                                                self.options.calculator,
-                                                                self.options.theory_level,
-                                                                procs=self.options.procs,
-                                                                title=f'Saddle opt - Structure {i+1}',
-                                                                logfile=self.logfile,
-                                                                traj=f'Saddle_opt_{i+1}.traj',
-                                                                maxiterations=200)
+                self.structures[i], self.energies[i], _ = ase_saddle(structure,
+                                                                        self.atomnos,
+                                                                        self.options.calculator,
+                                                                        self.options.theory_level,
+                                                                        procs=self.options.procs,
+                                                                        title=f'Saddle opt - Structure {i+1}',
+                                                                        logfile=self.logfile,
+                                                                        traj=f'Saddle_opt_{i+1}.traj',
+                                                                        maxiterations=200)
 
                 self.exit_status[i] = True
 

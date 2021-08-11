@@ -211,14 +211,14 @@ def ase_torsion_TSs(coords,
                             # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
                             print(loadbar_title)
                         
-                            optimized_geom, energy = ase_saddle(sub_structures[sub_peak],
-                                                                atomnos,
-                                                                calculator=calculator,
-                                                                method=method,
-                                                                procs=procs,
-                                                                title=f'Saddle opt - peak {p+1}, sub-peak {s+1}',
-                                                                logfile=logfile,
-                                                                traj=bernytraj+f'_{p+1}_{s+1}.traj' if bernytraj is not None else None)
+                            optimized_geom, energy, _ = ase_saddle(sub_structures[sub_peak],
+                                                                    atomnos,
+                                                                    calculator=calculator,
+                                                                    method=method,
+                                                                    procs=procs,
+                                                                    title=f'Saddle opt - peak {p+1}, sub-peak {s+1}',
+                                                                    logfile=logfile,
+                                                                    traj=bernytraj+f'_{p+1}_{s+1}.traj' if bernytraj is not None else None)
 
                             if molecule_check(coords, optimized_geom, atomnos, max_newbonds=3):
                                 ts_structures.append(optimized_geom)
@@ -308,9 +308,9 @@ def ase_scan(coords,
     atoms.calc = get_ase_calc(calculator, procs, method)
 
     if indexes_to_be_moved is None:
-        indexes_to_be_moved = [i for i in range(len(atomnos))]
+        indexes_to_be_moved = range(len(atomnos))
 
-    mask = np.array([i in indexes_to_be_moved for i in range(len(atomnos))], dtype=bool)
+    mask = np.array([i in indexes_to_be_moved for i, _ in enumerate(atomnos)], dtype=bool)
 
     t_start = time()
 

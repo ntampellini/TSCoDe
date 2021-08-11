@@ -50,7 +50,7 @@ def string_embed(self):
     # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
     
     threads = []
-    for _ in range(len(centers_indexes)*self.options.rotation_steps):
+    for _ in range(self.options.rotation_steps*len(centers_indexes)):
         threads.append([deepcopy(obj) for obj in self.objects])
 
     for t, thread in enumerate(threads): # each run is a different "regioisomer", repeated self.options.rotation_steps times
@@ -329,7 +329,7 @@ def cyclical_embed(self):
         thread_objects = deepcopy(self.objects)
         # Objects to be used to embed structures. Modified later if necessary.
 
-        pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+        pivots = [thread_objects[m].pivots[pi[m]] for m, _ in enumerate(self.objects)]
         # getting the active pivot for each molecule for this run
         
         norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
@@ -393,7 +393,7 @@ def cyclical_embed(self):
                     thread_objects[index] = bent_mol
 
                     try:
-                        pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+                        pivots = [thread_objects[m].pivots[pi[m]] for m, _ in enumerate(self.objects)]
                         # updating the active pivot for each molecule for this run
                     except IndexError:
                         raise Exception((f'The number of pivots for molecule {index} ({bent_mol.name}) most likely decreased during ' +
@@ -465,7 +465,7 @@ def cyclical_embed(self):
 
                 # Repeating the previous polygonization steps with the bent molecules
 
-                pivots = [thread_objects[m].pivots[pi[m]] for m in range(len(self.objects))]
+                pivots = [thread_objects[m].pivots[pi[m]] for m, _ in enumerate(self.objects)]
                 # updating the active pivot for each molecule for this run
                 
                 norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
