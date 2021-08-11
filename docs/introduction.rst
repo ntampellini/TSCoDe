@@ -19,7 +19,7 @@ in a fast and systematical way, and yield a series of starting points
 for higher-level calculations.
 
 **NOTE: structures obtained from TSCoDe are not proper transition states
-(most of the times) but are often quite close. The program is intended
+(most of the times) but can be quite close. The program is intended
 to yield and rank poses, not TSs. In this way, the computational chemist
 can skip the error-prone phase of molecular embedding and proceed to the
 most appropriate higher-level calculation step.**
@@ -31,8 +31,8 @@ and the `ASE <https://github.com/rosswhitfield/ase>`__ environment to
 perform a set of structure manipulations through one of the :ref:`supported
 calculators <installation>`.
 
-|:red_circle:| What the program does (well)
----------------------------------------------
+What the program does
+---------------------
 
 **Generate accurately spaced poses** for bimolecular and trimolecular
 transition states of organic molecules, also considering structural
@@ -48,10 +48,13 @@ state regio- and stereoisomers, where the combination of reagents
 conformations is an important aspect in transition state building. The
 program can yield many chemically convincing atomic arrangements that
 can be evaluated by the computational chemist, aiding them in exploring
-all conformational and regio/stereochemical space.
+all conformational and regio/stereochemical space. External programs are
+meant to be used to refine these structures and obtain real TSs at higher
+levels of theory. Nevetheless, the program can significatively speed up
+and reinforce the systematicity of the transition state embedding process.   
 
-|:yellow_circle:| What the program can do (sometimes)
------------------------------------------------------
+Extra features
+--------------
 
 **Infer differential NCIs** - After the poses generation, the program
 can be told to infer the non-covalent interactions (NCIs) between
@@ -61,29 +64,21 @@ strong NCI is present only in a few TSs, this function can be a handy
 tool for tracing the source of selectivity in a given chemical reaction.
 
 **Generate proper transition state structures** (semiempirical level) -
-After poses generation, these structures can be used to try to directly
-obtain transition state structures at the semiempirical level chosen.
-This is not a default behavior, and it is invoked by the ``NEB``
-keyword. A climbing image nudged elastic band (CI-NEB) transition state
-search is performed after inferring both reagents and products for each
-individual pose. This entire process is of course challenging to
-automate completely, and can be prone to failures. Associative
-reactions, where two (or three) molecules are bound together (or
-strongly interacting) after the TS, with no additional species involved,
-tend to give good results. For example, cycloaddition reactions are
-great candidates while atom transfer reactions (*i.e.* epoxidations) are
-not. This is intended more as an experimenting tool than a reliable,
-definitive feature.
+After poses generation and refinement, these structures can be used to try
+to directly obtain transition state structures at the chosen theory level.
+This is not a default behavior, and it is invoked by the ``BERNY`` or ``NEB``
+keywords.
 
-|:green_circle:| What the program cannot do
--------------------------------------------
+- With ``SADDLE``, a geometry optimization to the closest energetic maxima is performed,
+  using the `Sella <https://github.com/zadorlab/sella>`__ library through ASE.
 
-**Completely replace calculations at higher levels of theory** - Output
-geometries arise from constrained optimizations, by default at
-semiempirical levels of theory (PM3, PM6, PM7). They are therefore not
-proper transition states, and are to be used as starting points for
-higher-level calculations. External programs are meant to be used to
-refine these structures and obtain real TSs. Nevetheless, the program
-can significatively speed up and reinforce the systematicity of the
-transition state embedding process.   
-
+- With ``NEB``, a climbing image nudged elastic band (CI-NEB) transition state
+  search is performed after inferring both reagents and products for each
+  individual pose. This entire process is of course challenging to
+  automate completely, and can be prone to failures. Associative
+  reactions, where two (or three) molecules are bound together (or
+  strongly interacting) after the TS, with no additional species involved,
+  tend to give good results. For example, cycloaddition reactions are
+  great candidates while atom transfer reactions (*i.e.* epoxidations) are
+  not. This is intended more as an experimenting tool than a reliable,
+  definitive feature.
