@@ -20,18 +20,15 @@ from time import time
 import numpy as np
 from ase import Atoms
 from ase.optimize import LBFGS
-from ase.vibrations import Vibrations
 from ase.constraints import FixInternals
-from sella import Sella
 from networkx.algorithms.components.connected import connected_components
 from networkx.algorithms.shortest_paths.generic import shortest_path
 
 from hypermolecule_class import graphize, align_structures
-from optimization_methods import get_ase_calc, molecule_check
+from optimization_methods import get_ase_calc, molecule_check, ase_saddle
 from utils import (
     dihedral,
     clean_directory,
-    HiddenPrints,
     loadbar,
     time_to_string,
     write_xyz,
@@ -197,9 +194,9 @@ def ase_torsion_TSs(coords,
                 if len(sub_peaks_indexes) != 0:
 
                     s = 's' if len(sub_peaks_indexes) > 1 else ''
-                    print(f'Found {len(sub_peaks_indexes)} sub-peak{s}. Performing Berny optimization{s}.')
+                    print(f'Found {len(sub_peaks_indexes)} sub-peak{s}. Performing Saddle opt optimization{s}.')
                     if logfile is not None:
-                        logfile.write(f'Found {len(sub_peaks_indexes)} sub-peak{s}. Performing Berny optimization{s}.\n')
+                        logfile.write(f'Found {len(sub_peaks_indexes)} sub-peak{s}. Performing Saddle opt optimization{s}.\n')
 
                     for s, sub_peak in enumerate(sub_peaks_indexes):
 
@@ -210,16 +207,16 @@ def ase_torsion_TSs(coords,
 
                         if optimization:
 
-                            loadbar_title = f'  > Berny on sub-peak {s+1}/{len(sub_peaks_indexes)}'
+                            loadbar_title = f'  > Saddle opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
                             # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
                             print(loadbar_title)
                         
-                            optimized_geom, energy = ase_berny(sub_structures[sub_peak],
+                            optimized_geom, energy = ase_saddle(sub_structures[sub_peak],
                                                                 atomnos,
                                                                 calculator=calculator,
                                                                 method=method,
                                                                 procs=procs,
-                                                                title=f'Berny - peak {p+1}, sub-peak {s+1}',
+                                                                title=f'Saddle opt - peak {p+1}, sub-peak {s+1}',
                                                                 logfile=logfile,
                                                                 traj=bernytraj+f'_{p+1}_{s+1}.traj' if bernytraj is not None else None)
 
@@ -283,50 +280,6 @@ def peaks(data, min_thr, max_thr):
 
     return peaks
     
-def ase_berny(coords, atomnos, calculator, method, procs=1, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
-    '''
-    Runs a Berny optimization through the ASE package
-    '''
-    atoms = Atoms(atomnos, positions=coords)
-
-    atoms.calc = get_ase_calc(calculator, procs, method)
-    
-    t_start = time()
-    with HiddenPrints():
-        with Sella(atoms,
-                   logfile=None,
-                   order=1,
-                   trajectory=traj) as opt:
-
-            opt.run(fmax=0.05, steps=maxiterations)
-            iterations = opt.nsteps
-
-    if logfile is not None:
-        t_end_berny = time()
-        elapsed = t_end_berny - t_start
-        exit_str = 'converged' if iterations < maxiterations else 'stopped'
-        logfile.write(f'{title} - {exit_str} in {iterations} steps ({time_to_string(elapsed)})\n')
-
-    new_structure = atoms.get_positions()
-    energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
-
-    if freq:
-        vib = Vibrations(atoms, name='temp')
-        with HiddenPrints():
-            vib.run()
-        freqs = vib.get_frequencies()
-
-        if logfile is not None:
-            elapsed = time() - t_end_berny
-            logfile.write(f'{title} - frequency calculation completed ({time_to_string(elapsed)})\n')
-        
-        return new_structure, energy, freqs
-
-    if logfile is not None:
-        logfile.write('\n')
-
-    return new_structure, energy
-
 def ase_scan(coords,
              atomnos,
              calculator,

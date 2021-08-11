@@ -20,10 +20,10 @@ import time
 import itertools as it
 from copy import deepcopy
 from subprocess import DEVNULL, STDOUT, check_call
-from ase.io.formats import parse_filename
 
 import numpy as np
 from ase import Atoms
+from sella import Sella
 import networkx as nx
 from rmsd import kabsch
 from cclib.io import ccread
@@ -33,6 +33,7 @@ from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
 from ase.calculators.gaussian import Gaussian
 from ase.constraints import FixInternals
+from ase.vibrations import Vibrations
 from scipy.spatial.transform import Rotation as R
 
 from settings import COMMANDS, MEM_GB
@@ -45,6 +46,7 @@ from utils import (
                    dihedral,
                    findPaths,
                    get_double_bonds_indexes,
+                   HiddenPrints,
                    kronecker_delta,
                    neighbors,
                    norm,
@@ -704,6 +706,50 @@ def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, title=0
     docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
 
     return new_structure, atoms.get_total_energy(), success
+
+def ase_saddle(coords, atomnos, calculator, method, procs=1, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
+    '''
+    Runs a first order saddle optimization through the ASE package
+    '''
+    atoms = Atoms(atomnos, positions=coords)
+
+    atoms.calc = get_ase_calc(calculator, procs, method)
+    
+    t_start = time.time()
+    with HiddenPrints():
+        with Sella(atoms,
+                   logfile=None,
+                   order=1,
+                   trajectory=traj) as opt:
+
+            opt.run(fmax=0.05, steps=maxiterations)
+            iterations = opt.nsteps
+
+    if logfile is not None:
+        t_end_berny = time.time()
+        elapsed = t_end_berny - t_start
+        exit_str = 'converged' if iterations < maxiterations else 'stopped'
+        logfile.write(f'{title} - {exit_str} in {iterations} steps ({time_to_string(elapsed)})\n')
+
+    new_structure = atoms.get_positions()
+    energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
+
+    if freq:
+        vib = Vibrations(atoms, name='temp')
+        with HiddenPrints():
+            vib.run()
+        freqs = vib.get_frequencies()
+
+        if logfile is not None:
+            elapsed = time.time() - t_end_berny
+            logfile.write(f'{title} - frequency calculation completed ({time_to_string(elapsed)})\n')
+        
+        return new_structure, energy, freqs
+
+    # if logfile is not None:
+    #     logfile.write('\n')
+
+    return new_structure, energy
 
 def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None):
     '''

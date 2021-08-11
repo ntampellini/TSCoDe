@@ -613,7 +613,7 @@ def dihedral_embed(self):
 
     for c, coords in enumerate(mol.atomcoords):
 
-        self.log(f'--> Performing Scans and Berny optimizations (conformer {c+1}/{len(mol.atomcoords)})')
+        self.log(f'--> Performing Scans and saddle optimizations (conformer {c+1}/{len(mol.atomcoords)})')
 
         structures, energies = ase_torsion_TSs(coords,
                                                 mol.atomnos,

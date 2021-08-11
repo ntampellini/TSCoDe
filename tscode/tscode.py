@@ -14,7 +14,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-Version 0.0.3 - Public Beta
+Version 0.0.4 - Public Beta
 
 https://github.com/ntampellini/TSCoDe
 
@@ -46,9 +46,9 @@ from embeds import monomolecular_embed, string_embed, cyclical_embed, dihedral_e
 from hypermolecule_class import Hypermolecule, align_structures
 from optimization_methods import (
                                   ase_adjust_spacings,
+                                  ase_saddle,
                                   get_nci,
                                   hyperNEB,
-                                  mopac_opt,
                                   MopacReadError,
                                   optimize,
                                   prune_enantiomers,
@@ -180,6 +180,8 @@ class Options:
                                       # range to be explored around the structure pivot.
                                       # Default is 120. Syntax: `ROTRANGE=120`
 
+                    'SADDLE',         # After embed and refinement, optimize to first order saddle points
+
                     'SHRINK',         # Exaggerate orbital dimensions during embed, scaling them by a factor
                                       # of one and a half. This makes it easier to perform the embed without
                                       # having molecules clashing one another. Then, the correct distance between
@@ -221,6 +223,7 @@ class Options:
     openbabel_level = 'UFF'
 
     neb = False
+    saddle = False
     nci = False
     shrink = False
     metadynamics = False
@@ -255,6 +258,7 @@ class Options:
             'metadynamics',
             'nci',
             'neb',
+            'saddle',
         )
         
         for name in do_not_repr:
@@ -300,7 +304,7 @@ class Docker:
         s ='\n*************************************************************\n'
         s += '*      TSCoDe: Transition State Conformational Docker       *\n'
         s += '*************************************************************\n'
-        s += '*                Version 0.0.3 - Public Beta                *\n'
+        s += '*                Version 0.0.4 - Public Beta                *\n'
         s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
         s += '*************************************************************\n'
 
@@ -411,45 +415,49 @@ class Docker:
                         if k not in self.options.__keywords__:
                             raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
-                keywords_list = [word.upper() for word in lines[0].split()]
+                self.log('--> Keywords used are:\n    ' + ''.join(lines[0]))
 
-                if 'SUPRAFAC' in keywords_list:
+                keywords_simple = [word.upper() for word in lines[0].split()]
+                keywords_param = [k.split('=')[0] for k in keywords_simple]
+                keywords_multi = [k.split('(')[0] for k in keywords_simple]
+
+                if 'SUPRAFAC' in keywords_simple:
                     self.options.suprafacial = True
 
-                if 'DEEP' in keywords_list:
+                if 'DEEP' in keywords_simple:
                     self.options.pruning_thresh = 0.3
                     self.options.rotation_steps = 24
                     self.options.max_clashes = 3
                     self.options.clash_thresh = 1.2
 
-                if 'ROTRANGE' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('ROTRANGE')]
+                if 'ROTRANGE' in keywords_param:
+                    kw = keywords_simple[keywords_param.index('ROTRANGE')]
                     self.options.rotation_range = int(kw.split('=')[1])
 
-                if 'STEPS' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('STEPS')]
+                if 'STEPS' in keywords_param:
+                    kw = keywords_simple[keywords_param.index('STEPS')]
                     self.options.custom_rotation_steps = int(kw.split('=')[1])
 
-                if 'THRESH' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('THRESH')]
+                if 'THRESH' in keywords_param:
+                    kw = keywords_simple[keywords_param.index('THRESH')]
                     self.options.pruning_thresh = float(kw.split('=')[1])
 
-                if 'NOOPT' in keywords_list:
+                if 'NOOPT' in keywords_simple:
                     self.options.optimization = False
                     
-                if 'BYPASS' in keywords_list:
+                if 'BYPASS' in keywords_simple:
                     self.options.bypass = True
                     self.options.optimization = False
 
-                if 'DIST' in [k.split('(')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('DIST')]
+                if 'DIST' in keywords_multi:
+                    kw = keywords_simple[keywords_multi.index('DIST')]
                     orb_string = kw[5:-1].lower().replace(' ','')
                     # orb_string looks like 'a=2.345,b=3.456,c=2.22'
 
                     self._set_custom_orbs(orb_string)
 
-                if 'CLASHES' in [k.split('(')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('(')[0] for k in keywords_list].index('CLASHES')]
+                if 'CLASHES' in keywords_multi:
+                    kw = keywords_simple[keywords_multi.index('CLASHES')]
                     clashes_string = kw[8:-1].lower().replace(' ','')
                     # clashes_string looks like 'num=3,dist=1.2'
 
@@ -463,71 +471,76 @@ class Docker:
                             raise SyntaxError((f'Syntax error in CLASHES keyword -> CLASHES({clashes_string}).' +
                                                 'Correct syntax looks like: CLASHES(num=3,dist=1.2)'))
                 
-                if 'NEWBONDS' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('NEWBONDS')]
+                if 'NEWBONDS' in keywords_param:
+                    kw = keywords_simple[keywords_param.index('NEWBONDS')]
                     self.options.max_newbonds = int(kw.split('=')[1])
 
-                if 'NEB' in keywords_list:
+                if 'NEB' in keywords_simple:
                     self.options.neb = True
 
-                if 'LEVEL' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('LEVEL')]
+                if 'LEVEL' in keywords_param:
+                    kw = keywords_simple[keywords_param.index('LEVEL')]
                     self.options.theory_level = kw.split('=')[1].upper().replace('_', ' ')
 
-                if 'RIGID' in keywords_list:
+                if 'RIGID' in keywords_simple:
                     self.options.rigid = True
 
-                if 'NONCI' in keywords_list:
+                if 'NONCI' in keywords_simple:
                     self.options.nci = False
 
-                if 'ONLYREFINED' in keywords_list:
+                if 'ONLYREFINED' in keywords_simple:
                     self.options.only_refined = True
 
-                if 'LET' in keywords_list:
+                if 'LET' in keywords_simple:
                     self.options.let = True
 
-                if 'CHECK' in keywords_list:
+                if 'CHECK' in keywords_simple:
                     self.options.check_structures = True
 
-                if 'MMFF' in keywords_list:
+                if 'MMFF' in keywords_simple:
                     self.options.openbabel_level = 'MMFF'
 
-                if 'KCAL' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('KCAL')]
+                if 'KCAL' in keywords_param:
+                    kw = keywords_simple[keywords_param.index('KCAL')]
                     self.options.kcal_thresh = float(kw.split('=')[1])
 
-                if 'SHRINK' in keywords_list:
+                if 'SHRINK' in keywords_simple:
                     self.options.shrink = True
                     self.options.shrink_multiplier = 1.5
 
-                elif 'SHRINK' in [k.split('=')[0] for k in keywords_list]:
+                elif 'SHRINK' in keywords_param:
                     self.options.shrink = True
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('SHRINK')]
+                    kw = keywords_simple[keywords_param.index('SHRINK')]
                     self.options.shrink_multiplier = float(kw.split('=')[1])
 
-                if 'ENANTIOMERS' in keywords_list:
+                if 'ENANTIOMERS' in keywords_simple:
                     self.options.keep_enantiomers = True
 
-                if 'DEBUG' in keywords_list:
+                if 'DEBUG' in keywords_simple:
                     self.options.debug = True
 
-                if 'PROCS' in [k.split('=')[0] for k in keywords_list]:
+                if 'PROCS' in keywords_param:
                     
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('PROCS')]
+                    kw = keywords_simple[keywords_param.index('PROCS')]
                     self.options.procs = int(kw.split('=')[1])
 
-                if 'EZPROT' in keywords_list:
+                if 'EZPROT' in keywords_simple:
                     self.options.double_bond_protection = True
 
-                if 'CALC' in [k.split('=')[0] for k in keywords_list]:
-                    kw = keywords_list[[k.split('=')[0] for k in keywords_list].index('CALC')]
+                if 'CALC' in keywords_param:
+                    kw = keywords_simple[keywords_param.index('CALC')]
                     self.options.calculator = kw.split('=')[1]
 
-                if 'MTD' in keywords_list:
+                if 'MTD' in keywords_simple:
                     if self.options.calculator != 'XTB':
                         raise SystemExit(('Metadynamics augmentation can only be run with the XTB calculator.\n'
                                           'Change it in settings.py or use the CALC=XTB keyword.\n'))
                     self.options.metadynamics = True
+
+                if 'SADDLE' in keywords_simple:
+                    if not self.options.optimization:
+                        raise SystemExit(('SADDLE keyword can only be used if optimization is turned on. (Not compatible with NOOPT).'))
+                    self.options.saddle = True
 
         except SyntaxError as e:
             raise e
@@ -1482,7 +1495,7 @@ class Docker:
 
         self.log(f'Metadynamics augmentation completed - found {len(self.structures)-before} new conformers ({time_to_string(time.time()-t_start_run)})\n')
 
-    def hyperneb(self):
+    def hyperneb_refining(self):
         '''
         Performs a clibing-image NEB calculation inferring reagents and products for each structure.
         '''
@@ -1540,26 +1553,6 @@ class Docker:
                 self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
             self.log()
 
-        ################################################# TS CHECK - FREQUENCY CALCULATION
-
-
-            self.log(f'--> TS frequency calculation ({self.options.theory_level} level)')
-            t_start = time.time()
-
-            for i, structure in enumerate(self.structures):
-
-                loadbar(i, len(self.structures), prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
-
-                mopac_opt(structure,
-                          self.atomnos,
-                          method=f'{self.options.theory_level} FORCE',
-                          title=f'TS_{i+1}_FREQ',
-                          read_output=False)
-
-            loadbar(1, 1, prefix=f'Performing frequency calculation {i+1}/{len(self.structures)} ')
-            t_end = time.time()
-            self.log(f'Mopac {self.options.theory_level} frequency calculation took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)\n')
-
         ################################################# NEB XYZ OUTPUT
 
             self.energies -= np.min(self.energies)
@@ -1575,6 +1568,74 @@ class Docker:
                     write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
             self.log(f'Wrote {len(self.structures)} final TS structures to {self.outname} file\n')
+
+    def saddle_refining(self):
+        '''
+        Performs a first order saddle optimization for each structure.
+        '''
+        self.log(f'--> Saddle optimization ({self.options.theory_level} level)')
+        t_start = time.time()
+
+        for i, structure in enumerate(self.structures):
+
+            loadbar(i, len(self.structures), prefix=f'Performing saddle optimization {i+1}/{len(self.structures)} ')
+
+            try:
+
+                self.structures[i], self.energies[i] = ase_saddle(structure,
+                                                                self.atomnos,
+                                                                self.options.calculator,
+                                                                self.options.theory_level,
+                                                                procs=self.options.procs,
+                                                                title=f'Saddle opt - Structure {i+1}',
+                                                                logfile=self.logfile,
+                                                                traj=f'Saddle_opt_{i+1}.traj',
+                                                                maxiterations=200)
+
+                self.exit_status[i] = True
+
+            except ValueError:
+                # Thrown when an ASE read fails (during saddle opt)
+                self.exit_status[i] = False
+
+        loadbar(1, 1, prefix=f'Performing saddle opt {len(self.structures)}/{len(self.structures)} ')
+        t_end = time.time()
+        self.log(f'{self.options.calculator} {self.options.theory_level} saddle optimization took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'Saddle opt completed for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures\n')
+
+        mask = self.exit_status
+        self.structures = self.structures[mask]
+        self.energies = self.energies[mask]
+        self.exit_status = self.exit_status[mask]
+
+        ################################################# PRUNING: SIMILARITY (POST SADDLE OPT)
+
+        if len(self.structures) != 0:
+
+            t_start = time.time()
+            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
+            self.energies = self.energies[mask]
+            t_end = time.time()
+            
+            if False in mask:
+                self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+            self.log()
+
+        ################################################# SADDLE OPT EXTRA XYZ OUTPUT
+
+            self.energies -= np.min(self.energies)
+            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+            self.energies = scramble(self.energies, sequence)
+            self.structures = scramble(self.structures, sequence)
+            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+            # sorting structures based on energy
+
+            self.outname = f'TSCoDe_SADDLE_TSs_{self.stamp}.xyz'
+            with open(self.outname, 'w') as f:        
+                for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                    write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+
+            self.log(f'Wrote {len(self.structures)} saddle-optimized structures to {self.outname} file\n')
 
     def print_nci(self):
         '''
@@ -1772,7 +1833,7 @@ class Docker:
                 self.optimization_refining()
                 self.similarity_refining()
 
-            ##################### POST TSCODE - NEB, NCI, VMD
+            ##################### POST TSCODE - SADDLE, NEB, NCI, VMD
 
             if not self.options.bypass:
                 indexes = self.objects[0].reactive_indexes if self.embed == 'dihedral' else None
@@ -1781,7 +1842,10 @@ class Docker:
             if self.embed != 'dihedral':
 
                 if self.options.neb:
-                    self.hyperneb()
+                    self.hyperneb_refining()
+
+                if self.options.saddle:
+                    self.saddle_refining()
                     
                 if self.options.nci and self.options.optimization:
                     self.print_nci()
