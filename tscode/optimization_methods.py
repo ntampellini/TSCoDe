@@ -34,6 +34,7 @@ from utils import (
                    kronecker_delta,
                    norm,
                    pt,
+                   vec_angle,
                    write_xyz,
                    scramble_check,
                    molecule_check,
@@ -146,7 +147,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
             dist = np.linalg.norm(coords[a] - coords[b]) # in Angstrom
             # print(f'DIST - {dist} - between {a} {b}')
 
-            angle = np.arccos(norm(coords[a] - coords[b]) @ norm(coords[c] - coords[b]))*180/np.pi # in degrees
+            angle = vec_angle(norm(coords[a] - coords[b]), norm(coords[c] - coords[b]))
             # print(f'ANGLE - {angle} - between {a} {b} {c}')
 
             d_angle = dihedral([coords[a],
@@ -188,7 +189,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='te
 
         dist = np.linalg.norm(coords[central] - coords[others[0]]) # in Angstrom
 
-        angle = np.arccos(norm(coords[central] - coords[others[0]]) @ norm(coords[others[0]] - coords[c]))*180/np.pi # in degrees
+        angle = vec_angle(norm(coords[central] - coords[others[0]]), norm(coords[others[0]] - coords[c]))
 
         d_angle = dihedral([coords[central],
                             coords[others[0]],

@@ -204,6 +204,13 @@ class OptionSetter:
         self.docker = docker
         self.args = args
 
+        if not all(k in keywords_list for k in self.keywords):
+            for k in self.keywords:
+                if k not in keywords_list:
+                    raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
+
+            docker.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple))
+
     def bypass(self, options, *args):
         options.bypass = True
         options.optimization = False

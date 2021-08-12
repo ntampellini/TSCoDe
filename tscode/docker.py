@@ -154,8 +154,7 @@ class Docker:
         with open(filename, 'r') as f:
             lines = f.readlines()
 
-        lines = [line for line in lines if line[0] != '#']
-        lines = [line for line in lines if line != '\n']
+        lines = [line for line in lines if line[0] not in ('#', '\n')]
         
         try:
             assert len(lines) < 5
@@ -163,10 +162,12 @@ class Docker:
 
             keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
             if any(k in keywords_list for k in keywords):
-                lines = lines[1:]
+                self.kw_line, *self.mol_lines = lines
+            else:
+                self.mol_lines = lines
 
             inp = []
-            for line in lines:
+            for line in self.mol_lines:
                 filename, *reactive_atoms = line.split()
 
                 if len(reactive_atoms) > 4:
@@ -192,59 +193,34 @@ class Docker:
 
     def _set_options(self, filename):
         '''
-        Set the options dataclass parameters from a list of given keywords. These will be used
-        during the run to vary the search depth and/or output.
+        Set the options dataclass parameters through the OptionSetter class,
+        from a list of given keywords. These will be used during the run to
+        vary the search depth and/or output.
         '''
-
-        # list of keyword names to be used in the first line of program input
-
-        with open(filename, 'r') as f:
-            lines = f.readlines()
-
-        lines = [line for line in lines if line[0] not in ('#', '\n')]
-        
-        try:
-            keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
-            if any(k in keywords_list for k in keywords):
-
-                if not all(k in keywords_list for k in keywords):
-                    for k in keywords:
-                        if k not in keywords_list:
-                            raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
-
-                self.log('--> Keywords used are:\n    ' + ''.join(lines[0]))
-
-                option_setter = OptionSetter(lines[0], self)
+      
+        if hasattr(self, 'kw_line'):
+            try:
+                option_setter = OptionSetter(self.kw_line, self)
                 option_setter.set_options()
 
-        except SyntaxError as e:
-            raise e
+            except SyntaxError as e:
+                raise e
 
-        except Exception as e:
-            print(e)
-            raise InputError(f'Error in reading keywords from {filename}. Please check your syntax.')
+            except Exception as e:
+                print(e)
+                raise InputError(f'Error in reading keywords from {filename}. Please check your syntax.')
 
     def _read_pairings(self, filename):
         '''
         Reads atomic pairings to be respected from the input file, if any are present.
         This parsing function is ugly, I know.
         '''
-        with open(filename, 'r') as f:
-            lines = f.readlines()
-
-        lines = [line for line in lines if line[0] not in ('#', '\n')]
-        # discard comments and blank lines
-
-        keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
-        if any(k in keywords_list for k in keywords):
-            lines = lines[1:]
-        # if we have a keyword line, discard it        
 
         parsed = []
         unlabeled_list = []
         self.pairings_dict = {i:[] for i, _ in enumerate(self.objects)}
 
-        for i, line in enumerate(lines):
+        for i, line in enumerate(self.mol_lines):
         # now i is also the molecule index in self.objects
 
             fragments = line.split()[1:]
@@ -261,21 +237,11 @@ class Docker:
                 else:
                     index, letters = [''.join(g) for _, g in groupby(j, str.isalpha)]
 
-                    if len(letters) == 1:
-
-                        if letters not in ('a', 'b', 'c'):
+                    for l in letters:
+                        if l not in ('a', 'b', 'c'):
                             raise SyntaxError('The only letters allowed for pairings are "a", "b" and "c".')
 
-                        pairings.append([int(index), letters[0]])
-
-                    else:
-                        for l in letters:
-
-                            if l not in ('a', 'b', 'c'):
-                                raise SyntaxError('The only letters allowed for pairings are "a", "b" and "c".')
-
-                            pairings.append([int(index), l])
-
+                        pairings.append([int(index), l])
 
             for pair in pairings:
                 self.pairings_dict[i].append(pair[:])
@@ -307,8 +273,7 @@ class Docker:
             links[tag].append(index)
         # storing couples into a dictionary
 
-        pairings = list(links.items())
-        pairings = sorted(pairings, key=lambda x: x[0])
+        pairings = sorted(list(links.items()), key=lambda x: x[0])
         # sorting values so that 'a' is the first pairing
 
         self.pairings_table = {i[0]:sorted(i[1]) for i in pairings}
@@ -319,16 +284,6 @@ class Docker:
 
         letters = tuple(self.pairings_table.keys())
 
-        if len(letters) == 1 and tuple(sorted(letters)) != ('a',):
-            raise SyntaxError('The pairing letters specified are invalid. To only specify one label, use letter \'a\'.')
-
-        if len(letters) == 2 and tuple(sorted(letters)) != ('a', 'b'):
-            raise SyntaxError('The pairing letters specified are invalid. To specify two labels, use letters \'a\' and \'b\'.')
-
-        if len(letters) == 3 and tuple(sorted(letters)) != ('a', 'b', 'c'):
-            raise SyntaxError('The pairing letters specified are invalid. To only three labels, use letters \'a\', \'b\' and \'c\'.')
-
-
         for letter, ids in self.pairings_table.items():
 
             if len(ids) == 1:
@@ -337,14 +292,14 @@ class Docker:
             if len(ids) > 2:
                 raise SyntaxError(f'Letter \'{letter}\' is specified more than two times. Please remove the unwanted letters.')
 
-        if self.pairings == []:
+        if not self.pairings:
             if all([len(mol.reactive_indexes) == 2 for mol in self.objects]):
                 self.log('--> No atom pairings imposed. Computing all possible dispositions.\n')
-                # if there is multiple regioisomers to be computed
+                # only print the no pairings statements if there are multiple regioisomers to be computed
         else:
             self.log(f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n')
         
-        if len(lines) == 3:
+        if len(self.mol_lines) == 3:
         # adding third pairing if we have three molecules and user specified two pairings
         # (used to adjust distances for trimolecular TSs)
             if len(unlabeled_list) == 2:
@@ -352,7 +307,7 @@ class Docker:
                 self.pairings.append(third_constraint)
                 self.pairings_table['c'] = third_constraint
         
-        elif len(lines) == 2:
+        elif len(self.mol_lines) == 2:
         # adding second pairing if we have two molecules and user specified one pairing
         # (used to adjust distances for bimolecular TSs)
             if len(unlabeled_list) == 2:
@@ -503,9 +458,6 @@ class Docker:
             self.options.fix_angles_in_deformation = True
             # These are required: otherwise, extreme bending could scramble molecules
             
-            self.candidates = int(len(self.objects[0].atomcoords))
-            self.candidates *= len(self.objects[0].pivots)
-
         elif len(self.objects) in (2,3):
         # Setting embed type and calculating the number of conformation combinations based on embed type
 
@@ -535,42 +487,8 @@ class Docker:
                 self.systematic_angles = cartesian_product(*[range(self.options.rotation_steps+1) for _ in self.objects]) \
                                          * 2*self.options.rotation_range/self.options.rotation_steps - self.options.rotation_range
 
-                self.candidates = len(self.systematic_angles)*np.prod([len(mol.atomcoords) for mol in self.objects])
-                
-                if len(self.objects) == 3:
-                    self.candidates *= 8
-                else:
-                    self.candidates *= 2
-                # The number 8 is the number of different triangles originated from three oriented vectors,
-                # while 2 is the disposition of two vectors (parallel, antiparallel). This ends here if
-                # no parings are to be respected. If there are any, each one reduces the number of
-                # candidates to be computed, and we divide self.candidates number in the next section.
-
                 for molecule in self.objects:
                     self._set_pivots(molecule)
-
-                self.candidates *= np.prod([len(mol.pivots) for mol in self.objects])
-
-                if self.pairings != []:
-
-                    if len(self.objects) == 2 and not chelotropic:
-                    # diels-alder-like, if we have a pairing only half
-                    # of the total arrangements are to be checked
-                        n = 2
-
-                    elif len(self.objects) == 3:
-
-                        if len(self.pairings) == 1:
-                            n = 4
-                        else: # trimolecular, 2 or 3 pairings imposed
-                            n = 8
-
-                    else:
-                        n = 1
-
-                    self.candidates /= n
-                # if the user specified some pairings to be respected, we have less candidates to check
-                self.candidates = int(self.candidates)
 
             elif string:
                 
@@ -580,8 +498,6 @@ class Docker:
                 if hasattr(self.options, 'custom_rotation_steps'):
                 # if user specified a custom value, use it.
                     self.options.rotation_steps = self.options.custom_rotation_steps
-
-                self.candidates = self.options.rotation_steps*np.prod([len(mol.atomcoords) for mol in self.objects])*np.prod([len(list(mol.reactive_atoms_classes_dict.values())[0].center) for mol in self.objects])
                 
             else:
                 raise InputError(('Bad input - The only molecular configurations accepted are:\n' 
@@ -591,7 +507,7 @@ class Docker:
                                   '4) Two molecules with one reactive center each (string embed)\n'
                                   '5) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
         else:
-            raise InputError('Bad input - too many molecules specified (three at most).')
+            raise InputError('Bad input - too many/few molecules specified (one to three required).')
 
         if self.options.shrink:
             for molecule in self.objects:
@@ -607,7 +523,53 @@ class Docker:
                 self.options.pruning_thresh = 0.5
             # small molecules need smaller RMSD threshold
 
+        self.candidates = self._get_number_of_candidates()
+
         self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
+
+    def _get_number_of_candidates(self):
+        '''
+        Get the number of structures that will be generated in the run.
+        '''
+        l = len(self.objects)
+        if l == 1:
+            return int(len(self.objects[0].atomcoords)*
+                       len(self.objects[0].pivots))
+
+        if self.embed == 'string':
+            return int(self.options.rotation_steps*
+                       np.prod([len(mol.atomcoords) for mol in self.objects])*
+                       np.prod([len(list(mol.reactive_atoms_classes_dict.values())[0].center) for mol in self.objects]))
+
+        candidates = 2*len(self.systematic_angles)*np.prod([len(mol.atomcoords) for mol in self.objects])
+        
+        if l == 3:
+            candidates *= 4
+        # Trimolecular there are 8 different triangles originated from three oriented vectors,
+        # while only 2 disposition of two vectors (parallel, antiparallel).
+
+        if self.pairings:
+        # If there is any pairing to be respected, each one reduces the number of
+        # candidates to be computed.
+
+            if self.embed == 'cyclical':
+                if len(self.objects) == 2:
+                # Diels-Alder-like, if we have one (two) pairing(s) only half
+                # of the total arrangements are to be checked
+                    candidates /= 2
+
+                else: # trimolecular
+                    if len(self.pairings) == 1:
+                        candidates /= 4
+                    else: # trimolecular, 2 (3) pairings imposed
+                        candidates /= 8
+
+        candidates *= np.prod([len(mol.pivots) for mol in self.objects])
+        # The more atomic pivots, the more candidates
+
+        return int(candidates)
+
+        
 
     def _calculator_setup(self):
         '''

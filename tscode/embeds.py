@@ -100,69 +100,69 @@ def cyclical_embed(self):
         in the cyclical TS, pointing towards the center of the polygon.
         '''
         assert len(norms) in (2,3)
+
         if len(norms) == 2:
-            return np.array([[0,1,0],
-                                [0,-1,0]])
-        else:
+            return np.array([[0, 1,0],
+                             [0,-1,0]])
 
-            vertexes = np.zeros((3,2))
+        vertexes = np.zeros((3,2))
 
-            vertexes[1] = np.array([norms[0],0])
+        vertexes[1] = np.array([norms[0],0])
 
-            a = np.power(norms[0], 2)
-            b = np.power(norms[1], 2)
-            c = np.power(norms[2], 2)
-            x = (a-b+c)/(2*a**0.5)
-            y = (c-x**2)**0.5
+        a = np.power(norms[0], 2)
+        b = np.power(norms[1], 2)
+        c = np.power(norms[2], 2)
+        x = (a-b+c)/(2*a**0.5)
+        y = (c-x**2)**0.5
 
-            vertexes[2] = np.array([x,y])
-            # similar to the code from polygonize, to get the active triangle
-            # but without the orientation specified in the polygonize function
-            
-            a = vertexes[1,0] # first point, x
-            b = vertexes[2,0] # second point, x
-            c = vertexes[2,1] # second point, y
+        vertexes[2] = np.array([x,y])
+        # similar to the code from polygonize, to get the active triangle
+        # but without the orientation specified in the polygonize function
+        
+        a = vertexes[1,0] # first point, x
+        b = vertexes[2,0] # second point, x
+        c = vertexes[2,1] # second point, y
 
-            x = a/2
-            y = (b**2 + c**2 - a*b)/(2*c)
-            cc = np.array([x,y])
-            # 2D coordinates of the triangle circocenter
+        x = a/2
+        y = (b**2 + c**2 - a*b)/(2*c)
+        cc = np.array([x,y])
+        # 2D coordinates of the triangle circocenter
 
-            v0, v1, v2 = vertexes
+        v0, v1, v2 = vertexes
 
-            meanpoint1 = np.mean((v0,v1), axis=0)
-            meanpoint2 = np.mean((v1,v2), axis=0)
-            meanpoint3 = np.mean((v2,v0), axis=0)
+        meanpoint1 = np.mean((v0,v1), axis=0)
+        meanpoint2 = np.mean((v1,v2), axis=0)
+        meanpoint3 = np.mean((v2,v0), axis=0)
 
-            dir1 = cc - meanpoint1
-            dir2 = cc - meanpoint2
-            dir3 = cc - meanpoint3
-            # 2D direction versors connecting center of side with circumcenter.
-            # Now we need to understand if we want these or their negative
+        dir1 = cc - meanpoint1
+        dir2 = cc - meanpoint2
+        dir3 = cc - meanpoint3
+        # 2D direction versors connecting center of side with circumcenter.
+        # Now we need to understand if we want these or their negative
 
-            if np.any([np.all(d == 0) for d in (dir1, dir2, dir3)]):
-            # We have a right triangle. To aviod numerical
-            # errors, a small perturbation is made.
-            # This should not happen, but just in case...
-                norms[0] += 1e-5
-                dir1, dir2, dir3 = [t[:-1] for t in _get_directions(norms)]
+        if np.any([np.all(d == 0) for d in (dir1, dir2, dir3)]):
+        # We have a right triangle. To aviod numerical
+        # errors, a small perturbation is made.
+        # This should not happen, but just in case...
+            norms[0] += 1e-5
+            dir1, dir2, dir3 = [t[:-1] for t in _get_directions(norms)]
 
-            angle0_obtuse = (vec_angle(v1-v0, v2-v0) > 90)
-            angle1_obtuse = (vec_angle(v0-v1, v2-v1) > 90)
-            angle2_obtuse = (vec_angle(v0-v2, v1-v2) > 90)
+        angle0_obtuse = (vec_angle(v1-v0, v2-v0) > 90)
+        angle1_obtuse = (vec_angle(v0-v1, v2-v1) > 90)
+        angle2_obtuse = (vec_angle(v0-v2, v1-v2) > 90)
 
-            dir1 = -dir1 if angle2_obtuse else dir1
-            dir2 = -dir2 if angle0_obtuse else dir2
-            dir3 = -dir3 if angle1_obtuse else dir3
-            # invert the versors sign if circumcenter is
-            # one angle is obtuse, because then
-            # circumcenter is outside the triangle
-            
-            dir1 = norm(np.concatenate((dir1, [0])))
-            dir2 = norm(np.concatenate((dir2, [0])))
-            dir3 = norm(np.concatenate((dir3, [0])))
+        dir1 = -dir1 if angle2_obtuse else dir1
+        dir2 = -dir2 if angle0_obtuse else dir2
+        dir3 = -dir3 if angle1_obtuse else dir3
+        # invert the versors sign if circumcenter is
+        # one angle is obtuse, because then
+        # circumcenter is outside the triangle
+        
+        dir1 = norm(np.concatenate((dir1, [0])))
+        dir2 = norm(np.concatenate((dir2, [0])))
+        dir3 = norm(np.concatenate((dir3, [0])))
 
-            return np.vstack((dir1, dir2, dir3))
+        return np.vstack((dir1, dir2, dir3))
 
     def _adjust_directions(self, directions, constrained_indexes, triangle_vectors, v, pivots):
         '''
@@ -448,7 +448,7 @@ def cyclical_embed(self):
                     if len(mol.reactive_indexes) > 1:
                     # do not try to bend molecules that react with a single atom
 
-                        if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
+                        if tuple(sorted(mol.reactive_indexes)) not in list(mol.graph.edges):
                         # do not try to bend molecules where the two reactive indices are bonded
 
                             traj = f'bend_{mol.name}_p{p}_tgt_{round(target_length, 3)}' if self.options.debug else None
