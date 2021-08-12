@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 
 TSCODE: Transition State Conformational Docker
@@ -72,9 +73,9 @@ class Single:
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + str(self)
-                try:
-                    orb_dim = orb_dim_dict[key]
-                except KeyError:
+                orb_dim = orb_dim_dict.get(key)
+
+                if orb_dim is None:
                     orb_dim = np.linalg.norm(self.coord - self.other)
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using the bonding distance ({round(orb_dim, 3)} A).')
 
@@ -109,9 +110,9 @@ class Sp2:
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + str(self)
-                try:
-                    orb_dim = orb_dim_dict[key]
-                except KeyError:
+                orb_dim = orb_dim_dict.get(key)
+                
+                if orb_dim is None:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
             
@@ -199,9 +200,9 @@ class Sp3:
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + str(self)
-                try:
-                    orb_dim = orb_dim_dict[key]
-                except KeyError:
+                orb_dim = orb_dim_dict.get(key)
+                
+                if orb_dim is None:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
@@ -269,9 +270,9 @@ class Ether:
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + str(self)
-                try:
-                    orb_dim = orb_dim_dict[key]
-                except KeyError:
+                orb_dim = orb_dim_dict.get(key)
+                
+                if orb_dim is None:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
@@ -307,9 +308,9 @@ class Ketone:
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + str(self)
-                try:
-                    orb_dim = orb_dim_dict[key]
-                except KeyError:
+                orb_dim = orb_dim_dict.get(key)
+                
+                if orb_dim is None:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
@@ -383,9 +384,9 @@ class Imine:
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + str(self)
-                try:
-                    orb_dim = orb_dim_dict[key]
-                except KeyError:
+                orb_dim = orb_dim_dict.get(key)
+                
+                if orb_dim is None:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
@@ -469,9 +470,9 @@ class Sp_or_carbene:
         if update:
             if orb_dim is None:
                 key = self.symbol + ' ' + self.type
-                try:
-                    orb_dim = orb_dim_dict[key]
-                except KeyError:
+                orb_dim = orb_dim_dict.get(key)
+                
+                if orb_dim is None:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         

@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 
 TSCODE: Transition State Conformational Docker
@@ -103,7 +104,7 @@ class Hypermolecule:
         self.debug = debug
         self.hyper = hyper
 
-        if len(reactive_atoms) == 0:
+        if not reactive_atoms:
             reactive_atoms = self._set_reactive_atoms(filename)
 
         elif len(reactive_atoms) >= 4:
@@ -235,6 +236,10 @@ class Hypermolecule:
             orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
             atom.init(self, index, update=True, orb_dim=orb_dim*value)
 
+    def calc_positioned_conformers(self):
+        self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
+
+
     def _compute_hypermolecule(self):
         '''
         '''
@@ -304,6 +309,30 @@ class Hypermolecule:
             for orb in orbs:
                 f.write('%-5s %-8s %-8s %-8s\n' % ('X', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
 
+class Pivot:
+    '''
+    (Cyclical embed)
+    Pivot object: vector connecting two lobes of a
+    molecule, starting from v1 (first reactive atom in
+    mol.reacitve_atoms_classes_dict) and ending on v2.
+
+    For molecules involved in chelotropic reactions,
+    that is molecules that undergo a cyclical embed
+    while having only one reactive atom, pivots are
+    built on that single atom.
+    '''
+    def __init__(self, v1, v2, index1, index2):
+        self.start = v1
+        self.end = v2
+        self.pivot = v2 - v1
+        self.meanpoint = np.mean((v1, v2), axis=0)
+        self.index = (index1, index2)
+        # the pivot starts from the index1-th
+        # center of the first reactive atom
+        # and to the index2-th center of the second
+
+    def __repr__(self):
+        return f'Pivot object - index {self.index}, norm {round(np.linalg.norm(self.pivot), 3)}, meanpoint {self.meanpoint}'
 
 if __name__ == '__main__':
     # TESTING PURPOSES

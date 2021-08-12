@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 
 TSCODE: Transition State Conformational Docker
@@ -142,7 +143,7 @@ def ase_torsion_TSs(coords,
 
         peaks_indexes = peaks(energies, min_thr=min_e+threshold_kcal, max_thr=min_e+75)
 
-        if len(peaks_indexes) != 0:
+        if peaks_indexes:
 
             s = 's' if len(peaks_indexes) > 1 else ''
             print(f'Found {len(peaks_indexes)} peak{s}. Performing accurate scan{s}.\n')
@@ -192,7 +193,7 @@ def ase_torsion_TSs(coords,
 
                 sub_peaks_indexes = peaks(sub_energies, min_thr=threshold_kcal+min_e, max_thr=min_e+75)
 
-                if len(sub_peaks_indexes) != 0:
+                if sub_peaks_indexes:
 
                     s = 's' if len(sub_peaks_indexes) > 1 else ''
                     print(f'Found {len(sub_peaks_indexes)} sub-peak{s}. Performing Saddle opt optimization{s}.')

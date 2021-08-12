@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 
 TSCODE: Transition State Conformational Docker
@@ -183,7 +184,7 @@ def _get_aromatic_centers(coords, symbols, ids):
 
     aromatic_centers = []
 
-    if len(masks) > 0:
+    if masks:
 
         masks = np.concatenate(masks)
 

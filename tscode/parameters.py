@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 
 TSCODE: Transition State Conformational Docker

@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 
 TSCODE: Transition State Conformational Docker
@@ -39,7 +40,7 @@ from utils import (
                     findPaths
                     )
 from settings import COMMANDS, MEM_GB
-from optimization_methods import scramble_check, molecule_check
+from utils import scramble_check, molecule_check
 from sella import Sella
 from rmsd import kabsch
 
@@ -400,11 +401,9 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
     identifier = np.sum(original_mol.atomcoords[0])
 
     if hasattr(docker, "ase_bent_mols_dict"):
-        try:
-            return docker.ase_bent_mols_dict[(identifier, tuple(sorted(pivot.index)), round(threshold, 3))]
-        except KeyError:
-            # ignore structure cacheing if we do not already have this structure 
-            pass
+        cached = docker.ase_bent_mols_dict.get((identifier, tuple(sorted(pivot.index)), round(threshold, 3)))
+        if cached is not None:
+            return cached
 
     if traj is not None:
 

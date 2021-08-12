@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 
 TSCODE: Transition State Conformational Docker
@@ -369,14 +370,10 @@ def get_double_bonds_indexes(coords, atomnos):
             dist = np.linalg.norm(coords[i1] - coords[i2])
             tag = ''.join(sorted([pt[atomnos[i1]].symbol,
                                   pt[atomnos[i2]].symbol]))
-            try:
-                threshold = double_bonds_thresholds_dict[tag]
-
-                if dist < threshold:
-                    output.append([numbering[i1], numbering[i2]])
-
-            except KeyError:
-                pass
+            
+            threshold = double_bonds_thresholds_dict.get(tag)
+            if threshold is not None and dist < threshold:
+                output.append([numbering[i1], numbering[i2]])
 
     return output
 
