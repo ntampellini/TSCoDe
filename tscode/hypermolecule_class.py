@@ -80,7 +80,7 @@ class Hypermolecule:
     def __repr__(self):
         return self.rootname + f' {[str(atom) for atom in self.reactive_atoms_classes_dict.values()]}, ID = {id(self)}'
 
-    def __init__(self, filename, reactive_atoms, hyper=True, debug=False):
+    def __init__(self, filename, reactive_atoms=None, hyper=True, debug=False):
         '''
         Initializing class properties: reading conformational ensemble file, aligning
         conformers to first and centering them in origin.
@@ -93,7 +93,7 @@ class Hypermolecule:
         '''
 
         if not os.path.isfile(filename):
-            if filename.endswith('.xyz'):
+            if '.' in filename:
                 raise SyntaxError((f'Molecule {filename} cannot be read. Please check your syntax.'))
 
             raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
@@ -104,7 +104,7 @@ class Hypermolecule:
         self.debug = debug
         self.hyper = hyper
 
-        if not reactive_atoms:
+        if reactive_atoms is None:
             reactive_atoms = self._set_reactive_atoms(filename)
 
         elif len(reactive_atoms) >= 4:

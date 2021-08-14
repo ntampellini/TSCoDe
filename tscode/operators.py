@@ -22,7 +22,7 @@ import numpy as np
 from copy import deepcopy
 from utils import InputError, suppress_stdout_stderr, write_xyz,time_to_string
 from subprocess import check_call, DEVNULL, STDOUT
-from optimization_methods import mopac_opt, gaussian_opt, orca_opt
+from optimization_methods import optimize
 from cclib.io import ccread
 from hypermolecule_class import graphize
 from networkx import connected_components
@@ -77,15 +77,9 @@ def csearch_operator(filename, calculator, theory_level, procs=1, logfunction=No
     energies = []
 
     for i, conformer in enumerate(deepcopy(conformers)):
+    # optimize the generated conformers
         
-        if calculator == 'MOPAC':
-            opt_coords, energy, success = mopac_opt(conformer, data.atomnos, method=theory_level)
-
-        elif calculator == 'ORCA':
-            opt_coords, energy, success = orca_opt(conformer, data.atomnos, method=theory_level, procs=procs)
-
-        else: # == 'GAUSSIAN'
-            opt_coords, energy, success = gaussian_opt(conformer, data.atomnos, method=theory_level, procs=procs)
+        opt_coords, energy, success = optimize(calculator, conformer, data.atomnos, method=theory_level, procs=procs)
 
         if success:
             conformers[i] = opt_coords
@@ -93,7 +87,6 @@ def csearch_operator(filename, calculator, theory_level, procs=1, logfunction=No
 
         else:
             energies.append(np.inf)
-    # optimize the generated conformers
 
     energies = np.array(energies) - np.min(energies)
     energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
@@ -133,14 +126,7 @@ def opt_operator(filename, calculator, theory_level, procs=1, logfunction=None):
 
     for i, conformer in enumerate(deepcopy(conformers)):
 
-        if calculator == 'MOPAC':
-            opt_coords, energy, success = mopac_opt(conformer, data.atomnos, method=theory_level)
-
-        elif calculator == 'GAUSSIAN':
-            opt_coords, energy, success = gaussian_opt(conformer, data.atomnos, method=theory_level, procs=procs)
-
-        else: # == 'ORCA'
-            opt_coords, energy, success = orca_opt(conformer, data.atomnos, method=theory_level, procs=procs)
+        opt_coords, energy, success = optimize(calculator, conformer, data.atomnos, method=theory_level, procs=procs)
 
         if success:
             conformers[i] = opt_coords

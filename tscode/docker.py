@@ -113,19 +113,14 @@ class Docker:
         self.ids = [len(mol.atomnos) for mol in self.objects]
         # used to divide molecules in TSs
 
-        for i, mol in enumerate(self.objects):
-            if mol.hyper:
-                for r_atom in mol.reactive_atoms_classes_dict.values():
-                    if i == 0:
-                        r_atom.cumnum = r_atom.index
-                    else:
-                        r_atom.cumnum = r_atom.index + sum(self.ids[:i])
+        self._set_reactive_atoms_cumnums()
         # appending to each reactive atom the cumulative
         # number indexing in the TS context
 
         self._read_pairings(filename)
         self._set_options(filename)
         self._calculator_setup()
+        self._apply_operators()
 
         if self.options.debug:
             for mol in self.objects:
@@ -177,11 +172,9 @@ class Docker:
                 reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
 
                 if '>' in filename:
-                    filename = operate(filename,
-                                        self.options.calculator,
-                                        self.options.theory_level,
-                                        procs=self.options.procs,
-                                        logfunction=self.log)
+                    self.options.operators.append(filename)
+                    filename = filename.split('>')[-1]
+                    # record that we will need to perform these operations before the run
 
                 inp.append((filename, reactive_indexes))
 
@@ -210,10 +203,17 @@ class Docker:
                 print(e)
                 raise InputError(f'Error in reading keywords from {filename}. Please check your syntax.')
 
+    def _set_reactive_atoms_cumnums(self):        
+        for i, mol in enumerate(self.objects):
+            if mol.hyper:
+                for r_atom in mol.reactive_atoms_classes_dict.values():
+                    r_atom.cumnum = r_atom.index
+                    if i > 0:
+                        r_atom.cumnum += sum(self.ids[:i])
+
     def _read_pairings(self, filename):
         '''
         Reads atomic pairings to be respected from the input file, if any are present.
-        This parsing function is ugly, I know.
         '''
 
         parsed = []
@@ -279,9 +279,6 @@ class Docker:
         self.pairings_table = {i[0]:sorted(i[1]) for i in pairings}
         # {'a':[3,45]}
 
-        self.pairings = [sorted(i[1]) for i in pairings]
-        # getting rid of the letters and sorting the values [34, 3] -> [3, 34]
-
         letters = tuple(self.pairings_table.keys())
 
         for letter, ids in self.pairings_table.items():
@@ -292,19 +289,18 @@ class Docker:
             if len(ids) > 2:
                 raise SyntaxError(f'Letter \'{letter}\' is specified more than two times. Please remove the unwanted letters.')
 
-        if not self.pairings:
+        if not self.pairings_table:
             if all([len(mol.reactive_indexes) == 2 for mol in self.objects]):
                 self.log('--> No atom pairings imposed. Computing all possible dispositions.\n')
                 # only print the no pairings statements if there are multiple regioisomers to be computed
         else:
-            self.log(f'--> Atom pairings imposed are {len(self.pairings)}: {self.pairings} (Cumulative index numbering)\n')
+            self.log(f'--> Atom pairings imposed are {len(self.pairings_table)}: {list(self.pairings_table.values())} (Cumulative index numbering)\n')
         
         if len(self.mol_lines) == 3:
         # adding third pairing if we have three molecules and user specified two pairings
         # (used to adjust distances for trimolecular TSs)
             if len(unlabeled_list) == 2:
                 third_constraint = list(sorted(unlabeled_list))
-                self.pairings.append(third_constraint)
                 self.pairings_table['c'] = third_constraint
         
         elif len(self.mol_lines) == 2:
@@ -312,7 +308,6 @@ class Docker:
         # (used to adjust distances for bimolecular TSs)
             if len(unlabeled_list) == 2:
                 second_constraint = list(sorted(unlabeled_list))
-                self.pairings.append(second_constraint)
                 self.pairings_table['b'] = second_constraint
 
     def _set_custom_orbs(self, orb_string):
@@ -548,7 +543,7 @@ class Docker:
         # Trimolecular there are 8 different triangles originated from three oriented vectors,
         # while only 2 disposition of two vectors (parallel, antiparallel).
 
-        if self.pairings:
+        if self.pairings_table:
         # If there is any pairing to be respected, each one reduces the number of
         # candidates to be computed.
 
@@ -559,7 +554,7 @@ class Docker:
                     candidates /= 2
 
                 else: # trimolecular
-                    if len(self.pairings) == 1:
+                    if len(self.pairings_table) == 1:
                         candidates /= 4
                     else: # trimolecular, 2 (3) pairings imposed
                         candidates /= 8
@@ -568,8 +563,6 @@ class Docker:
         # The more atomic pivots, the more candidates
 
         return int(candidates)
-
-        
 
     def _calculator_setup(self):
         '''
@@ -591,6 +584,31 @@ class Docker:
                 raise Exception(('ORCA does not support parallelization for Semiempirical Methods. '
                                  'Please change the value of PROCS to 1 in parameters.py or '
                                  'change the theory level.'))
+
+    def _apply_operators(self):
+        '''
+        Replace molecules in self.objects with
+        their post-operators ones.
+        '''
+        for input_string in self.options.operators:
+
+            outname = operate(input_string,
+                              self.options.calculator,
+                              self.options.theory_level,
+                              procs=self.options.procs,
+                              logfunction=self.log)
+
+            names = [mol.name for mol in self.objects]
+            filename = input_string.split('>')[-1]
+            index = names.index(filename)
+            reactive_indexes = self.objects[index].reactive_indexes
+            hyper = self.objects[index].hyper
+
+            self.objects[index] = Hypermolecule(outname, reactive_indexes, hyper)
+            # replacing the old molecule with the one post-operators
+
+            self._set_reactive_atoms_cumnums()
+            # updating the orbital cumnums
 
     def get_string_constrained_indexes(self, n):
         '''
@@ -646,8 +664,6 @@ class Docker:
         '''
         Called before TS refinement to compute all
         target bonding distances.
-
-        (This function could be written better, I know. But it works.)
         '''
         self.target_distances = {}
 
@@ -667,7 +683,6 @@ class Docker:
             # if target distance has been specified by user, read that, otherwise compute it
 
             for r_atom in r_atoms:
-
                 if index1 == r_atom.cumnum:
                     r_atom1 = r_atom
 
@@ -955,13 +970,13 @@ class Docker:
             try:
                 t_start_opt = time.time()
                 new_structure, self.energies[i], self.exit_status[i] = optimize(self.options.calculator,
-                                                                                structure,
-                                                                                self.atomnos,
-                                                                                self.graphs,
-                                                                                self.constrained_indexes[i],
-                                                                                method=method,
-                                                                                procs=self.options.procs,
-                                                                                max_newbonds=self.options.max_newbonds)
+                                                                                    structure,
+                                                                                    self.atomnos,
+                                                                                    method=method,
+                                                                                    constrained_indexes=self.constrained_indexes[i],
+                                                                                    mols_graphs=self.graphs,
+                                                                                    procs=self.options.procs,
+                                                                                    max_newbonds=self.options.max_newbonds)
 
                 if self.exit_status[i]:
                     self.structures[i] = new_structure
@@ -1366,14 +1381,14 @@ class Docker:
         path = os.path.join(os.getcwd(), self.vmd_name)
         with open(path, 'w') as f:
             s = ('display resetview\n' +
-                'mol new {./%s.xyz}\n' % (self.vmd_name.rstrip('.vmd')) +
+                'mol new {%s.xyz}\n' % (os.path.join(self.getcwd() + self.vmd_name).rstrip('.vmd')) +
                 'mol selection index %s\n' % (' '.join([str(i) for i in indexes])) +
                 'mol representation CPK 0.7 0.5 50 50\n' +
                 'mol color ColorID 7\n' +
                 'mol material Transparent\n' +
                 'mol addrep top\n')
 
-            for a, b in self.pairings:
+            for a, b in self.pairings_table.values():
                 s += f'label add Bonds 0/{a} 0/{b}\n'
 
             f.write(s)

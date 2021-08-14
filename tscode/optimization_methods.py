@@ -102,7 +102,7 @@ def read_mop_out(filename):
     
     raise MopacReadError(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
 
-def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', title='temp', read_output=True):
+def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', procs=None, title='temp', read_output=True):
     '''
     This function writes a MOPAC .mop input, runs it with the subprocess
     module and reads its output. Coordinates used are mixed
@@ -394,7 +394,7 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
         except FileNotFoundError:
             return None, None, False
 
-def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', title='temp', read_output=True):
+def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', procs=None, title='temp', read_output=True):
     '''
     This function writes an XTB .inp file, runs it with the subprocess
     module and reads its output.
@@ -472,43 +472,46 @@ def read_xtb_energy(filename):
         line = f.readline() # second line is where energy is printed
         return float(line.split()[1]) * 627.5096080305927 # Eh to kcal/mol
 
-def optimize(calculator, TS_structure, TS_atomnos, mols_graphs, constrained_indexes=None, method='PM6', procs=1, max_newbonds=0, title='temp', debug=False):
-    '''
-    Performs a geometry partial optimization (POPT) with MOPAC, ORCA or Gaussian at $method level, 
-    constraining the distance between the specified atom pair. Moreover, performs a check of atomic
-    pairs distances to ensure to have preserved molecular identities and prevented atom scrambling.
+calc_funcs_dict = {
+    'MOPAC':mopac_opt,
+    'ORCA':orca_opt,
+    'GAUSSIAN':gaussian_opt,    
+    'XTB':xtb_opt,
+}
 
-    :params calculator: Calculator to be used. Either 'MOPAC' or 'ORCA'
-    :params TS_structure: list of coordinates for each atom in the TS
-    :params TS_atomnos: list of atomic numbers for each atom in the TS
-    :params constrained_indexes: indexes of constrained atoms in the TS geometry
-    :params mols_graphs: list of molecule.graph objects, containing connectivity information
+def optimize(calculator, coords, atomnos,  method, constrained_indexes=None, mols_graphs=None, procs=1, max_newbonds=0, title='temp', check=True):
+    '''
+    Performs a geometry [partial] optimization (OPT/POPT) with MOPAC, ORCA, Gaussian or XTB at $method level, 
+    constraining the distance between the specified atom pairs, if any. Moreover, if $check, performs a check on atomic
+    pairs distances to ensure that the optimization has preserved molecular identities and no atom scrambling occurred.
+
+    :params calculator: Calculator to be used. ('MOPAC', 'ORCA', 'GAUSSIAN', 'XTB')
+    :params structure: list of coordinates for each atom in the TS
+    :params atomnos: list of atomic numbers for each atom in the TS
+    :params mols_graphs: list of molecule.graph objects, containing connectivity information for each molecule
+    :params constrained_indexes: indexes of constrained atoms in the TS geometry, if this is one
     :params method: Level of theory to be used in geometry optimization. Default if UFF.
 
     :return opt_coords: optimized structure
     :return energy: absolute energy of structure, in kcal/mol
     :return not_scrambled: bool, indicating if the optimization shifted up some bonds (except the constrained ones)
     '''
-    assert len(TS_structure) == sum([len(graph.nodes) for graph in mols_graphs])
+    if mols_graphs is not None:
+        assert len(coords) == sum([len(graph.nodes) for graph in mols_graphs])
 
-    if constrained_indexes is None:
-        constrained_indexes = np.array(())
+    constrained_indexes = np.array(()) if constrained_indexes is None else constrained_indexes
 
-    if calculator == 'MOPAC':
-        opt_coords, energy, success = mopac_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, title=title)
+    calc_func = calc_funcs_dict[calculator]
 
-    elif calculator == 'ORCA':
-        opt_coords, energy, success = orca_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, procs=procs, title=title)
+    opt_coords, energy, success = calc_func(coords, atomnos, constrained_indexes, method=method, procs=procs, title=title)
+    # success checks that calculation had a normal termination
 
-    elif calculator == 'GAUSSIAN':
-        opt_coords, energy, success = gaussian_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, procs=procs, title=title)
-
-    elif calculator == 'XTB':
-        opt_coords, energy, success = xtb_opt(TS_structure, TS_atomnos, constrained_indexes, method=method, title=title)
-
-
-    if success:
-        success = scramble_check(opt_coords, TS_atomnos, constrained_indexes, mols_graphs, max_newbonds=max_newbonds)
+    if success and check:
+        # here check ensure that no scrambling occurred during the optimization
+        if mols_graphs is not None:
+            success = scramble_check(opt_coords, atomnos, constrained_indexes, mols_graphs, max_newbonds=max_newbonds)
+        else:
+            success = molecule_check(coords, opt_coords, atomnos, max_newbonds=max_newbonds)
 
     return opt_coords, energy, success
 

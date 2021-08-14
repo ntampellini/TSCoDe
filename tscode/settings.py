@@ -19,7 +19,7 @@ GNU General Public License for more details.
 # IF YOU MANUALLY EDIT THIS FILE, BE SURE NOT TO
 # CHANGE IDENTATION/WHITESPACES/NEWLINES!
 
-OPENBABEL_OPT_BOOL = False
+OPENBABEL_OPT_BOOL = True
 # Whether to run Force Field minimization with
 # Openbabel prior to the final one.
 # (set to False if no Openbabel Python bindings are available)

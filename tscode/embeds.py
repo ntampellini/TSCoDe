@@ -486,7 +486,7 @@ def cyclical_embed(self):
             ids = self.get_cyclical_reactive_indexes(v)
             # get indexes of atoms that face each other
 
-            if self.pairings == [] or all([pair in ids for pair in self.pairings]):
+            if not self.pairings_table or all([pair in ids for pair in self.pairings_table.values()]):
             # ensure that the active arrangement has all the pairings that the user specified
 
                 if len(self.objects) == 3:

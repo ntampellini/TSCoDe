@@ -162,6 +162,10 @@ class Options:
     # Default values, updated if _parse_input
     # finds keywords and calls _set_options
 
+    operators = []
+    # this list will be filled with operator strings
+    # that need to be exectured before the run. i.e. ['csearch>mol.xyz']
+
     def __repr__(self):
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
         

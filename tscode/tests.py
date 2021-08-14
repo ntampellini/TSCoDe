@@ -26,7 +26,11 @@ def run_tests():
     # sys.path.append(os.getcwd())
 
     from settings import COMMANDS, OPENBABEL_OPT_BOOL, CALCULATOR
-    from optimization_methods import mopac_opt, orca_opt, gaussian_opt, xtb_opt
+
+    if CALCULATOR not in ('MOPAC','ORCA','GAUSSIAN','XTB'):
+        raise Exception(f'{CALCULATOR} is not a valid calculator. Use MOPAC, ORCA, GAUSSIAN or XTB.')
+
+    from optimization_methods import calc_funcs_dict
     from utils import HiddenPrints, time_to_string, clean_directory, run_command, loadbar
     from cclib.io import ccread
 
@@ -40,27 +44,9 @@ def run_tests():
     print('\nRunning tests for TSCoDe. Settings used:')
     print(f'{CALCULATOR=}')
 
-    if CALCULATOR == 'MOPAC':
-        print(f'MOPAC COMMAND = {COMMANDS[CALCULATOR]}')
-        print('\nTesting calculator...')
-        mopac_opt(data.atomcoords[0], data.atomnos)
-
-    elif CALCULATOR == 'ORCA':
-        print(f'ORCA COMMAND = {COMMANDS[CALCULATOR]}')
-        print('\nTesting calculator...')
-        orca_opt(data.atomcoords[0], data.atomnos)
-
-    elif CALCULATOR == 'GAUSSIAN':
-        print(f'GAUSSIAN COMMAND = {COMMANDS[CALCULATOR]}')
-        print('\nTesting calculator...')
-        gaussian_opt(data.atomcoords[0], data.atomnos)
-
-    elif CALCULATOR == 'XTB':
-        print('\nTesting calculator...')
-        xtb_opt(data.atomcoords[0], data.atomnos)
-
-    else:
-        raise Exception(f'{CALCULATOR} is not a valid calculator. Use MOPAC, ORCA, GAUSSIAN or XTB.')
+    print(f'{CALCULATOR} COMMAND = {COMMANDS[CALCULATOR]}')
+    print('\nTesting calculator...')
+    calc_funcs_dict[CALCULATOR](data.atomcoords[0], data.atomnos)
 
     clean_directory()
     print(f'{CALCULATOR} calculator works.')
