@@ -21,10 +21,12 @@ https://github.com/ntampellini/TSCoDe
 Nicolo' Tampellini - nicolo.tampellini@yale.edu
 
 '''
+
 if __name__ == '__main__':
 
     import os
     from docker import Docker
+    from run import RunEmbedding
     import argparse
 
     usage = '''python -m tscode [-h] [-s] [-t] inputfile [-n NAME]
@@ -43,6 +45,7 @@ if __name__ == '__main__':
     parser.add_argument("-t", "--test", help="Perform some tests to check the TSCoDe installation.", action="store_true")
     parser.add_argument("inputfile", help="Input filename, can be any text file.", action='store', nargs='?', default=None)
     parser.add_argument("-n", "--name", help="Custom name for the run.", action='store', required=False)
+    parser.add_argument("-c", "--cite", help="Print the appropriate document links for citation purposes.", action='store_true', required=False)
     args = parser.parse_args()
 
     if (not (args.test or args.setup)) and args.inputfile is None:
@@ -54,6 +57,9 @@ if __name__ == '__main__':
         print('\nTSCoDe setup performed correctly.')
         quit()
 
+    if args.cite:
+        print('No citation link is available for TSCoDe yet. You can link to the code on https://www.github.com/ntampellini/TSCoDe')
+
     if args.test:
         from tests import run_tests
         run_tests()
@@ -61,10 +67,8 @@ if __name__ == '__main__':
 
     filename = os.path.realpath(args.inputfile)
 
-    os.chdir(os.path.dirname(filename))
-
     docker = Docker(filename, args.name)
     # initialize docker from input file
 
-    docker.run()
+    RunEmbedding(docker)
     # run the program

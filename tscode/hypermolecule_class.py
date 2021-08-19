@@ -321,11 +321,20 @@ class Pivot:
     while having only one reactive atom, pivots are
     built on that single atom.
     '''
-    def __init__(self, v1, v2, index1, index2):
-        self.start = v1
-        self.end = v2
-        self.pivot = v2 - v1
-        self.meanpoint = np.mean((v1, v2), axis=0)
+    def __init__(self, c1, c2, a1, a2, index1, index2):
+        '''
+        c: centers (orbital centers)
+        v: vectors (orbital vectors, non-normalized)
+        i: indexes (of coordinates, in mol.center)
+        '''
+        self.start = c1
+        self.end = c2
+
+        self.start_atom = a1
+        self.end_atom = a2
+
+        self.pivot = c2 - c1
+        self.meanpoint = np.mean((c1, c2), axis=0)
         self.index = (index1, index2)
         # the pivot starts from the index1-th
         # center of the first reactive atom

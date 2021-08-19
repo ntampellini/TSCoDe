@@ -141,6 +141,7 @@ class Options:
     saddle = False
     nci = False
     shrink = False
+    shrink_multiplier = 1
     metadynamics = False
     suprafacial = False
     only_refined = False
@@ -213,7 +214,7 @@ class OptionSetter:
                 if k not in keywords_list:
                     raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
-            docker.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple))
+        docker.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple))
 
     def bypass(self, options, *args):
         options.bypass = True

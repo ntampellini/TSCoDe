@@ -32,18 +32,18 @@ from copy import deepcopy
 
 from utils import (
                     norm,
-                    time_to_string,
-                    HiddenPrints,
+                    graphize,
                     write_xyz,
                     neighbors,
+                    findPaths,
+                    HiddenPrints,
+                    time_to_string,
                     get_double_bonds_indexes,
-                    findPaths
                     )
 from settings import COMMANDS, MEM_GB
 from utils import scramble_check, molecule_check
 from sella import Sella
 from rmsd import kabsch
-
 
 class Spring:
     '''
@@ -384,6 +384,49 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
                 dihedrals_deg.append([atoms.get_dihedral(*d), d])
 
     return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
+
+def ase_safe_relax(docker, coords, atomnos, constrained_indexes=None, targets=None, mask=None, title='temp', traj=None):
+    '''
+    docker: TSCoDe docker object
+    coords: 
+    atomnos: 
+    constrained_indexes:
+    mask: bool array, with False for atoms to be excluded in the bond evaluation
+    title: name to be used for referring to this structure in the docker log
+    traj: if set to a string, traj+'.traj' is used as a filename for the bending trajectory.
+          not only the atoms will be printed, but also all the orbitals and the active pivot.
+    check: if True, after bending checks that the bent structure did not scramble.
+           If it did, returns the initial molecule.
+    '''
+    atoms = Atoms(atomnos, positions=coords)
+    atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, docker.options.theory_level)
+    constraints = []
+
+    for i, c in enumerate(constrained_indexes):
+        i1, i2 = c
+        tgt_dist = np.linalg.norm(coords[i1]-coords[i2]) if targets is None else targets[i]
+        constraints.append(Spring(i1, i2, tgt_dist))
+
+    constraints.append(PreventScramblingConstraint(graphize(coords, atomnos, mask),
+                                                    atoms,
+                                                    double_bond_protection=docker.options.double_bond_protection,
+                                                    fix_angles=docker.options.fix_angles_in_deformation))
+
+    atoms.set_constraint(constraints)
+
+    t_start_opt = time.time()
+    with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
+        opt.run(fmax=0.05, steps=500)
+        iterations = opt.nsteps
+
+    new_structure = atoms.get_positions()
+    success = (iterations < 499)
+
+    exit_str = 'REFINED' if success else 'MAX ITER'
+
+    docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} "safe" relax: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
+
+    return new_structure, atoms.get_total_energy(), success
 
 def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, check=True):
     '''

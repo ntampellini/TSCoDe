@@ -16,7 +16,6 @@ GNU General Public License for more details.
 
 '''
 from copy import deepcopy
-from ase.constraints import ExpCellFilter
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R

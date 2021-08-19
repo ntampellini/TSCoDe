@@ -513,21 +513,27 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, m
 
     return True
 
-def graphize(coords, atomnos):
+def d_min_bond(e1, e2):
+    return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
+    # return 0.2 + (pt[e1].covalent_radius + pt[e2].covalent_radius)
+# if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
+
+def graphize(coords, atomnos, mask=None):
     '''
     :params coords: atomic coordinates as 3D vectors
     :params atomnos: atomic numbers as a list
+    :params mask: bool array, with False for atoms
+                  to be excluded in the bond evaluation
     :return connectivity graph
     '''
-    def d_min(e1, e2):
-        return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
-        # return 0.2 + (pt[e1].covalent_radius + pt[e2].covalent_radius)
-    # if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
+
+    mask = np.array([True for _ in atomnos], dtype=bool) if mask is None else mask
 
     matrix = np.zeros((len(coords),len(coords)))
     for i, _ in enumerate(coords):
         for j in range(i,len(coords)):
-            if np.linalg.norm(coords[i]-coords[j]) < d_min(atomnos[i], atomnos[j]):
-                matrix[i][j] = 1
+            if mask[i] and mask[j]:
+                if np.linalg.norm(coords[i]-coords[j]) < d_min_bond(atomnos[i], atomnos[j]):
+                    matrix[i][j] = 1
 
     return nx.from_numpy_matrix(matrix)

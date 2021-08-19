@@ -12,4 +12,4 @@
 ### 0.0.4 (Testing)
 - SADDLE keyword implementation.
 - Added keywords print at top of log
-- Significant code refactoring
+- Major code refactoring

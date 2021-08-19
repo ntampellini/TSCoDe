@@ -20,17 +20,12 @@ GNU General Public License for more details.
 # for the moment it is kept in pure Python.
 
 import numpy as np
-from math import sqrt
 import networkx as nx
 from rmsd import kabsch_rmsd
+from scipy.spatial.distance import cdist
 # from spyrmsd.rmsd import symmrmsd
 
-def norm_of(v):
-    s = v[0]*v[0] + v[1]*v[1] + v[2]*v[2]
-    norm = sqrt(s)
-    return norm
-
-def compenetration_check(coords, ids, thresh=1.5, max_clashes=2):
+def compenetration_check(coords, ids, thresh=1.3, max_clashes=0):
 
     clashes = 0
     # max_clashes clashes is good, max_clashes + 1 is not
@@ -38,14 +33,7 @@ def compenetration_check(coords, ids, thresh=1.5, max_clashes=2):
     if len(ids) == 2:
         m1 = coords[0:ids[0]]
         m2 = coords[ids[0]:]
-        for v1 in m1:
-            for v2 in m2:
-                dist = norm_of(v1-v2)
-                if dist < thresh:
-                    clashes += 1
-                if clashes > max_clashes:
-                    return False
-        return True
+        return False if np.count_nonzero(cdist(m2,m1) < thresh) > max_clashes else True
 
     # if len(ids) == 3:
 
@@ -53,34 +41,19 @@ def compenetration_check(coords, ids, thresh=1.5, max_clashes=2):
     m2 = coords[ids[0]:ids[0]+ids[1]]
     m3 = coords[ids[0]+ids[1]:]
 
-    for v1 in m1:
-        for v2 in m2:
-            dist = norm_of(v1-v2)
-            if dist < thresh:
-                clashes += 1
-            if clashes > max_clashes:
-                return False
+    clashes += np.count_nonzero(cdist(m2,m1) < thresh)
+    if clashes > max_clashes:
+        return False
 
-    for v2 in m2:
-        for v3 in m3:
-            dist = norm_of(v2-v3)
-            if dist < thresh:
-                clashes += 1
-            if clashes > max_clashes:
-                return False
+    clashes += np.count_nonzero(cdist(m3,m2) < thresh)
+    if clashes > max_clashes:
+        return False
 
-    for v3 in m3:
-        for v1 in m1:
-            dist = norm_of(v3-v1)
-            if dist < thresh:
-                clashes += 1
-            if clashes > max_clashes:
-                return False
+    clashes += np.count_nonzero(cdist(m1,m3) < thresh)
+    if clashes > max_clashes:
+        return False
 
     return True
-
-def scramble_mask(array, sequence):
-    return np.array([array[s] for s in sequence])
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
@@ -150,7 +123,7 @@ def prune_conformers(structures, atomnos, k = 1, max_rmsd = 1.):
     mask = np.concatenate(mask_out)
 
     if k != 1:
-        mask = scramble_mask(mask, inv_sequence)
+        mask = scramble(mask, inv_sequence)
         # undoing the previous shuffling, therefore preserving the input order
 
     return structures[mask], mask
