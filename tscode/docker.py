@@ -29,7 +29,6 @@ from settings import (
                       )
 
 from operators import operate
-from parameters import orb_dim_dict
 from docker_options import OptionSetter, Options, keywords_list
 from hypermolecule_class import Hypermolecule, Pivot
 
@@ -645,47 +644,6 @@ class Docker:
         couples = [sorted(c) for c in couples]
 
         return couples
-
-    def _set_target_distances(self):
-        '''
-        Called before TS refinement to compute all
-        target bonding distances.
-        '''
-        self.target_distances = {}
-
-        r_atoms = np.array([list(mol.reactive_atoms_classes_dict.values()) for mol in self.objects]).ravel()
-        pairings = self.constrained_indexes.ravel()
-        pairings = pairings.reshape(int(pairings.shape[0]/2), 2)
-        pairings = {tuple(sorted((a,b))) for a, b in pairings}
-
-        for index1, index2 in pairings:
-
-            if [index1, index2] in self.pairings_table.values() and hasattr(self, 'pairings_dists'):
-                letter = list(self.pairings_table.keys())[list(self.pairings_table.values()).index([index1, index2])]
-                if letter in [l for l, _ in self.pairings_dists]:
-                    target_dist = self.pairings_dists[[l for l, _ in self.pairings_dists].index(letter)][1]
-                    self.target_distances[(index1, index2)] = target_dist
-                    continue
-            # if target distance has been specified by user, read that, otherwise compute it
-
-            for r_atom in r_atoms:
-                if index1 == r_atom.cumnum:
-                    r_atom1 = r_atom
-
-                if index2 == r_atom.cumnum:
-                    r_atom2 = r_atom
-
-            dist1 = orb_dim_dict.get(r_atom1.symbol + ' ' + str(r_atom1))
-            if dist1 is None:
-                dist1 = orb_dim_dict['Fallback']
-
-            dist2 = orb_dim_dict.get(r_atom2.symbol + ' ' + str(r_atom2))
-            if dist2 is None:
-                dist2 = orb_dim_dict['Fallback']
-
-            target_dist = dist1 + dist2
-
-            self.target_distances[(index1, index2)] = target_dist
 
     def _inspect_structures(self):
         '''
