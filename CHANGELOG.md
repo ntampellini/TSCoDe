@@ -7,9 +7,9 @@
 - If pivots decrease during a bend, an exception is raised. Future versions might have a different behavior in this scenario.
 
 ### 0.0.3 (10 Aug 2021)
-- setup.py bugfix.
+- setup.py bugfixes.
 
-### 0.0.4 (Aug 2021)
+### 0.0.5 (1 Sep 2021)
 - SADDLE keyword implementation.
 - Added keywords print at top of log
 - Pairings are now of two types: reactive atoms (a, b, c) or NCIs (x, y, z). The latter are adjusted when specifying distances with DIST but are left free to reach their equilibrium distance (HalfSpring constraint + additional relax).
