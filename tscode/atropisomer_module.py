@@ -20,28 +20,21 @@ from time import time
 
 import numpy as np
 from ase import Atoms
-from ase.optimize import LBFGS
 from ase.constraints import FixInternals
+from ase.optimize import LBFGS
 from networkx.algorithms.components.connected import connected_components
 from networkx.algorithms.shortest_paths.generic import shortest_path
 
-from hypermolecule_class import graphize, align_structures
-from ase_manipulations import get_ase_calc, ase_saddle
-from utils import (
-    dihedral,
-    clean_directory,
-    molecule_check,
-    loadbar,
-    time_to_string,
-    write_xyz,
-)
+from ase_manipulations import ase_neb, ase_saddle, get_ase_calc
+from hypermolecule_class import align_structures, graphize
+from utils import (clean_directory, dihedral, loadbar, molecule_check,
+                   time_to_string, write_xyz)
 
-def ase_torsion_TSs(coords,
+
+def ase_torsion_TSs(docker,
+                    coords,
                     atomnos,
                     indexes,
-                    calculator,
-                    method,
-                    procs=1,
                     threshold_kcal=5,
                     title='temp',
                     optimization=True,
@@ -75,7 +68,7 @@ def ase_torsion_TSs(coords,
             # if molecule is cyclical, just move the fourth atom and
             # let the rest of the structure relax
 
-            s = 'The specified dihedral angle is comprised within a cycle. Two preliminary scans will be conducted.'
+            s = 'The specified dihedral angle is comprised within a cycle. Switching to safe dihedral scan (moving only last index).'
             print(s)
             if logfile is not None:
                 logfile.write(s+'\n')
@@ -87,13 +80,15 @@ def ase_torsion_TSs(coords,
         indexes_to_be_moved = [i4]
         cyclical = True
 
-        s = 'The specified dihedral angle is made up of non-contiguous atoms.\nThis might cause some unexpected results. Two preliminary scans will be conducted.'
+        s = 'The specified dihedral angle is made up of non-contiguous atoms.\nThis might cause some unexpected results.'
         print(s)
         if logfile is not None:
             logfile.write(s+'\n')
 
 
-    routine = ((10, 18, '_clockwise'), (-10, 18, '_counterclockwise')) if cyclical else ((10, 36, ''),)
+    # routine = ((10, 18, '_clockwise'), (-10, 18, '_counterclockwise')) if cyclical else ((10, 36, ''),)
+    routine = ((10, 36, '_clockwise'), (-10, 36, '_counterclockwise'))
+
 
     for degrees, steps, direction in routine:
 
@@ -101,10 +96,9 @@ def ase_torsion_TSs(coords,
         if logfile is not None:
             logfile.write('\n')
 
-        structures, energies = ase_scan(coords,
+        structures, energies = ase_scan(docker,
+                                        coords,
                                         atomnos,
-                                        calculator=calculator,
-                                        method=method,
                                         indexes=indexes,
                                         degrees=degrees,
                                         steps=steps,
@@ -112,7 +106,6 @@ def ase_torsion_TSs(coords,
                                         indexes_to_be_moved=indexes_to_be_moved,
                                         title='Preliminary scan' + ((' (clockwise)' if direction == '_clockwise' \
                                               else ' (counterclockwise)') if direction != '' else ''),
-                                        procs=procs,
                                         logfile=logfile)
 
         min_e = min(energies)
@@ -123,8 +116,9 @@ def ase_torsion_TSs(coords,
             output_energies.append(energy)
 
         if plot:
-            import matplotlib.pyplot as plt
             import pickle
+
+            import matplotlib.pyplot as plt
 
             fig = plt.figure()
 
@@ -141,7 +135,7 @@ def ase_torsion_TSs(coords,
                     linewidth=3,
                     alpha=0.50)
 
-        peaks_indexes = peaks(energies, min_thr=min_e+threshold_kcal, max_thr=min_e+75)
+        peaks_indexes = atropisomer_peaks(energies, min_thr=min_e+threshold_kcal, max_thr=min_e+75)
 
         if peaks_indexes:
 
@@ -153,19 +147,17 @@ def ase_torsion_TSs(coords,
 
             for p, peak in enumerate(peaks_indexes):
 
-                sub_structures, sub_energies = ase_scan(structures[peak-1],
-                                                            atomnos,
-                                                            calculator=calculator,
-                                                            method=method,
-                                                            indexes=indexes,
-                                                            degrees=1,
-                                                            steps=20,
-                                                            relaxed=optimization,
-                                                            ad_libitum=True, # goes on until the hill is crossed
-                                                            indexes_to_be_moved=indexes_to_be_moved,
-                                                            procs=procs,
-                                                            title=f'Accurate scan {p+1}/{len(peaks_indexes)}',
-                                                            logfile=logfile)
+                sub_structures, sub_energies = ase_scan(docker,
+                                                        structures[peak-1],
+                                                        atomnos,
+                                                        indexes=indexes,
+                                                        degrees=degrees/10, #1° or -1°
+                                                        steps=20,
+                                                        relaxed=optimization,
+                                                        ad_libitum=True, # goes on until the hill is crossed
+                                                        indexes_to_be_moved=indexes_to_be_moved,
+                                                        title=f'Accurate scan {p+1}/{len(peaks_indexes)}',
+                                                        logfile=logfile)
 
                 if logfile is not None:
                     logfile.write('\n')
@@ -185,20 +177,23 @@ def ase_torsion_TSs(coords,
 
                     plt.plot(x2, 
                             y2,
-                            '-',
+                            '-o',
                             color='tab:red',
                             label='Accurate SCAN' if p == 0 else None,
+                            markersize=1,
                             linewidth=2,
-                            alpha=0.75)
+                            alpha=0.5)
 
-                sub_peaks_indexes = peaks(sub_energies, min_thr=threshold_kcal+min_e, max_thr=min_e+75)
+                sub_peaks_indexes = atropisomer_peaks(sub_energies, min_thr=threshold_kcal+min_e, max_thr=min_e+75)
 
                 if sub_peaks_indexes:
 
                     s = 's' if len(sub_peaks_indexes) > 1 else ''
-                    print(f'Found {len(sub_peaks_indexes)} sub-peak{s}. Performing Saddle opt optimization{s}.')
+                    s = f'Found {len(sub_peaks_indexes)} sub-peak{s}.' + (
+                        f'Performing Saddle opt optimization{s}.' if docker.options.saddle else '')
+                    print(s)
                     if logfile is not None:
-                        logfile.write(f'Found {len(sub_peaks_indexes)} sub-peak{s}. Performing Saddle opt optimization{s}.\n')
+                        logfile.write(s+'\n')
 
                     for s, sub_peak in enumerate(sub_peaks_indexes):
 
@@ -207,30 +202,48 @@ def ase_torsion_TSs(coords,
                             y = sub_energies[sub_peak]-min_e
                             plt.plot(x, y, color='gold', marker='o', label='Maxima' if p == 0 else None, markersize=3)
 
-                        if optimization:
+                        if docker.options.saddle:
 
                             loadbar_title = f'  > Saddle opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
                             # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
                             print(loadbar_title)
                         
-                            optimized_geom, energy, _ = ase_saddle(sub_structures[sub_peak],
+                            optimized_geom, energy, _ = ase_saddle(docker,
+                                                                    sub_structures[sub_peak],
                                                                     atomnos,
-                                                                    calculator=calculator,
-                                                                    method=method,
-                                                                    procs=procs,
                                                                     title=f'Saddle opt - peak {p+1}, sub-peak {s+1}',
                                                                     logfile=logfile,
                                                                     traj=bernytraj+f'_{p+1}_{s+1}.traj' if bernytraj is not None else None)
 
-                            if molecule_check(coords, optimized_geom, atomnos, max_newbonds=3):
+                            if molecule_check(coords, optimized_geom, atomnos):
                                 ts_structures.append(optimized_geom)
                                 energies.append(energy)
+
+                        elif docker.options.neb:
+
+                            for s, sub_peak in enumerate(sub_peaks_indexes):
+
+                                loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
+                                # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
+                                print(loadbar_title)
+                            
+                                optimized_geom, energy, success = ase_neb(docker,
+                                                                            sub_structures[sub_peak-2],
+                                                                            sub_structures[sub_peak+1],
+                                                                            atomnos,
+                                                                            n_images=5,
+                                                                            title=f'NEB_peak_{p+1}_sub-peak_{s+1}',
+                                                                            logfile=logfile)
+
+                                if success and molecule_check(coords, optimized_geom, atomnos):
+                                    ts_structures.append(optimized_geom)
+                                    energies.append(energy)
 
                         else:
                             ts_structures.append(sub_structures[sub_peak])
                             energies.append(sub_energies[sub_peak])
 
-                    print()
+                        print()
             
                 else:
                     print('No suitable sub-peaks found.\n')
@@ -266,7 +279,7 @@ def ase_torsion_TSs(coords,
 
     return ts_structures, energies
 
-def peaks(data, min_thr, max_thr):
+def atropisomer_peaks(data, min_thr, max_thr):
     '''
     data: iterable
     threshold: peaks must be greater than threshold
@@ -282,19 +295,17 @@ def peaks(data, min_thr, max_thr):
 
     return peaks
     
-def ase_scan(coords,
-             atomnos,
-             calculator,
-             method,
-             indexes,
-             degrees=10,
-             steps=36,
-             relaxed=True,
-             ad_libitum=False,
-             indexes_to_be_moved=None,
-             procs=1,
-             title='temp scan',
-             logfile=None):
+def ase_scan(docker,
+            coords,
+            atomnos,
+            indexes,
+            degrees=10,
+            steps=36,
+            relaxed=True,
+            ad_libitum=False,
+            indexes_to_be_moved=None,
+            title='temp scan',
+            logfile=None):
     '''
     if ad libitum, steps is the minimum number of performed steps
     '''
@@ -307,7 +318,7 @@ def ase_scan(coords,
     atoms = Atoms(atomnos, positions=coords)
     structures, energies = [], []
 
-    atoms.calc = get_ase_calc(calculator, procs, method)
+    atoms.calc = get_ase_calc(docker)
 
     if indexes_to_be_moved is None:
         indexes_to_be_moved = range(len(atomnos))

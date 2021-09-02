@@ -16,7 +16,6 @@ GNU General Public License for more details.
 
 '''
 import os
-import re
 import time
 from copy import deepcopy
 
@@ -25,42 +24,22 @@ import numpy as np
 from settings import OPENBABEL_OPT_BOOL
 
 if OPENBABEL_OPT_BOOL:
-    from optimization_methods import openbabel_opt
+    from calculators._openbabel import openbabel_opt
 
-from embeds import monomolecular_embed, string_embed, cyclical_embed, dihedral_embed
+from ase_manipulations import ase_adjust_spacings, ase_saddle
+from calculators._xtb import xtb_metadyn_augmentation
+from embeds import (cyclical_embed, dihedral_embed, monomolecular_embed,
+                    string_embed)
+from errors import MopacReadError, ZeroCandidatesError
 from hypermolecule_class import align_structures
-from optimization_methods import (
-                                  hyperNEB,
-                                  MopacReadError,
-                                  optimize,
-                                  prune_enantiomers,
-                                  scramble,
-                                  xtb_metadyn_augmentation,
-                                  )
-
-from ase_manipulations import (
-                               ase_adjust_spacings,
-                               ase_saddle,
-                              )
-
-from utils import (
-                   cartesian_product,
-                   clean_directory,
-                   loadbar,
-                   time_to_string,
-                   write_xyz,
-                   ZeroCandidatesError
-                   )
-
-from parameters import orb_dim_dict
 from nci import get_nci
+from optimization_methods import (fitness_check, hyperNEB, opt_iscans,
+                                  optimize, prune_enantiomers)
+from parameters import orb_dim_dict
+from python_functions import compenetration_check, prune_conformers, scramble
+from utils import (cartesian_product, clean_directory, loadbar, time_to_string,
+                   write_xyz)
 
-from python_functions import prune_conformers, compenetration_check
-# These could in the future be boosted via Cython or Julia, even
-# if they seem to the bottleneck of the program only for cyclical
-# [trimolecular] embeds with a lot of conformers, that need to
-# intersect in a precise and specific way. I think it is a rare 
-# case, but some performance gain would not hurt.
 
 class RunEmbedding:
     '''
@@ -186,8 +165,8 @@ class RunEmbedding:
             mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
 
         loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
-        self.structures = self.structures[mask]
-        self.constrained_indexes = self.constrained_indexes[mask]
+
+        self.apply_mask(('structures', 'constrained_indexes'), mask)
         t_end = time.time()
 
         if False in mask:
@@ -198,6 +177,37 @@ class RunEmbedding:
 
         self.energies = np.zeros(len(self.structures))
         self.exit_status = np.zeros(len(self.structures), dtype=bool)
+    
+    def fitness_refining(self):
+        '''
+        Performing a distance check on generated structures, 
+        discarding the ones that do not respect the imposed pairings.
+        Most of the times, rejects structures that changed their NCIs
+        from the imposed ones to other combinations.
+        '''
+        self.log('--> Fitness pruning - removing inaccurate structures')
+
+        mask = np.zeros(len(self.structures), dtype=bool)
+        
+        for s, structure in enumerate(self.structures):
+            mask[s] = fitness_check(self, structure)
+
+        attr = (
+            'structures',
+            'energies',
+            'constrained_indexes',
+            'exit_status',
+        )
+
+        self.apply_mask(attr, mask)
+
+        if False in mask:
+            self.log(f'Discarded {len([b for b in mask if not b])} candidates for unfitness ({len([b for b in mask if b])} left)')
+        else:
+            self.log('All candidates meet the imposed criteria.')
+        self.log()
+
+        self.zero_candidates_check()
 
     def similarity_refining(self, verbose=False):
         '''
@@ -305,43 +315,44 @@ class RunEmbedding:
     def _set_target_distances(self):
         '''
         Called before TS refinement to compute all
-        target bonding distances.
+        target bonding distances. These are only returned
+        if that pairing is not a non-covalent interaction,
+        that is if pairing was not specified with letters
+        "x", "y" or "z".
         '''
         self.target_distances = {}
 
-        r_atoms = np.array([list(mol.reactive_atoms_classes_dict.values()) for mol in self.objects]).ravel()
+        r_atoms = {}
+        for mol in self.objects:
+            for letter, r_atom in mol.reactive_atoms_classes_dict.items():
+                if letter not in ("x", "y", "z"):
+                    r_atoms[r_atom.cumnum] = r_atom
+
         pairings = self.constrained_indexes.ravel()
         pairings = pairings.reshape(int(pairings.shape[0]/2), 2)
         pairings = {tuple(sorted((a,b))) for a, b in pairings}
 
+        active_pairs = [indexes for letter, indexes in self.pairings_table.items() if letter not in ("x", "y", "z")]
+
         for index1, index2 in pairings:
 
-            if [index1, index2] in self.pairings_table.values() and hasattr(self, 'pairings_dists'):
-                letter = list(self.pairings_table.keys())[list(self.pairings_table.values()).index([index1, index2])]
-                if letter in [l for l, _ in self.pairings_dists]:
-                    target_dist = self.pairings_dists[[l for l, _ in self.pairings_dists].index(letter)][1]
-                    self.target_distances[(index1, index2)] = target_dist
-                    continue
-            # if target distance has been specified by user, read that, otherwise compute it
+            if [index1, index2] in active_pairs:
 
-            for r_atom in r_atoms:
-                if index1 == r_atom.cumnum:
-                    r_atom1 = r_atom
+                if hasattr(self, 'pairings_dists'):
+                    letter = list(self.pairings_table.keys())[active_pairs.index([index1, index2])]
 
-                if index2 == r_atom.cumnum:
-                    r_atom2 = r_atom
+                    if letter in self.pairings_dists:
+                        self.target_distances[(index1, index2)] = self.pairings_dists[letter]
+                        continue
+                # if target distance has been specified by user, read that, otherwise compute it
 
-            dist1 = orb_dim_dict.get(r_atom1.symbol + ' ' + str(r_atom1))
-            if dist1 is None:
-                dist1 = orb_dim_dict['Fallback']
+                r_atom1 = r_atoms[index1]
+                r_atom2 = r_atoms[index2]
 
-            dist2 = orb_dim_dict.get(r_atom2.symbol + ' ' + str(r_atom2))
-            if dist2 is None:
-                dist2 = orb_dim_dict['Fallback']
+                dist1 = orb_dim_dict.get(r_atom1.symbol + ' ' + str(r_atom1), orb_dim_dict['Fallback'])
+                dist2 = orb_dim_dict.get(r_atom2.symbol + ' ' + str(r_atom2), orb_dim_dict['Fallback'])
 
-            target_dist = dist1 + dist2
-
-            self.target_distances[(index1, index2)] = target_dist
+                self.target_distances[(index1, index2)] = dist1 + dist2
 
     def optimization_refining(self):
         '''
@@ -441,8 +452,8 @@ class RunEmbedding:
             except ValueError as e:
                 # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
                 # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                # The easiest solution is to reject the structure and go on. TODO-check
-                self.log(e)
+                # The easiest solution is to reject the structure and go on.
+                self.log(repr(e))
                 self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
         
         loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
@@ -451,10 +462,10 @@ class RunEmbedding:
 
         before = len(self.structures)
         if self.options.only_refined:
+
             mask = self.exit_status
-            self.structures = self.structures[mask]
-            self.energies = self.energies[mask]
-            self.exit_status = self.exit_status[mask]
+            self.apply_mask(('structures', 'energies', 'exit_status', 'constrained_indexes'), mask)
+
             s = f'Discarded {len([i for i in mask if not i])} unrefined structures.'
 
         else:
@@ -480,14 +491,16 @@ class RunEmbedding:
         if self.options.kcal_thresh is not None:
     
             mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
-            self.structures = self.structures[mask]
-            self.energies = self.energies[mask]
-            self.exit_status = self.exit_status[mask]
+
+            self.apply_mask(('structures', 'energies', 'exit_status'), mask)
 
             if False in mask:
                 self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy (Threshold set to {self.options.kcal_thresh} kcal/mol)')
 
+        ################################################# PRUNING: FITNESS 
 
+        self.fitness_refining()
+        
         ################################################# XYZ GUESSES OUTPUT 
 
         self.outname = f'TSCoDe_TS_guesses_{self.stamp}.xyz'
@@ -553,15 +566,16 @@ class RunEmbedding:
 
             try:
 
-                self.structures[i], self.energies[i] = hyperNEB(self,
-                                                                structure,
-                                                                self.atomnos,
-                                                                self.ids,
-                                                                self.constrained_indexes[i],
-                                                                title=f'structure_{i+1}')
+                self.structures[i],
+                self.energies[i],
+                self.exit_status[i] = hyperNEB(self,
+                                                structure,
+                                                self.atomnos,
+                                                self.ids,
+                                                self.constrained_indexes[i],
+                                                title=f'structure_{i+1}')
 
-                exit_str = 'COMPLETED'
-                self.exit_status[i] = True
+                exit_str = 'COMPLETED' if self.exit_status[i] else 'CRASHED'
 
             except (MopacReadError, ValueError):
                 # Both are thrown if a MOPAC file read fails, but the former occurs when an internal (TSCoDe)
@@ -579,9 +593,7 @@ class RunEmbedding:
         self.log(f'NEB converged for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures\n')
 
         mask = self.exit_status
-        self.structures = self.structures[mask]
-        self.energies = self.energies[mask]
-        self.exit_status = self.exit_status[mask]
+        self.apply_mask(('structures', 'energies', 'exit_status'), mask)
 
         ################################################# PRUNING: SIMILARITY (POST NEB)
 
@@ -621,21 +633,19 @@ class RunEmbedding:
 
         for i, structure in enumerate(self.structures):
 
-            loadbar(i, len(self.structures), prefix=f'Performing saddle optimization {i+1}/{len(self.structures)} ')
+            loadbar(i, len(self.structures), prefix=f'Performing saddle opt {i+1}/{len(self.structures)} ')
 
             try:
 
-                self.structures[i], self.energies[i], _ = ase_saddle(structure,
-                                                                        self.atomnos,
-                                                                        self.options.calculator,
-                                                                        self.options.theory_level,
-                                                                        procs=self.options.procs,
-                                                                        title=f'Saddle opt - Structure {i+1}',
-                                                                        logfile=self.logfile,
-                                                                        traj=f'Saddle_opt_{i+1}.traj',
-                                                                        maxiterations=200)
-
-                self.exit_status[i] = True
+                self.structures[i], self.energies[i], self.exit_status[i] = ase_saddle(self,
+                                                                            structure,
+                                                                            self.atomnos,
+                                                                            self.constrained_indexes[i],
+                                                                            mols_graphs=self.graphs if self.embed != 'monomolecular' else None,
+                                                                            title=f'Saddle opt - Structure {i+1}',
+                                                                            logfile=self.logfile,
+                                                                            traj=f'Saddle_opt_{i+1}.traj',
+                                                                            maxiterations=200)
 
             except ValueError:
                 # Thrown when an ASE read fails (during saddle opt)
@@ -644,12 +654,11 @@ class RunEmbedding:
         loadbar(1, 1, prefix=f'Performing saddle opt {len(self.structures)}/{len(self.structures)} ')
         t_end = time.time()
         self.log(f'{self.options.calculator} {self.options.theory_level} saddle optimization took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
-        self.log(f'Saddle opt completed for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures\n')
+        self.log(f'Saddle opt completed for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures')
 
         mask = self.exit_status
-        self.structures = self.structures[mask]
-        self.energies = self.energies[mask]
-        self.exit_status = self.exit_status[mask]
+
+        self.apply_mask(('structures', 'energies', 'exit_status'), mask)
 
         ################################################# PRUNING: SIMILARITY (POST SADDLE OPT)
 
@@ -657,7 +666,7 @@ class RunEmbedding:
 
             t_start = time.time()
             self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
-            self.energies = self.energies[mask]
+            self.apply_mask(('energies', 'exit_status'), mask)
             t_end = time.time()
             
             if False in mask:
@@ -679,6 +688,60 @@ class RunEmbedding:
                     write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
             self.log(f'Wrote {len(self.structures)} saddle-optimized structures to {self.outname} file\n')
+
+        else:
+            self.log()
+
+    def independent_scans_refining(self):
+        '''
+        Performs independent scans optimization for each structure.
+        '''
+        self.log(f'--> Performing independent scans refinement ({self.options.theory_level} level)')
+        t_start = time.time()
+
+        for i, structure in enumerate(self.structures):
+
+            loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+
+            try:
+
+                self.structures[i], self.energies[i], self.exit_status[i] = opt_iscans(self,
+                                                                                        structure,
+                                                                                        self.atomnos,
+                                                                                        title=f'Structure {i+1}',
+                                                                                        logfile=self.logfile,
+                                                                                        xyztraj=f'IScan_{i+1}.xyz' if self.options.debug else None
+                                                                                        )
+
+            except (ValueError, MopacReadError):
+                # Thrown when an ASE or MOPAC read fails (during scan opt)
+                self.exit_status[i] = False
+
+        loadbar(1, 1, prefix=f'Refining structure {len(self.structures)}/{len(self.structures)} ')
+        t_end = time.time()
+        self.log(f'{self.options.calculator} {self.options.theory_level} independent scans took {time_to_string(t_end-t_start)} ({time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'Independent scans refinement completed for {len([i for i in self.exit_status if i])}/{len(self.structures)} structures')
+
+        mask = self.exit_status
+        self.apply_mask(('structures', 'energies', 'exit_status'), mask)
+
+
+        ################################################# PRUNING: SIMILARITY (POST ISCANS OPT)
+
+        if len(self.structures) != 0:
+
+            t_start = time.time()
+            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
+            self.apply_mask(('energies', 'exit_status'), mask)
+            t_end = time.time()
+            
+            if False in mask:
+                self.log(f'Discarded {len([b for b in mask if not b])} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+            self.log()
+
+        else:
+            self.log('No candidates successfully refined with the independent scans approach. Terminating.\n')
+            self.normal_termination()
 
     def print_nci(self):
         '''
@@ -758,7 +821,14 @@ class RunEmbedding:
             if self.embed in ('monomolecular','string') and line.split()[0] in ('rotation_range', 'rigid', 'suprafacial'):
                 continue
 
-            if self.embed == 'dihedral' and line.split()[0] not in ('optimization', 'calculator','theory_level', 'kcal_thresh', 'debug', 'pruning_thresh'):
+            if self.embed == 'dihedral' and line.split()[0] not in ('optimization',
+                                                                    'calculator',
+                                                                    'theory_level',
+                                                                    'kcal_thresh',
+                                                                    'debug',
+                                                                    'pruning_thresh',
+                                                                    'neb',
+                                                                    'saddle'):
                 continue
             
             self.log(f'    - {line}')
@@ -812,6 +882,12 @@ class RunEmbedding:
         if p:
             self.log(f'Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
 
+    def normal_termination(self):
+        clean_directory()
+        self.log(f'--> TSCoDe normal termination: total time {time_to_string(time.time() - self.t_start_run, verbose=True)}.')
+        self.logfile.close()
+        quit()
+
     def run(self):
         '''
         Run the TSCoDe program.
@@ -831,8 +907,11 @@ class RunEmbedding:
                 self.generate_candidates()
 
                 if self.embed == 'dihedral':
+                    
                     self.similarity_refining()
                     self.write_structures('TS_guesses', indexes=self.objects[0].reactive_indexes)
+                    self.write_vmd(indexes=self.objects[0].reactive_indexes)
+                    self.normal_termination()
 
                 else:
 
@@ -859,12 +938,14 @@ class RunEmbedding:
                 s = ('    Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes and pairings were correct? If so, try these tips:\n'
                      '    - If no structure passes the compenetration check, the SHRINK keyword may help (see documentation).\n'
                      '    - Similarly, enlarging the spacing between atom pairs with the DIST keyword facilitates the embed.\n'
+                     '    - If no structure passes the fitness check, try adding a solvent with the SOLVENT keyword.\n'
                      '    - Impose less strict compenetration rejection criteria with the CLASHES keyword.\n'
                      '    - Generate more structures with higher STEPS and ROTRANGE values.\n'
                 )
 
                 self.log(f'\n--> Program termination: No candidates found - Total time {time_to_string(t_end_run-self.t_start_run)}')
                 self.log(s)
+                self.logfile.close()
                 clean_directory()
                 quit()
 
@@ -879,25 +960,22 @@ class RunEmbedding:
             ##################### POST TSCODE - SADDLE, NEB, NCI, VMD
 
             if not self.options.bypass:
-                indexes = self.objects[0].reactive_indexes if self.embed == 'dihedral' else None
-                self.write_vmd(indexes=indexes)
+                self.write_vmd()
 
-            if self.embed != 'dihedral':
+            if self.options.neb:
+                self.hyperneb_refining()
 
-                if self.options.neb:
-                    self.hyperneb_refining()
+            if self.options.saddle:
+                self.saddle_refining()
 
-                if self.options.saddle:
-                    self.saddle_refining()
-                    
-                if self.options.nci and self.options.optimization:
-                    self.print_nci()
+            if self.options.ts:
+                self.independent_scans_refining()
+                self.saddle_refining()
+                
+            if self.options.nci and self.options.optimization:
+                self.print_nci()
             
-            clean_directory()
-            t_end_run = time.time()
-
-            self.log(f'--> TSCoDe normal termination: total time {time_to_string(t_end_run - self.t_start_run, verbose=True)}.')
-            self.logfile.close()
+            self.normal_termination()
 
             #### EXTRA
             

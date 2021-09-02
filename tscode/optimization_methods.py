@@ -16,477 +16,37 @@ GNU General Public License for more details.
 
 '''
 
-import os
-from subprocess import DEVNULL, STDOUT, check_call
+import time
+from copy import deepcopy
 
-import numpy as np
 import networkx as nx
-from cclib.io import ccread
+import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from settings import COMMANDS, MEM_GB
-from hypermolecule_class import graphize
-from utils import (
-                   center_of_mass,
-                   clean_directory,
-                   diagonalize,
-                   dihedral,
-                   kronecker_delta,
-                   norm,
-                   pt,
-                   vec_angle,
-                   write_xyz,
-                   scramble_check,
-                   molecule_check,
-                   )
-
-from ase_manipulations import ase_neb
-
-class MopacReadError(Exception):
-    '''
-    Thrown when reading MOPAC output files fails for some reason.
-    '''
-
-def scramble(array, sequence):
-    return np.array([array[s] for s in sequence])
-
-def read_mop_out(filename):
-    '''
-    Reads a MOPAC output looking for optimized coordinates and energy.
-    :params filename: name of MOPAC filename (.out extension)
-    :return coords, energy: array of optimized coordinates and absolute energy, in kcal/mol
-    '''
-    coords = []
-    with open(filename, 'r') as f:
-        while True:
-            line = f.readline()
-
-            if 'Too many variables. By definition, at least one force constant is exactly zero' in line:
-                success = False
-                return None, np.inf, success
-
-            if not line:
-                break
-            
-            if 'SCF FIELD WAS ACHIEVED' in line:
-                    while True:
-                        line = f.readline()
-                        if not line:
-                            break
-
-                        if 'FINAL HEAT OF FORMATION' in line:
-                            energy = float(line.split()[5])
-                            # in kcal/mol
-
-                        if 'CARTESIAN COORDINATES' in line:
-                            line = f.readline()
-                            line = f.readline()
-                            while line != '\n':
-                                splitted = line.split()
-                                # symbols.append(splitted[1])
-                                coords.append([float(splitted[2]),
-                                               float(splitted[3]),
-                                               float(splitted[4])])
-                                            
-                                line = f.readline()
-                                if not line:
-                                    break
-                            break
-                    break
-
-    coords = np.array(coords)
-
-    if coords.shape[0] != 0:
-        success = True
-        return coords, energy, success
-    
-    raise MopacReadError(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
-
-def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', procs=None, title='temp', read_output=True):
-    '''
-    This function writes a MOPAC .mop input, runs it with the subprocess
-    module and reads its output. Coordinates used are mixed
-    (cartesian and internal) to be able to constrain the reactive atoms
-    distances specified in constrained_indexes.
-
-    :params coords: array of shape (n,3) with cartesian coordinates for atoms
-    :params atomnos: array of atomic numbers for atoms
-    :params constrained_indexes: array of shape (n,2), with the indexes
-                                 of atomic pairs to be constrained
-    :params method: string, specifiyng the first line of keywords for the MOPAC input file.
-    :params title: string, used as a file name and job title for the mopac input file.
-    :params read_output: Whether to read the output file and return anything.
-    '''
-
-    constrained_indexes_list = constrained_indexes.ravel() if constrained_indexes is not None else []
-    constrained_indexes = constrained_indexes if constrained_indexes is not None else []
-
-    order = []
-    s = [method + '\n' + title + '\n\n']
-    for i, num in enumerate(atomnos):
-        if i not in constrained_indexes:
-            order.append(i)
-            s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[num].symbol, coords[i][0], coords[i][1], coords[i][2]))
-
-    free_indexes = list(set(range(len(atomnos))) - set(constrained_indexes_list))
-    # print('free indexes are', free_indexes, '\n')
-
-    if len(constrained_indexes_list) == len(set(constrained_indexes_list)):
-    # block pairs of atoms if no atom is involved in more than one distance constrain
-
-        for a, b in constrained_indexes:
-            
-            order.append(b)
-            order.append(a)
-
-            c, d = np.random.choice(free_indexes, 2)
-            while c == d:
-                c, d = np.random.choice(free_indexes, 2)
-            # indexes of reference atoms, from unconstraind atoms set
-
-            dist = np.linalg.norm(coords[a] - coords[b]) # in Angstrom
-            # print(f'DIST - {dist} - between {a} {b}')
-
-            angle = vec_angle(norm(coords[a] - coords[b]), norm(coords[c] - coords[b]))
-            # print(f'ANGLE - {angle} - between {a} {b} {c}')
-
-            d_angle = dihedral([coords[a],
-                                coords[b],
-                                coords[c],
-                                coords[d]])
-            d_angle += 360 if d_angle < 0 else 0
-            # print(f'D_ANGLE - {d_angle} - between {a} {b} {c} {d}')
-
-            list_len = len(s)
-            s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[atomnos[b]].symbol, coords[b][0], coords[b][1], coords[b][2]))
-            s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[a]].symbol, dist, angle, d_angle, list_len, free_indexes.index(c)+1, free_indexes.index(d)+1))
-            # print(f'Blocked bond between mopac ids {list_len} {list_len+1}\n')
-
-    elif len(set(constrained_indexes_list)) == 3:
-    # three atoms, the central bound to the other two
-    # OTHERS[0]: cartesian
-    # CENTRAL: internal (self, others[0], two random)
-    # OTHERS[1]: internal (self, central, two random)
-        
-        central = max(set(constrained_indexes_list), key=lambda x: list(constrained_indexes_list).count(x))
-        # index of the atom that is constrained to two other
-
-        others = list(set(constrained_indexes_list) - {central})
-
-    # OTHERS[0]
-
-        order.append(others[0])
-        s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[atomnos[others[0]]].symbol, coords[others[0]][0], coords[others[0]][1], coords[others[0]][2]))
-        # first atom is placed in cartesian coordinates, the other two have a distance constraint and are expressed in internal coordinates
-
-    #CENTRAL
-
-        order.append(central)
-        c, d = np.random.choice(free_indexes, 2)
-        while c == d:
-            c, d = np.random.choice(free_indexes, 2)
-        # indexes of reference atoms, from unconstraind atoms set
-
-        dist = np.linalg.norm(coords[central] - coords[others[0]]) # in Angstrom
-
-        angle = vec_angle(norm(coords[central] - coords[others[0]]), norm(coords[others[0]] - coords[c]))
-
-        d_angle = dihedral([coords[central],
-                            coords[others[0]],
-                            coords[c],
-                            coords[d]])
-        d_angle += 360 if d_angle < 0 else 0
-
-        list_len = len(s)
-        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist, angle, d_angle, list_len-1, free_indexes.index(c)+1, free_indexes.index(d)+1))
-
-    #OTHERS[1]
-
-        order.append(others[1])
-        c1, d1 = np.random.choice(free_indexes, 2)
-        while c1 == d1:
-            c1, d1 = np.random.choice(free_indexes, 2)
-        # indexes of reference atoms, from unconstraind atoms set
-
-        dist1 = np.linalg.norm(coords[others[1]] - coords[central]) # in Angstrom
-
-        angle1 = np.arccos(norm(coords[others[1]] - coords[central]) @ norm(coords[others[1]] - coords[c1]))*180/np.pi # in degrees
-
-        d_angle1 = dihedral([coords[others[1]],
-                             coords[central],
-                             coords[c1],
-                             coords[d1]])
-        d_angle1 += 360 if d_angle < 0 else 0
-
-        list_len = len(s)
-        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[others[1]]].symbol, dist1, angle1, d_angle1, list_len-1, free_indexes.index(c1)+1, free_indexes.index(d1)+1))
-
-    else:
-        raise NotImplementedError('The constraints provided for MOPAC optimization are not yet supported')
-
-
-    s = ''.join(s)
-    with open(f'{title}.mop', 'w') as f:
-        f.write(s)
-    
-    try:
-        check_call(f'{COMMANDS["MOPAC"]} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
-    except KeyboardInterrupt:
-        print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
-
-    os.remove(f'{title}.mop')
-    # delete input, we do not need it anymore
-
-    if read_output:
-
-        inv_order = [order.index(i) for i, _ in enumerate(order)]
-        # undoing the atomic scramble that was needed by the mopac input requirements
-
-        opt_coords, energy, success = read_mop_out(f'{title}.out')
-        os.remove(f'{title}.out')
-
-        opt_coords = scramble(opt_coords, inv_order) if opt_coords is not None else coords
-        # If opt_coords is None, that is if TS seeking crashed,
-        # sets opt_coords to the old coords. If not, unscrambles
-        # coordinates read from mopac output.
-
-        return opt_coords, energy, success
-
-def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, title='temp', read_output=True):
-    '''
-    This function writes an ORCA .inp file, runs it with the subprocess
-    module and reads its output.
-
-    :params coords: array of shape (n,3) with cartesian coordinates for atoms.
-    :params atomnos: array of atomic numbers for atoms.
-    :params constrained_indexes: array of shape (n,2), with the indexes
-                                 of atomic pairs to be constrained.
-    :params method: string, specifiyng the first line of keywords for the MOPAC input file.
-    :params title: string, used as a file name and job title for the mopac input file.
-    :params read_output: Whether to read the output file and return anything.
-    '''
-
-    s = '! %s Opt\n\n# ORCA input generated by TSCoDe\n\n' % (method)
-
-    if procs > 1:
-        s += f'%pal nprocs {procs} end\n'
-
-    if constrained_indexes is not None:
-        s += '%geom\nConstraints\n'
-
-        for a, b in constrained_indexes:
-            s += '{B %s %s C}\n' % (a, b)
-
-        s += 'end\nend\n\n'
-
-    s += '*xyz 0 1\n'
-
-    for i, atom in enumerate(coords):
-        s += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
-
-    s += '*\n'
-
-    s = ''.join(s)
-    with open(f'{title}.inp', 'w') as f:
-        f.write(s)
-    
-    try:
-        check_call(f'{COMMANDS["ORCA"]} {title}.inp'.split(), stdout=DEVNULL, stderr=STDOUT)
-
-    except KeyboardInterrupt:
-        print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
-
-    if read_output:
-
-        try:
-            opt_coords = ccread(f'{title}.xyz').atomcoords[0]
-            energy = read_orca_property(f'{title}_property.txt')
-
-            clean_directory()
-
-            return opt_coords, energy, True
-
-        except FileNotFoundError:
-            return None, None, False
-
-def read_orca_property(filename):
-    '''
-    Read energy from ORCA property output file
-    '''
-    energy = None
-
-    with open(filename, 'r') as f:
-
-        while True:
-            line = f.readline()
-
-            if not line:
-                break
-
-            if 'SCF Energy:' in line:
-                energy = float(line.split()[2])
-
-    return energy
-
-def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=1, title='temp', read_output=True):
-    '''
-    This function writes a Gaussian .inp file, runs it with the subprocess
-    module and reads its output.
-
-    :params coords: array of shape (n,3) with cartesian coordinates for atoms.
-    :params atomnos: array of atomic numbers for atoms.
-    :params constrained_indexes: array of shape (n,2), with the indexes
-                                 of atomic pairs to be constrained.
-    :params method: string, specifiyng the first line of keywords for the MOPAC input file.
-    :params title: string, used as a file name and job title for the mopac input file.
-    :params read_output: Whether to read the output file and return anything.
-    '''
-
-    s = ''
-
-    if MEM_GB is not None:
-        s += f'%mem{MEM_GB}GB\n'
-
-    if procs > 1:
-        s += f'%nprocshared={procs}\n'
-
-    s += '# ' + method
-    
-    if constrained_indexes is not None:
-        s += 'opt=modredundant'
-        
-    s += '\n\nGaussian input generated by TSCoDe\n\n0 1\n'
-
-    for i, atom in enumerate(coords):
-        s += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
-
-    s += '\n'
-
-    if constrained_indexes is not None:
-
-        for a, b in constrained_indexes:
-            s += 'B %s %s F\n' % (a, b)
-
-    s = ''.join(s)
-    with open(f'{title}.com', 'w') as f:
-        f.write(s)
-    
-    try:
-        check_call(f'{COMMANDS["GAUSSIAN"]} {title}.com'.split(), stdout=DEVNULL, stderr=STDOUT)
-
-    except KeyboardInterrupt:
-        print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
-
-    if read_output:
-
-        try:
-            data = ccread(f'{title}.out')
-            opt_coords = data.atomcoords[0]
-            energy = data.scfenergies[-1] * 23.060548867 # eV to kcal/mol
-
-            clean_directory()
-
-            return opt_coords, energy, True
-
-        except FileNotFoundError:
-            return None, None, False
-
-def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', procs=None, title='temp', read_output=True):
-    '''
-    This function writes an XTB .inp file, runs it with the subprocess
-    module and reads its output.
-
-    :params coords: array of shape (n,3) with cartesian coordinates for atoms.
-    :params atomnos: array of atomic numbers for atoms.
-    :params constrained_indexes: array of shape (n,2), with the indexes
-                                 of atomic pairs to be constrained.
-    :params method: string, specifiyng the first line of keywords for the MOPAC input file.
-    :params title: string, used as a file name and job title for the mopac input file.
-    :params read_output: Whether to read the output file and return anything.
-    '''
-
-    with open(f'{title}.xyz', 'w') as f:
-        write_xyz(coords, atomnos, f, title=title)
-
-    s = f'$opt\n   logfile={title}_opt.log\n$end'
-         
-    if constrained_indexes is not None:
-        s += '\n$constrain\n'
-        for a, b in constrained_indexes:
-            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(np.linalg.norm(coords[a]-coords[b]), 5))
-    
-    if method.upper() in ('GFN-XTB', 'GFNXTB'):
-        s += '\n$gfn\n   method=1\n'
-
-    elif method.upper() in ('GFN2-XTB', 'GFN2XTB'):
-        s += '\n$gfn\n   method=2\n'
-    
-    s += '\n$end'
-
-    s = ''.join(s)
-    with open(f'{title}.inp', 'w') as f:
-        f.write(s)
-    
-    flags = '--opt'
-    if method in ('GFN-FF', 'GFNFF'):
-        flags += ' --gfnff'
-
-    try:
-        check_call(f'xtb --input {title}.inp {title}.xyz {flags} > temp.log 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
-
-    except KeyboardInterrupt:
-        print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
-
-    if read_output:
-
-        try:
-            outname = 'xtbopt.xyz'
-            opt_coords = ccread(outname).atomcoords[0]
-            energy = read_xtb_energy(outname)
-
-            clean_directory()
-            os.remove(outname)
-
-            for filename in ('gfnff_topo', 'charges', 'wbo', 'xtbrestart', 'xtbtopo.mol', '.xtboptok'):
-                try:
-                    os.remove(filename)
-                except FileNotFoundError:
-                    pass
-
-            return opt_coords, energy, True
-
-        except FileNotFoundError:
-            return None, None, False
-
-def read_xtb_energy(filename):
-    '''
-    returns energy in kcal/mol from an XTB
-    .xyz result file (xtbotp.xyz)
-    '''
-    with open(filename, 'r') as f:
-        line = f.readline()
-        line = f.readline() # second line is where energy is printed
-        return float(line.split()[1]) * 627.5096080305927 # Eh to kcal/mol
-
-calc_funcs_dict = {
+from ase_manipulations import ase_neb, ase_popt
+from calculators._gaussian import gaussian_opt
+from calculators._mopac import mopac_opt
+from calculators._orca import orca_opt
+from calculators._xtb import xtb_opt
+from utils import (center_of_mass, diagonalize, kronecker_delta,
+                   molecule_check, norm, pt, scramble_check, time_to_string,
+                   write_xyz)
+
+opt_funcs_dict = {
     'MOPAC':mopac_opt,
     'ORCA':orca_opt,
     'GAUSSIAN':gaussian_opt,    
     'XTB':xtb_opt,
 }
 
-def optimize(calculator, coords, atomnos,  method, constrained_indexes=None, mols_graphs=None, procs=1, max_newbonds=0, title='temp', check=True):
+def optimize(calculator, coords, atomnos,  method, constrained_indexes=None, mols_graphs=None, procs=1, solvent=None, max_newbonds=0, title='temp', check=True):
     '''
     Performs a geometry [partial] optimization (OPT/POPT) with MOPAC, ORCA, Gaussian or XTB at $method level, 
     constraining the distance between the specified atom pairs, if any. Moreover, if $check, performs a check on atomic
     pairs distances to ensure that the optimization has preserved molecular identities and no atom scrambling occurred.
 
     :params calculator: Calculator to be used. ('MOPAC', 'ORCA', 'GAUSSIAN', 'XTB')
-    :params structure: list of coordinates for each atom in the TS
+    :params coords: list of coordinates for each atom in the TS
     :params atomnos: list of atomic numbers for each atom in the TS
     :params mols_graphs: list of molecule.graph objects, containing connectivity information for each molecule
     :params constrained_indexes: indexes of constrained atoms in the TS geometry, if this is one
@@ -501,13 +61,19 @@ def optimize(calculator, coords, atomnos,  method, constrained_indexes=None, mol
 
     constrained_indexes = np.array(()) if constrained_indexes is None else constrained_indexes
 
-    calc_func = calc_funcs_dict[calculator]
+    opt_func = opt_funcs_dict[calculator]
 
-    opt_coords, energy, success = calc_func(coords, atomnos, constrained_indexes, method=method, procs=procs, title=title)
+    opt_coords, energy, success = opt_func(coords,
+                                            atomnos,
+                                            constrained_indexes,
+                                            method=method,
+                                            procs=procs,
+                                            solvent=solvent,
+                                            title=title)
     # success checks that calculation had a normal termination
 
     if success and check:
-        # here check ensure that no scrambling occurred during the optimization
+        # check boolean ensures that no scrambling occurred during the optimization
         if mols_graphs is not None:
             success = scramble_check(opt_coords, atomnos, constrained_indexes, mols_graphs, max_newbonds=max_newbonds)
         else:
@@ -521,8 +87,8 @@ def hyperNEB(docker, coords, atomnos, ids, constrained_indexes, title='temp'):
     reagents and products and running a climbing image NEB calculation through ASE.
     '''
 
-    reagents = get_reagent(coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
-    products = get_product(coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
+    reagents = get_reagent(docker, coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
+    products = get_product(docker, coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
     # get reagents and products for this reaction
 
     reagents -= np.mean(reagents, axis=0)
@@ -533,17 +99,19 @@ def hyperNEB(docker, coords, atomnos, ids, constrained_indexes, title='temp'):
     products = np.array([aligment_rotation @ v for v in products])
     # rotating the two structures to minimize differences
 
-    ts_coords, ts_energy = ase_neb(docker, reagents, products, atomnos, title=title)
+    ts_coords, ts_energy, success = ase_neb(docker, reagents, products, atomnos, title=title)
     # Use these structures plus the TS guess to run a NEB calculation through ASE
 
-    return ts_coords, ts_energy
+    return ts_coords, ts_energy, success
 
-def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
+def get_product(docker, coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
     Part of the automatic NEB implementation.
     Returns a structure that presumably is the association reaction product
     ([cyclo]additions reactions in mind)
     '''
+
+    opt_func = opt_funcs_dict[docker.options.calculator]
 
     bond_factor = 1.2
     # multiple of sum of covalent radii for two atoms.
@@ -573,11 +141,11 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
 
             coords[:ids[0]] += motion*step_size
 
-            coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
+            coords, _, _ = opt_func(coords, atomnos, constrained_indexes, method=method)
 
             reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
 
-        newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
+        newcoords, _, _ = opt_func(coords, atomnos, method=method)
         # finally, when structures are close enough, do a free optimization to get the reaction product
 
         new_reactive_dists = [np.linalg.norm(newcoords[a] - newcoords[b]) for a, b in constrained_indexes]
@@ -615,12 +183,12 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
             # the more they are close, the more they are moved
 
         # print('Reactive dist -', np.linalg.norm(motion))
-        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes, method=method)
+        coords, _, _ = opt_func(coords, atomnos, constrained_indexes, method=method)
         # when all atoms are moved, optimize the geometry with the previous constraints
 
         motion = (coords[reference] - coords[index_to_be_moved])
 
-    newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
+    newcoords, _, _ = opt_func(coords, atomnos, method=method)
     # finally, when structures are close enough, do a free optimization to get the reaction product
 
     new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
@@ -632,12 +200,14 @@ def get_product(coords, atomnos, ids, constrained_indexes, method='PM7'):
 
     return coords
 
-def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
+def get_reagent(docker, coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
     Part of the automatic NEB implementation.
     Returns a structure that presumably is the association reaction reagent.
     ([cyclo]additions reactions in mind)
     '''
+
+    opt_func = opt_funcs_dict[docker.options.calculator]
 
     bond_factor = 1.5
     # multiple of sum of covalent radii for two atoms.
@@ -661,7 +231,7 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
         # move reactive atoms away from each other just enough
 
-        coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
+        coords, _, _ = opt_func(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
         # optimize the structure but keeping the reactive atoms distanced
 
         return coords
@@ -690,10 +260,10 @@ def get_reagent(coords, atomnos, ids, constrained_indexes, method='PM7'):
         coords[moving_molecule_slice][i] -= displacement*np.exp(-0.5*dist)
         # the closer they are to the reactive atom, the further they are moved
 
-    coords, _, _ = mopac_opt(coords, atomnos, constrained_indexes=np.array([constrained_indexes[0]]), method=method)
+    coords, _, _ = opt_func(coords, atomnos, constrained_indexes=np.array([constrained_indexes[0]]), method=method)
     # when all atoms are moved, optimize the geometry with only the first of the previous constraints
 
-    newcoords, _, _ = mopac_opt(coords, atomnos, method=method)
+    newcoords, _, _ = opt_func(coords, atomnos, method=method)
     # finally, when structures are close enough, do a free optimization to get the reaction product
 
     new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
@@ -764,130 +334,256 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
 
     return structures[mask], mask
 
-def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_structures:int=5, title=0, debug=False):
+def opt_iscans(docker, coords, atomnos, title='temp', logfile=None, xyztraj=None):
     '''
-    Runs a metadynamics simulation (MTD) through
-    the XTB program to obtain new conformations.
-    The GFN-FF force field is used.
+    Runs one or more independent scans along the constrained indexes
+    specified, one at a time, through the ASE package. Each scan starts
+    from the previous maximum in energy. This is done as a low-dimensional
+    but effective approach of exploring the PES trying to maximize the
+    energy. The highest energy structure is returned.
     '''
-    with open(f'temp.xyz', 'w') as f:
-        write_xyz(coords, atomnos, f, title='temp')
 
-    s = (
-        '$md\n'
-        '   time=%s\n' % (new_structures) +
-        '   step=1\n'
-        '   temp=300\n'
-        '$end\n'
-        '$metadyn\n'
-        '   save=%s\n' % (new_structures) +
-        '$end'
-        )
-         
-    if constrained_indexes is not None:
-        s += '\n$constrain\n'
-        for a, b in constrained_indexes:
-            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(np.linalg.norm(coords[a]-coords[b]), 5))
+    overall_success = False
 
-    s = ''.join(s)
-    with open(f'temp.inp', 'w') as f:
-        f.write(s)
+    scan_active_indexes = [indexes for letter, indexes in docker.pairings_table.items() if letter not in ('x', 'y', 'z')]
+    for i, indexes in enumerate(scan_active_indexes):
+        new_coords, energy, success = opt_linear_scan(docker,
+                                                    coords,
+                                                    atomnos,
+                                                    indexes,
+                                                    docker.constrained_indexes[0],
+                                                    # safe=True,
+                                                    title=title+f' scan {i}',
+                                                    logfile=logfile,
+                                                    xyztraj=xyztraj,
+                                                    )
 
-    try:
-        check_call(f'xtb --md --input temp.inp temp.xyz --gfnff > Structure{title}_MTD.log 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)
+    if success:
+        overall_success = True
+        coords = new_coords
 
-    except KeyboardInterrupt:
-        print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
+    else: # Re-try with safe keyword to prevent scrambling
 
-    structures = [coords]
-    for n in range(1,new_structures):
-        name = 'scoord.'+str(n)
-        structures.append(parse_xtb_out(name))
-        os.remove(name)
+        for i, indexes in enumerate(scan_active_indexes):
+            new_coords, energy, success = opt_linear_scan(docker,
+                                                        coords,
+                                                        atomnos,
+                                                        indexes,
+                                                        docker.constrained_indexes[0],
+                                                        safe=True,
+                                                        title=title+f' scan {i}',
+                                                        logfile=logfile,
+                                                        xyztraj=xyztraj,
+                                                        )
+                                                        
+        if success:
+            overall_success = True
+            coords = new_coords
 
-    for filename in ('gfnff_topo', 'xtbmdoc', 'mdrestart'):
-        try:
-            os.remove(filename)
-        except FileNotFoundError:
-            pass
+    return coords, energy, overall_success
 
-    # if debug:
-    os.rename('xtb.trj', f'Structure{title}_MTD_traj.xyz')
-
-    # else:
-    #     os.remove('xtb.traj')  
-
-    structures = np.array(structures)
-
-    return structures
-
-def parse_xtb_out(filename):
+def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, step_size=0.02, safe=False, title='temp', logfile=None, xyztraj=None):
     '''
+    Runs a linear scan along the specified linear coordinate.
+    The highest energy structure that passes sanity checks is returned.
+
+    docker
+    coords
+    atomnos
+    scan_indexes
+    constrained_indexes
+    step_size
+    safe
+    title
+    logfile
+    xyztraj
     '''
-    with open(filename, 'r') as f:
-        lines = f.readlines()
+    assert [i in constrained_indexes.ravel() for i in scan_indexes]
 
-    coords = np.zeros((len(lines)-3,3))
+    i1, i2 = scan_indexes
+    far_thr = 2 * sum([pt[atomnos[i]].covalent_radius for i in scan_indexes])
+    t_start = time.time()
+    total_iter = 0
 
-    for l, line in enumerate(lines[1:-2]):
-        coords[l] = line.split()[:-1]
+    _, energy, _ = optimize(docker.options.calculator,
+                            coords,
+                            atomnos,
+                            docker.options.theory_level,
+                            constrained_indexes=constrained_indexes,
+                            mols_graphs=docker.graphs,
+                            procs=docker.options.procs,
+                            max_newbonds=docker.options.max_newbonds,
+                            )
 
-    return coords * 0.529177249 # Bohrs to Angstroms
+    direction = coords[i1] - coords[i2]
+    base_dist = np.linalg.norm(direction)
+    energies, geometries = [energy], [coords]
 
-from settings import OPENBABEL_OPT_BOOL
+    for sign in (1, -1):
+    # getting closer for sign == 1, further apart for -1
+        active_coords = deepcopy(coords)
+        dist = base_dist
 
-if OPENBABEL_OPT_BOOL:
-    
-    from openbabel import openbabel as ob
+        if scan_peak_present(energies):
+            break
 
-    def openbabel_opt(structure, atomnos, constrained_indexes, graphs, method='UFF'):
-        '''
-        return : MM-optimized structure (UFF/MMFF)
-        '''
+        for iterations in range(75):
+            
+            if safe: # use ASE optimization function - more reliable, but locks all interatomic dists
 
-        filename='temp_ob_in.xyz'
+                targets = [np.linalg.norm(active_coords[a]-active_coords[b]) - step_size
+                           if (a in scan_indexes and b in scan_indexes)
+                           else np.linalg.norm(active_coords[a]-active_coords[b])
+                           for a, b in constrained_indexes]
 
-        with open(filename, 'w') as f:
-            write_xyz(structure, atomnos, f)
+                active_coords, energy, success = ase_popt(docker,
+                                                            active_coords,
+                                                            atomnos,
+                                                            constrained_indexes,
+                                                            targets=targets,
+                                                            safe=True,
+                                                            )
 
-        outname = 'temp_ob_out.xyz'
+            else: # use faster raw optimization function, might scramble more often than the ASE one
 
-        # Standard openbabel molecule load
-        conv = ob.OBConversion()
-        conv.SetInAndOutFormats('xyz','xyz')
-        mol = ob.OBMol()
-        more = conv.ReadFile(mol, filename)
-        i = 0
+                active_coords[i2] += sign * norm(direction) * step_size
+                active_coords, energy, success = optimize(docker.options.calculator,
+                                                            active_coords,
+                                                            atomnos,
+                                                            docker.options.theory_level,
+                                                            constrained_indexes=constrained_indexes,
+                                                            mols_graphs=docker.graphs,
+                                                            procs=docker.options.procs,
+                                                            max_newbonds=docker.options.max_newbonds,
+                                                            )
 
-        # Define constraints
-        constraints = ob.OBFFConstraints()
+            if not success:
+                if logfile is not None and iterations == 0:
+                    logfile.write(f'    - {title} CRASHED at first step\n')
 
-        for a, b in constrained_indexes:
+                if docker.options.debug:
+                    with open(title+'_SCRAMBLED.xyz', 'a') as f:
+                        write_xyz(active_coords, atomnos, f, title=title+(
+                            f' d({i1}-{i2}) = {round(dist, 3)} A, Rel. E = {round(energy-energies[0], 3)} kcal/mol'))
 
-            first_atom = mol.GetAtom(int(a+1))
-            length = first_atom.GetDistance(int(b+1))
+                break
+            
+            direction = active_coords[i1] - active_coords[i2]
+            dist = np.linalg.norm(direction)
 
-            constraints.AddDistanceConstraint(int(a+1), int(b+1), length)       # Angstroms
-            # constraints.AddAngleConstraint(1, 2, 3, 120.0)      # Degrees
-            # constraints.AddTorsionConstraint(1, 2, 3, 4, 180.0) # Degrees
+            total_iter += 1
+            geometries.append(active_coords)
+            energies.append(energy)
 
-        # Setup the force field with the constraints
-        forcefield = ob.OBForceField.FindForceField(method)
-        forcefield.Setup(mol, constraints)
-        forcefield.SetConstraints(constraints)
+            if xyztraj is not None:
+                with open(xyztraj, 'a') as f:
+                    write_xyz(active_coords, atomnos, f, title=title+(
+                        f' d({i1}-{i2}) = {round(dist, 3)} A, Rel. E = {round(energy-energies[0], 3)} kcal/mol'))
 
-        # Do a 500 steps conjugate gradient minimization
-        # (or less if converges) and save the coordinates to mol.
-        forcefield.ConjugateGradients(500)
-        forcefield.GetCoordinates(mol)
+            if (dist < 1.2 and sign == 1) or (
+                dist > far_thr and sign == -1) or (
+                scan_peak_present(energies)
+                ):
+                break
+            
+    distances = [np.linalg.norm(g[i1]-g[i2]) for g in geometries]
+    best_distance = distances[energies.index(max(energies))]
 
-        # Write the mol to a file
-        conv.WriteFile(mol,outname)
-        conv.CloseOutFile()
+    distances_delta = [abs(d-best_distance) for d in distances]
+    closest_geom = geometries[distances_delta.index(min(distances_delta))]
+    closest_dist = distances[distances_delta.index(min(distances_delta))]
 
-        opt_coords = ccread(outname).atomcoords[0]
+    direction = closest_geom[i1] - closest_geom[i2]
+    closest_geom[i1] += norm(direction) * (best_distance-closest_dist)
 
-        success = scramble_check(opt_coords, atomnos, constrained_indexes, graphs)
+    final_geom, final_energy, _ = optimize(docker.options.calculator,
+                                            closest_geom,
+                                            atomnos,
+                                            docker.options.theory_level,
+                                            constrained_indexes=constrained_indexes,
+                                            mols_graphs=docker.graphs,
+                                            procs=docker.options.procs,
+                                            max_newbonds=docker.options.max_newbonds,
+                                            check=False,
+                                            )
 
-        return opt_coords, success
+    if docker.options.debug:
+
+        if docker.options.debug:
+            with open(xyztraj, 'a') as f:
+                write_xyz(active_coords, atomnos, f, title=title+(
+                    f' FINAL - d({i1}-{i2}) = {round(np.linalg.norm(final_geom[i1]-final_geom[i2]), 3)} A,'
+                    f' Rel. E = {round(final_energy-energies[0], 3)} kcal/mol'))
+
+        import matplotlib.pyplot as plt
+
+        plt.figure()
+
+        distances = [np.linalg.norm(geom[i1]-geom[i2]) for geom in geometries]
+        distances, sorted_energies = zip(*sorted(zip(distances, energies), key=lambda x: x[0]))
+
+        plt.plot(distances,
+                [s-energies[0] for s in sorted_energies],
+                '-o',
+                color='tab:red',
+                label=f'Linear SCAN ({i1}-{i2})',
+                linewidth=3,
+                alpha=0.5)
+
+        plt.plot(np.linalg.norm(coords[i1]-coords[i2]),
+                0,
+                marker='o',
+                color='tab:blue',
+                label='Starting point (0 kcal/mol)',
+                markersize=5,
+                )
+
+        plt.plot(best_distance,
+                final_energy-energies[0],
+                marker='o',
+                color='black',
+                label='Interpolated best distance, actual energy',
+                markersize=5)
+
+        plt.legend()
+        plt.title(title)
+        plt.xlabel(f'Interatomic distance {tuple(scan_indexes)}')
+        plt.ylabel('Energy Rel. to starting point (kcal/mol)')
+        plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
+
+    if logfile is not None:
+        logfile.write(f'    - {title} COMPLETED {total_iter} steps ({time_to_string(time.time()-t_start)})\n')
+
+    return final_geom, final_energy, True
+
+def scan_peak_present(energies) -> bool:
+    '''
+    Returns True if the maximum value of the list
+    occurs in the middle of it, that is not in first,
+    second, second to last or last positions
+    '''
+    if energies.index(max(energies)) in range(2,len(energies)-1):
+        return True
+    return False
+
+def fitness_check(docker, coords) -> bool:
+    '''
+    Returns True if the strucure respects
+    the imposed pairings.
+    '''
+    if hasattr(docker, 'pairings_dists'):
+        for letter, pairing in docker.pairings_table.items():
+            
+            if letter in ('a', 'b', 'c'):
+                i1, i2 = pairing
+                dist = np.linalg.norm(coords[i1]-coords[i2])
+                target = docker.pairings_dists.get(letter)
+
+                if target is not None and abs(target-dist) > 0.05:
+                    return False
+
+            else:
+                if dist < 2.5:
+                    return False
+                    
+    return True

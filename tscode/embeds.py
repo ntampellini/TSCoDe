@@ -20,18 +20,12 @@ from copy import deepcopy
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from utils import (
-                   cartesian_product,
-                   loadbar,
-                   norm,
-                   polygonize,
-                   rot_mat_from_pointer,
-                   rotation_matrix_from_vectors,
-                   TriangleError,
-                   vec_angle,
-                  )
-
 from ase_manipulations import ase_bend
+from errors import TriangleError
+from utils import (cartesian_product, loadbar, norm, polygonize,
+                   rot_mat_from_pointer, rotation_matrix_from_vectors,
+                   vec_angle)
+
 
 def string_embed(self):
     '''
@@ -210,7 +204,6 @@ def cyclical_embed(self):
 
         ############### set up mols -> pos + rot
 
-        alignment_rotation = np.zeros((3,3,3))
         for i in (0,1,2):
 
             start, end = triangle_vectors[i]
@@ -482,7 +475,7 @@ def cyclical_embed(self):
         for v, vecs in enumerate(polygon_vectors):
         # getting vertexes to embed molecules with and iterating over start/end points
 
-            ids = self.get_cyclical_reactive_indexes(v)
+            ids = self.get_cyclical_reactive_indexes(pivots, v)
             # get indexes of atoms that face each other
 
             if not self.pairings_table or all([pair in ids for pair in self.pairings_table.values()]):
@@ -615,14 +608,12 @@ def dihedral_embed(self):
 
         self.log(f'--> Performing Scans and saddle optimizations (conformer {c+1}/{len(mol.atomcoords)})')
 
-        structures, energies = ase_torsion_TSs(coords,
+        structures, energies = ase_torsion_TSs(self,
+                                                coords,
                                                 mol.atomnos,
                                                 mol.reactive_indexes,
-                                                self.options.calculator,
-                                                self.options.theory_level,
-                                                procs=self.options.procs,
                                                 threshold_kcal=self.options.kcal_thresh,
-                                                title=mol.rootname,
+                                                title=mol.rootname+f'_conf_{c+1}',
                                                 optimization=self.options.optimization,
                                                 logfile=self.logfile,
                                                 bernytraj=mol.rootname + '_berny' if self.options.debug else None,

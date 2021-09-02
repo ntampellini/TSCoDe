@@ -18,14 +18,18 @@ GNU General Public License for more details.
 
 import os
 import time
-import numpy as np
 from copy import deepcopy
-from utils import InputError, suppress_stdout_stderr, write_xyz,time_to_string
-from subprocess import check_call, DEVNULL, STDOUT
-from optimization_methods import optimize
+from subprocess import DEVNULL, STDOUT, check_call
+
+import numpy as np
 from cclib.io import ccread
-from hypermolecule_class import graphize
 from networkx import connected_components
+
+from errors import InputError
+from hypermolecule_class import graphize
+from optimization_methods import optimize
+from utils import suppress_stdout_stderr, time_to_string, write_xyz
+
 
 def operate(input_string, calculator, theory_level, procs=1, logfunction=None):
     '''

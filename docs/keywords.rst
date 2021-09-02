@@ -58,11 +58,12 @@ one is accepted, like in ``DIST``.
    conformers per molecule in cyclical embeds.
 
 -  **LEVEL** - Manually set the theory level to be used. Default is
-   PM7 for MOPAC, PM3 for ORCA and PM6 for Gaussian. White spaces can be
-   expressed with underscores. Be careful to use the syntax of your
-   calculator, as ORCA wants a space between method and basis while
-   Gaussian a forward slash. Syntax: ``LEVEL=B3LYP_def2-TZVP``. Standard
-   values can be modified by ``settings.py``.
+   PM7 for MOPAC, PM3 for ORCA, PM6 for Gaussian and GFN2-xTB for XTB.
+   White spaces, if needed, can be expressed with underscores. Be careful
+   to use the syntax of your calculator, as ORCA wants a space between method
+   and basis set while Gaussian a forward slash. Syntax:
+   ``LEVEL(B3LYP_def2-TZVP)``. Standard values can be modified by running the
+   module with the -s flag or by manually modifying ``settings.py`` (not recommended).
 
 -  **MMFF** - Use the Merck Molecular Force Field during the
    OpenBabel pre-optimization (default is UFF).

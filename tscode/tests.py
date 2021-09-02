@@ -25,12 +25,12 @@ def run_tests():
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     # sys.path.append(os.getcwd())
 
-    from settings import COMMANDS, OPENBABEL_OPT_BOOL, CALCULATOR
+    from settings import COMMANDS, OPENBABEL_OPT_BOOL, CALCULATOR, PROCS, DEFAULT_LEVELS
 
     if CALCULATOR not in ('MOPAC','ORCA','GAUSSIAN','XTB'):
         raise Exception(f'{CALCULATOR} is not a valid calculator. Use MOPAC, ORCA, GAUSSIAN or XTB.')
 
-    from optimization_methods import calc_funcs_dict
+    from optimization_methods import opt_funcs_dict
     from utils import HiddenPrints, time_to_string, clean_directory, run_command, loadbar
     from cclib.io import ccread
 
@@ -46,7 +46,11 @@ def run_tests():
 
     print(f'{CALCULATOR} COMMAND = {COMMANDS[CALCULATOR]}')
     print('\nTesting calculator...')
-    calc_funcs_dict[CALCULATOR](data.atomcoords[0], data.atomnos)
+    opt_funcs_dict[CALCULATOR](data.atomcoords[0],
+                               data.atomnos,
+                               method=DEFAULT_LEVELS[CALCULATOR],
+                               procs=PROCS,
+                               read_output=False)
 
     clean_directory()
     print(f'{CALCULATOR} calculator works.')

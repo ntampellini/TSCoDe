@@ -46,7 +46,7 @@ Atropisomer rotation
 
 ::
 
-    KCAL=10 CALC=MOPAC LEVEL=PM7
+    SADDLE KCAL=10 CALC=MOPAC LEVEL=PM7
     atropisomer.xyz 1 2 9 10
 
 .. figure:: /images/atropo.png

@@ -52,8 +52,8 @@ keywords_list = [
                                 # program from running too large calculations,
                                 # removes the limit of 5 conformers for cyclical embeds
 
-            'LEVEL',          # Manually set the MOPAC theory level to be used,
-                                # default is PM7. Syntax: `LEVEL=PM7`
+            'LEVEL',          # Manually set the theory level to be used.
+                                # . Syntax: `LEVEL(PM7_EPS=6.15)
                                 
             'MMFF',           # Use the Merck Molecular Force Field during the
                                 # OpenBabel pre-optimization (default is UFF).
@@ -103,6 +103,8 @@ keywords_list = [
                                 # reactive atom pairs is achieved as for standard runs by spring constraints
                                 # during MOPAC/ORCA optimization.
 
+            'SOLVENT',          # set the solvation model
+
             'STEPS',          # Manually specify the number of steps to be taken in scanning rotations.
                                 # For string embeds, the range to be explored is the full 360°, and the
                                 # default `STEPS=24` will perform 15° turns. For cyclical and chelotropic
@@ -116,6 +118,8 @@ keywords_list = [
             'THRESH',         # RMSD threshold (Angstroms) for structure pruning. The smaller,
                                 # the more retained structures. Default is 0.5 A.
                                 # Syntax: `THRESH=n`, where n is a number.
+
+            'TS',             # Uses various scans/saddle algorithms to locate the TS
 ]
 
 class Options:
@@ -134,11 +138,13 @@ class Options:
     calculator = CALCULATOR
     theory_level = None        # set later in _calculator_setup()
     procs = None               # set later in _calculator_setup()
+    solvent = None
     openbabel_opt = OPENBABEL_OPT_BOOL
     openbabel_level = 'UFF'
 
     neb = False
     saddle = False
+    ts = False
     nci = False
     shrink = False
     shrink_multiplier = 1
@@ -170,7 +176,7 @@ class Options:
     def __repr__(self):
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
         
-        do_not_repr = (
+        repr_if_true = (
             'bypass',
             'check_structures',
             'debug',
@@ -179,13 +185,21 @@ class Options:
             'nci',
             'neb',
             'saddle',
+            'ts'
         )
         
-        for name in do_not_repr:
-            d.pop(name)
+        for name in repr_if_true:
+            if not d[name]:
+                d.pop(name)
 
-        if self.kcal_thresh is None:
-            d.pop('kcal_thresh')
+        repr_if_not_none = (
+            'kcal_thresh',
+            'solvent'
+        )
+
+        for name in repr_if_not_none:
+            if d[name] is None:
+                d.pop(name)
 
         if not OPENBABEL_OPT_BOOL:
             d.pop('openbabel_level')
@@ -280,7 +294,7 @@ class OptionSetter:
 
     def level(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('LEVEL')]
-        options.theory_level = kw.split('=')[1].upper().replace('_', ' ')
+        options.theory_level = kw.split('(')[1][:-1].upper().replace('_', ' ')
 
     def rigid(self, options, *args):
         options.rigid = True
@@ -336,8 +350,34 @@ class OptionSetter:
 
     def saddle(self, options, *args):
         if not options.optimization:
-            raise SystemExit(('SADDLE keyword can only be used if optimization is turned on. (Not compatible with NOOPT).'))
+            raise SystemExit('SADDLE keyword can only be used if optimization is turned on. (Not compatible with NOOPT).')
         options.saddle = True
+
+    def ts(self, options, *args):
+        if not options.optimization:
+            raise SystemExit('TS keyword can only be used if optimization is turned on. (Not compatible with NOOPT).')
+
+        self.docker._setup(p=False)
+        # early call of setup function to get the self.docker.embed variable
+
+        if '?' in self.docker.pairings_table or (
+            self.docker.embed in ('cyclical','chelotropic') and len(self.docker.pairings_table) < len(self.docker.objects)) or (
+            self.docker.embed == 'string' and not len(self.docker.pairings_table)):
+
+            raise SystemExit('TS keyword does not have sufficient pairing information to run. Make sure you specify the\n'
+                             'label of each atomic pairing with the correct set of letters - "a", "b" or "c" for reactive atoms\n'
+                             'and "x", "y" or "z" for non-covalent interactions holding the TS together.')
+
+        if self.docker.embed == 'dihedral':
+            raise SystemExit('TS keyword not available with diheral embeds.\n'
+                             'The embed itself yields first-order saddle point optimized structures.')
+
+        
+        options.ts = True
+
+    def solvent(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('SOLVENT')]
+        options.solvent = kw.split('=')[1].lower()
 
     def set_options(self):
 

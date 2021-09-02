@@ -22,21 +22,12 @@ from itertools import groupby
 
 import numpy as np
 
-from settings import (
-                      CALCULATOR,
-                      DEFAULT_LEVELS,
-                      PROCS,
-                      )
-
-from operators import operate
-from docker_options import OptionSetter, Options, keywords_list
+from docker_options import Options, OptionSetter, keywords_list
+from errors import InputError
 from hypermolecule_class import Hypermolecule, Pivot
-
-from utils import (
-                   ase_view,
-                   cartesian_product,
-                   InputError,
-                   )
+from operators import operate
+from settings import CALCULATOR, DEFAULT_LEVELS, PROCS
+from utils import ase_view, cartesian_product
 
 class Docker:
     '''
@@ -179,7 +170,8 @@ class Docker:
                 print(e)
                 raise InputError(f'Error in reading keywords from {filename}. Please check your syntax.')
 
-    def _set_reactive_atoms_cumnums(self):        
+    def _set_reactive_atoms_cumnums(self):
+
         for i, mol in enumerate(self.objects):
             if mol.hyper:
                 for r_atom in mol.reactive_atoms_classes_dict.values():
@@ -194,7 +186,7 @@ class Docker:
 
         parsed = []
         unlabeled_list = []
-        self.pairings_dict = {i:[] for i, _ in enumerate(self.objects)}
+        self.pairings_dict = {i:{} for i, _ in enumerate(self.objects)}
 
         for i, line in enumerate(self.mol_lines):
         # now i is also the molecule index in self.objects
@@ -214,13 +206,14 @@ class Docker:
                     index, letters = [''.join(g) for _, g in groupby(j, str.isalpha)]
 
                     for l in letters:
-                        if l not in ('a', 'b', 'c'):
-                            raise SyntaxError('The only letters allowed for pairings are "a", "b" and "c".')
+                        if l not in ('a', 'b', 'c', 'x', 'y', 'z'):
+                            raise SyntaxError(f'Letter \'{l}\' not accepted. Please use only these letters to specify pairings:\n' +
+                                               '    reacting atoms: "a", "b" and "c"\n    interactions: "x", "y" and "z"\n')
 
                         pairings.append([int(index), l])
 
-            for pair in pairings:
-                self.pairings_dict[i].append(pair[:])
+            for index, letter in pairings:
+                self.pairings_dict[i][letter] = index
             # appending pairing to dict before
             # calculating their cumulative index
 
@@ -277,14 +270,14 @@ class Docker:
         # (used to adjust distances for trimolecular TSs)
             if len(unlabeled_list) == 2:
                 third_constraint = list(sorted(unlabeled_list))
-                self.pairings_table['c'] = third_constraint
+                self.pairings_table['?'] = third_constraint
         
         elif len(self.mol_lines) == 2:
         # adding second pairing if we have two molecules and user specified one pairing
         # (used to adjust distances for bimolecular TSs)
             if len(unlabeled_list) == 2:
                 second_constraint = list(sorted(unlabeled_list))
-                self.pairings_table['b'] = second_constraint
+                self.pairings_table['?'] = second_constraint
 
     def _set_custom_orbs(self, orb_string):
         '''
@@ -292,30 +285,24 @@ class Docker:
         :param orb_string: string that looks like 'a=2.345,b=3.456,c=2.22'
 
         '''
-        self.pairings_dists = [(piece.split('=')[0], float(piece.split('=')[1])) for piece in orb_string.split(',')]
-        self.pairings_dists = sorted(self.pairings_dists, key=lambda x: x[0])
+        self.pairings_dists = {piece.split('=')[0] : float(piece.split('=')[1]) for piece in orb_string.split(',')}
 
-        for letter, dist in self.pairings_dists:
+        for letter, dist in self.pairings_dists.items():
 
             if letter not in self.pairings_table:
                 raise SyntaxError(f'Letter \'{letter}\' is specified in DIST but not present in molecules string.')
 
+            for i, mol in enumerate(self.objects):
 
-            for index, _ in enumerate(self.objects):
-                for pairing in self.pairings_dict[index]:
+                r_index = self.pairings_dict[i].get(letter)
+                if r_index is None:
+                    continue
 
-        # for each pairing specified by the user, check each pairing recorded
-        # in the pairing_dict on that molecule.
-
-                    if pairing[1] == letter:
-                        for reactive_index, reactive_atom in self.objects[index].reactive_atoms_classes_dict.items():
-                            if reactive_index == pairing[0]:
-                                reactive_atom.init(self.objects[index], reactive_index, update=True, orb_dim=dist/2)
+                r_atom = mol.reactive_atoms_classes_dict[r_index]
+                r_atom.init(mol, r_index, update=True, orb_dim=dist/2)
                                 
-                    # If the letter matches, look for the correct reactive atom on that molecule. When we find the correct match,
-                    # set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
-                    # user-specified one, as the final atomic distances will be given by two halves of this length.
-            # self.log()
+            # Set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
+            # user-specified one, as the final atomic distances will be given by two halves of this length.
 
     def _set_pivots(self, mol):
         '''
@@ -411,7 +398,7 @@ class Docker:
 
         return np.array(pivots_list)
 
-    def _setup(self):
+    def _setup(self, p=True):
         '''
         Setting embed type and calculating the number of conformation combinations based on embed type
         '''
@@ -504,7 +491,8 @@ class Docker:
 
         self.candidates = self._get_number_of_candidates()
 
-        self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
+        if p:
+            self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
     def _get_number_of_candidates(self):
         '''
@@ -565,10 +553,16 @@ class Docker:
         if self.options.procs is None:
             self.options.procs = PROCS
 
-            if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.PROCS != 1:
+            if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.procs != 1:
                 raise Exception(('ORCA does not support parallelization for Semiempirical Methods. '
-                                 'Please change the value of PROCS to 1 in parameters.py or '
-                                 'change the theory level.'))
+                                 'Please change the value of PROCS to 1 or change the theory level '
+                                 'from the setup command.'))
+
+        # if self.options.solvent is not None:
+        #     from solvents import get_solvent_line
+        #     self.options.theory_level = get_solvent_line(self.options.solvent,
+        #                                                  self.options.calculator,
+        #                                                  self.options.theory_level)
 
     def _apply_operators(self):
         '''
@@ -605,15 +599,13 @@ class Docker:
         return np.array([[[int(self.objects[0].reactive_indexes[0]),
                            int(self.objects[1].reactive_indexes[0] + self.ids[0])]] for _ in range(n)])
 
-    def get_cyclical_reactive_indexes(self, n):
+    def get_cyclical_reactive_indexes(self, pivots, n):
         '''
         :params n: index of the n-th disposition of vectors yielded by the polygonize function.
         :return: list of index couples, to be constrained during the partial optimization.
         '''
-        cumulative_pivots_ids = [[mol.reactive_indexes[0]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)]),
-                                  mol.reactive_indexes[1]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)])] if len(mol.reactive_indexes) == 2 else [
-                                  mol.reactive_indexes[0]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)]),
-                                  mol.reactive_indexes[0]+sum(len(m.atomnos) for m in self.objects[0:self.objects.index(mol)])] for mol in self.objects]
+
+        cumulative_pivots_ids = [[p.start_atom.cumnum, p.end_atom.cumnum] for p in pivots]
 
         def orient(i,ids,n):
             if swaps[n][i]:

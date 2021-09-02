@@ -30,11 +30,7 @@ from numpy.linalg import LinAlgError
 from utils import is_sigmatropic, is_vicinal, pt, graphize
 from reactive_atoms_classes import atom_type_dict
 
-class CCReadError(Exception):
-    '''
-    Raised when CCRead cannot read
-    the provided filename.
-    '''
+from errors import CCReadError
 
 def align_structures(structures:np.array, indexes=None):
     '''

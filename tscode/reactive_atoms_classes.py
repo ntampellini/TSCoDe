@@ -16,17 +16,12 @@ GNU General Public License for more details.
 
 '''
 
-import numpy as np
 from copy import deepcopy
-from parameters import orb_dim_dict
-from utils import (
-                   pt,
-                   neighbors,
-                   norm,
-                   rot_mat_from_pointer,
-                   vec_angle
-                )
 
+import numpy as np
+
+from parameters import orb_dim_dict
+from utils import neighbors, norm, pt, rot_mat_from_pointer, vec_angle
 
 class Single:
     

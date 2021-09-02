@@ -18,12 +18,15 @@ GNU General Public License for more details.
 
 import os
 import sys
-import numpy as np
+from subprocess import DEVNULL, STDOUT, CalledProcessError, check_call, run
+
 import networkx as nx
-from subprocess import run, CalledProcessError
-from scipy.spatial.transform import Rotation as R
-from subprocess import check_call, DEVNULL, STDOUT
+import numpy as np
 from periodictable import core, covalent_radius, mass
+from scipy.spatial.transform import Rotation as R
+
+from errors import TriangleError
+
 pt = core.PeriodicTable(table="H=1")
 covalent_radius.init(pt)
 mass.init(pt)
@@ -65,24 +68,6 @@ class HiddenPrints:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self._original_stdout
-
-class ZeroCandidatesError(Exception):
-    '''
-    Raised at any time during run if all
-    candidates are discarded.
-    '''
-
-class InputError(Exception):
-    '''
-    Raised when reading the input file if
-    something is wrong.
-    '''
-
-class TriangleError(Exception):
-    '''
-    Raised from polygonize if it cannot build
-    a triangle with the given side lengths.
-    '''
 
 def clean_directory():
     for f in os.listdir():
@@ -489,7 +474,7 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, m
     '''
     assert len(TS_structure) == sum([len(graph.nodes) for graph in mols_graphs])
 
-    bonds = []
+    bonds = set()
     for i, graph in enumerate(mols_graphs):
 
         pos = 0
@@ -498,15 +483,18 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, m
             i -= 1
 
         for bond in [tuple(sorted((a+pos, b+pos))) for a, b in list(graph.edges) if a != b]:
-            bonds.append(bond)
-
-    bonds = set(bonds)
+            bonds.add(bond)
     # creating bond set containing all bonds present in the desired transition state
 
     new_bonds = {tuple(sorted((a, b))) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
-    delta_bonds -= {tuple(sorted(pair)) for pair in constrained_indexes}
-    # removing constrained indexes couples: they are not counted as scrambled bonds
+    # delta_bonds -= {tuple(sorted(pair)) for pair in constrained_indexes}
+
+    for bond in delta_bonds.copy():
+        for a1, a2 in constrained_indexes:
+            if (a1 in bond) or (a2 in bond):
+                delta_bonds -= {bond}
+    # removing bonds involving constrained atoms: they are not counted as scrambled bonds
 
     if len(delta_bonds) > max_newbonds:
         return False

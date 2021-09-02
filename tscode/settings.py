@@ -35,7 +35,7 @@ CALCULATOR = 'MOPAC'
 DEFAULT_LEVELS = {
     'MOPAC':'PM7',
     'ORCA':'PM3',
-    'GAUSSIAN':'PM7',
+    'GAUSSIAN':'PM6',
     'XTB':'GFN2-xTB',
 }
 # Default levels used to run calculations, overridden by LEVEL keyword
@@ -43,7 +43,7 @@ DEFAULT_LEVELS = {
 COMMANDS = {
     'MOPAC':'MOPAC2016.exe',
     'ORCA':'orca.exe',
-    'GAUSSIAN':'g16.exe',
+    'GAUSSIAN':'g09.exe',
 }
 # Command with which calculators will be called from the command line
 

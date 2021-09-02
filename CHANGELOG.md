@@ -9,7 +9,11 @@
 ### 0.0.3 (10 Aug 2021)
 - setup.py bugfix.
 
-### 0.0.4 (Testing)
+### 0.0.4 (Aug 2021)
 - SADDLE keyword implementation.
 - Added keywords print at top of log
-- Major code refactoring
+- Pairings are now of two types: reactive atoms (a, b, c) or NCIs (x, y, z). The latter are adjusted when specifying distances with DIST but are left free to reach their equilibrium distance (HalfSpring constraint + additional relax).
+- Major code cleaning, refactoring and reordering
+- Added solvent support for calculators (SOLVENT keyword)
+- Dihedral embeds now support both the SADDLE and NEB keywords
+- Similar structures are now pruned in a rational way: the best looking is kept (fast_score)

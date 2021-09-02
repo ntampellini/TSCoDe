@@ -16,34 +16,30 @@ GNU General Public License for more details.
 
 '''
 
+import os
+import time
+import warnings
+from copy import deepcopy
+
+import numpy as np
 from ase import Atoms
+from ase.calculators.calculator import PropertyNotImplementedError
 from ase.calculators.gaussian import Gaussian
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
 from ase.constraints import FixInternals
 from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
-from ase.vibrations import Vibrations
-
-import numpy as np
-import time
-import os
-from copy import deepcopy
-
-from utils import (
-                    norm,
-                    graphize,
-                    write_xyz,
-                    neighbors,
-                    findPaths,
-                    HiddenPrints,
-                    time_to_string,
-                    get_double_bonds_indexes,
-                    )
-from settings import COMMANDS, MEM_GB
-from utils import scramble_check, molecule_check
-from sella import Sella
 from rmsd import kabsch
+from sella import Sella
+
+from hypermolecule_class import graphize
+from settings import COMMANDS, MEM_GB
+from solvents import get_solvent_line
+from utils import (HiddenPrints, findPaths, get_double_bonds_indexes,
+                   molecule_check, neighbors, norm, scramble_check,
+                   time_to_string, write_xyz)
+
 
 class Spring:
     '''
@@ -52,10 +48,11 @@ class Spring:
     Spring constant is very high to achieve tight convergence,
     but force is dampened so as not to ruin structures.
     '''
-    def __init__(self, i1, i2, d_eq, k=1000):
+    def __init__(self, i1, i2, d_eq, k=1000, tight=False):
         self.i1, self.i2 = i1, i2
         self.d_eq = d_eq
         self.k = k
+        self.tight = False
 
     def adjust_positions(self, atoms, newpositions):
         pass
@@ -68,21 +65,63 @@ class Spring:
         spring_force = self.k * (np.linalg.norm(direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
-        # spring_force = np.clip(spring_force, -10, 10)
-        # force is clipped at 10 eV/A
+        if not self.tight:
+            spring_force = np.clip(spring_force, -50, 50)
+            # force is clipped at 50 eV/A
 
         forces[self.i1] += (norm(direction) * spring_force)
         forces[self.i2] -= (norm(direction) * spring_force)
         # applying harmonic force to each atom, directed toward the other one
 
+    def tighten(self):
+        self.tight = True
+
     def __repr__(self):
         return f'Spring - ids:{self.i1}/{self.i2} - d_eq:{self.d_eq}, k:{self.k}'
 
-def get_ase_calc(calculator, procs, method):
+class HalfSpring:
+    '''
+    ASE Custom Constraint Class
+    Adds an harmonic force between a pair of atoms,
+    only if those two atoms are at least d_max
+    Angstroms apart.
+    '''
+    def __init__(self, i1, i2, d_max, k=1000):
+        self.i1, self.i2 = i1, i2
+        self.d_max = d_max
+        self.k = k
+
+    def adjust_positions(self, atoms, newpositions):
+        pass
+
+    def adjust_forces(self, atoms, forces):
+
+        direction = atoms.positions[self.i2] - atoms.positions[self.i1]
+        # vector connecting atom1 to atom2
+
+        if np.linalg.norm(direction) > self.d_max:
+
+            spring_force = self.k * (np.linalg.norm(direction) - self.d_max)
+            # absolute spring force (float). Positive if spring is overstretched.
+
+            spring_force = np.clip(spring_force, -50, 50)
+            # force is clipped at 50 eV/A
+
+            forces[self.i1] += (norm(direction) * spring_force)
+            forces[self.i2] -= (norm(direction) * spring_force)
+            # applying harmonic force to each atom, directed toward the other one
+
+    def __repr__(self):
+        return f'Spring - ids:{self.i1}/{self.i2} - d_max:{self.d_max}, k:{self.k}'
+
+def get_ase_calc(docker):
     '''
     Attach the correct ASE calculator
     to the ASE Atoms object
     '''
+    calculator = docker.options.calculator
+    method = docker.options.theory_level
+    procs = docker.options.procs
 
     if calculator == 'XTB':
         try:
@@ -91,30 +130,39 @@ def get_ase_calc(calculator, procs, method):
             raise Exception(('Cannot import xtb python bindings. Install them with:\n'
                              '>>> conda install -c conda-forge xtb-python\n'
                              '(See https://github.com/grimme-lab/xtb-python)'))
-        return XTB(method=method)
+        return XTB(method=method, solvent=docker.options.solvent)
 
     
     command = COMMANDS[calculator]
 
     if calculator == 'MOPAC':
+
+        if docker.options.solvent is not None:
+            method = method + ' ' + get_solvent_line(docker.options.solvent, calculator, method)
+
         return MOPAC(label='temp',
                     command=f'{command} temp.mop > temp.cmdlog 2>&1',
-                    method=method)
+                    method=method+' GEO-OK')
 
     if calculator == 'ORCA':
+
+        orcablocks = ''
+
         if procs > 1:
-            orcablocks = f'%pal nprocs {procs} end'
-            return ORCA(label='temp',
-                        command=f'{command} temp.inp > temp.out 2>&1',
-                        orcasimpleinput=method,
-                        orcablocks=orcablocks)
+            orcablocks += f'%pal nprocs {procs} end'
+
+        if docker.options.solvent is not None:
+            orcablocks += get_solvent_line(docker.options.solvent, calculator, method)
+
         return ORCA(label='temp',
                     command=f'{command} temp.inp > temp.out 2>&1',
-                    orcasimpleinput=method)
+                    orcasimpleinput=method,
+                    orcablocks=orcablocks)
 
     if calculator == 'GAUSSIAN':
 
-        # firstline = method if procs == 1 else f'%nprocshared={procs}\n{method}'
+        if docker.options.solvent is not None:
+            method = method + ' ' + get_solvent_line(docker.options.solvent, calculator, method)
 
         calc = Gaussian(label='temp',
                         command=f'{command} temp.com',
@@ -134,8 +182,8 @@ def get_ase_calc(calculator, procs, method):
             calc.read_results = g09_read_results
 
             # Adapting for g09 outputting .out files instead of g16 .log files.
-            # This is a bad fix and the issue should be corrected in
-            # the ASE source code: pull request on GitHub pending
+            # This is a bad fix and the issue should be corrected in the ASE
+            # source code: merge request on GitHub pending to be written
 
             return calc
 
@@ -151,37 +199,65 @@ def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, title=0
     '''
     atoms = Atoms(atomnos, positions=structure)
 
-    atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, docker.options.theory_level)
+    atoms.calc = get_ase_calc(docker)
     
-    springs = []
+    springs = [Spring(indexes[0], indexes[1], dist) for indexes, dist in docker.target_distances.items()]
+    # adding springs to adjust the pairings for which we have target distances
 
-    for i1, i2 in constrained_indexes:
-        pair = tuple(sorted((i1, i2)))
-        springs.append(Spring(i1, i2, docker.target_distances[pair]))
+    nci_indexes = [indexes for letter, indexes in docker.pairings_table.items() if letter in ('x', 'y', 'z')]
+    halfsprings = [HalfSpring(i1, i2, 2.5) for i1, i2 in nci_indexes]
+    # HalfSprings get atoms involved in NCIs together if they are more than 2.5A apart,
+    # but lets them achieve their natural equilibrium distance when closer
 
-    atoms.set_constraint(springs)
+    psc = PreventScramblingConstraint(graphize(structure, atomnos),
+                                        atoms,
+                                        double_bond_protection=docker.options.double_bond_protection,
+                                        fix_angles=docker.options.fix_angles_in_deformation)
+
+    atoms.set_constraint(springs + halfsprings + [psc])
 
     t_start_opt = time.time()
-    with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
-        opt.run(fmax=0.05, steps=500)
-        iterations = opt.nsteps
+    try:
+        with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
 
-    new_structure = atoms.get_positions()
+            opt.run(fmax=0.05, steps=500)
+            # initial coarse refinement with
+            # Springs, Half Springs and PSC
 
-    success = scramble_check(new_structure, atomnos, constrained_indexes, docker.graphs)
-    exit_str = 'REFINED' if success else 'SCRAMBLED'
+            for spring in springs:
+                spring.tighten()
+            atoms.set_constraint(springs)
+            # Tightening Springs to improve
+            # spacings accuracy
+
+            opt.run(fmax=0.05, steps=200)
+            # final accurate refinement
+
+            iterations = opt.nsteps
+
+
+        new_structure = atoms.get_positions()
+
+        success = scramble_check(new_structure, atomnos, constrained_indexes, docker.graphs)
+        exit_str = 'REFINED' if success else 'SCRAMBLED'
+
+    except PropertyNotImplementedError:
+        exit_str = 'CRASHED'
 
     docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
 
+    if exit_str == 'CRASHED':
+        return None, None, False
+
     return new_structure, atoms.get_total_energy(), success
 
-def ase_saddle(coords, atomnos, calculator, method, procs=1, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
+def ase_saddle(docker, coords, atomnos, constrained_indexes=None, mols_graphs=None, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
     '''
     Runs a first order saddle optimization through the ASE package
     '''
     atoms = Atoms(atomnos, positions=coords)
 
-    atoms.calc = get_ase_calc(calculator, procs, method)
+    atoms.calc = get_ase_calc(docker)
     
     t_start = time.time()
     with HiddenPrints():
@@ -202,22 +278,24 @@ def ase_saddle(coords, atomnos, calculator, method, procs=1, title='temp', logfi
     new_structure = atoms.get_positions()
     energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
 
-    if freq:
-        vib = Vibrations(atoms, name='temp')
-        with HiddenPrints():
-            vib.run()
-        freqs = vib.get_frequencies()
+    # if freq:
+    #     vib = Vibrations(atoms, name='temp')
+    #     with HiddenPrints():
+    #         vib.run()
+    #     freqs = vib.get_frequencies()
 
-        if logfile is not None:
-            elapsed = time.time() - t_end_berny
-            logfile.write(f'{title} - frequency calculation completed ({time_to_string(elapsed)})\n')
+    #     if logfile is not None:
+    #         elapsed = time.time() - t_end_berny
+    #         logfile.write(f'{title} - frequency calculation completed ({time_to_string(elapsed)})\n')
         
-        return new_structure, energy, freqs
+    #     return new_structure, energy, freqs
 
-    # if logfile is not None:
-    #     logfile.write('\n')
+    if mols_graphs is not None:
+        success = scramble_check(new_structure, atomnos, constrained_indexes, mols_graphs, max_newbonds=docker.options.max_newbonds)
+    else:
+        success = molecule_check(coords, new_structure, atomnos, max_newbonds=docker.options.max_newbonds)
 
-    return new_structure, energy, None
+    return new_structure, energy, success
 
 def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None):
     '''
@@ -230,14 +308,15 @@ def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optim
     optimizer: ASE optimizer to be used in 
     logfile: filename to dump the optimization data to. If None, no file is written.
 
-    return: 2- element tuple with coodinates of highest point along the MEP and its energy in kcal/mol
+    return: 3- element tuple with coodinates of highest point along the MEP, its
+    energy in kcal/mol and a boolean value indicating success.
     '''
 
     first = Atoms(atomnos, positions=reagents)
     last = Atoms(atomnos, positions=products)
 
     images =  [first]
-    images += [first.copy() for i in range(n_images)]
+    images += [first.copy() for _ in range(n_images)]
     images += [last]
 
     neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
@@ -245,26 +324,38 @@ def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optim
 
     ase_dump(f'{title}_MEP_guess.xyz', images, atomnos)
     
-    neb_method = docker.options.theory_level + (' GEO-OK' if docker.options.calc == 'MOPAC' else '')
-    # avoid MOPAC from rejecting structures with atoms too close to each other
-
     # Set calculators for all images
-    for i, image in enumerate(images):
-        image.calc = get_ase_calc(docker.options.calculator, docker.options.procs, neb_method)
+    for _, image in enumerate(images):
+        image.calc = get_ase_calc(docker)
+
+    t_start = time.time()
 
     # Set the optimizer and optimize
     try:
-        with optimizer(neb, maxstep=0.1, logfile=logfile) as opt:
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            # ignore runtime warnings from the NEB module:
+            # if something went wrong, we will deal with it later
 
-            opt.run(fmax=0.05, steps=20)
-            # some free relaxation before starting to climb
+            with optimizer(neb, maxstep=0.1, logfile=None) as opt:
 
-            neb.climb = True
-            opt.run(fmax=0.05, steps=500)
+                opt.run(fmax=0.05, steps=20)
+                # some free relaxation before starting to climb
 
-    except Exception as e:
-        print(f'Stopped NEB for {title}:')
-        print(e)
+                neb.climb = True
+                opt.run(fmax=0.05, steps=500)
+                iterations = opt.nsteps
+
+    except PropertyNotImplementedError:
+        if logfile is not None:
+            logfile.write(f'    - NEB for {title} CRASHED ({time_to_string(time.time()-t_start)})\n')
+        return None, None, False
+
+    exit_status = 'CONVERGED' if iterations < 499 else 'MAX ITER'
+
+    if logfile is not None:
+        logfile.write(f'    - NEB for {title} {exit_status} ({time_to_string(time.time()-t_start)})\n')
 
     energies = [image.get_total_energy() for image in images]
     ts_id = energies.index(max(energies))
@@ -274,8 +365,7 @@ def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optim
     ase_dump(f'{title}_MEP.xyz', images, atomnos)
     # Save the converged MEP (minimum energy path) to an .xyz file
 
-
-    return images[ts_id].get_positions(), images[ts_id].get_total_energy()
+    return images[ts_id].get_positions(), images[ts_id].get_total_energy(), True
 
 class OrbitalSpring:
     '''
@@ -385,13 +475,14 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
 
     return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
 
-def ase_safe_relax(docker, coords, atomnos, constrained_indexes=None, targets=None, mask=None, title='temp', traj=None):
+def ase_popt(docker, coords, atomnos, constrained_indexes=None, targets=None, safe=False, safe_mask=None, traj=None):
     '''
     docker: TSCoDe docker object
     coords: 
     atomnos: 
     constrained_indexes:
-    mask: bool array, with False for atoms to be excluded in the bond evaluation
+    safe: if True, adds a potential that prevents atoms from scrambling
+    safe_mask: bool array, with False for atoms to be excluded when calculating bonds to preserve
     title: name to be used for referring to this structure in the docker log
     traj: if set to a string, traj+'.traj' is used as a filename for the bending trajectory.
           not only the atoms will be printed, but also all the orbitals and the active pivot.
@@ -399,7 +490,7 @@ def ase_safe_relax(docker, coords, atomnos, constrained_indexes=None, targets=No
            If it did, returns the initial molecule.
     '''
     atoms = Atoms(atomnos, positions=coords)
-    atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, docker.options.theory_level)
+    atoms.calc = get_ase_calc(docker)
     constraints = []
 
     for i, c in enumerate(constrained_indexes):
@@ -407,14 +498,15 @@ def ase_safe_relax(docker, coords, atomnos, constrained_indexes=None, targets=No
         tgt_dist = np.linalg.norm(coords[i1]-coords[i2]) if targets is None else targets[i]
         constraints.append(Spring(i1, i2, tgt_dist))
 
-    constraints.append(PreventScramblingConstraint(graphize(coords, atomnos, mask),
-                                                    atoms,
-                                                    double_bond_protection=docker.options.double_bond_protection,
-                                                    fix_angles=docker.options.fix_angles_in_deformation))
+    if safe:
+        constraints.append(PreventScramblingConstraint(graphize(coords, atomnos, safe_mask),
+                                                        atoms,
+                                                        double_bond_protection=docker.options.double_bond_protection,
+                                                        fix_angles=docker.options.fix_angles_in_deformation))
 
     atoms.set_constraint(constraints)
 
-    t_start_opt = time.time()
+    # t_start_opt = time.time()
     with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
         opt.run(fmax=0.05, steps=500)
         iterations = opt.nsteps
@@ -422,9 +514,9 @@ def ase_safe_relax(docker, coords, atomnos, constrained_indexes=None, targets=No
     new_structure = atoms.get_positions()
     success = (iterations < 499)
 
-    exit_str = 'REFINED' if success else 'MAX ITER'
+    # exit_str = 'REFINED' if success else 'MAX ITER'
 
-    docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} "safe" relax: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
+    # docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} POPT: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
 
     return new_structure, atoms.get_total_energy(), success
 
@@ -497,7 +589,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
         atoms = Atoms(mol.atomnos, positions=mol.atomcoords[0])
 
-        atoms.calc = get_ase_calc(docker.options.calculator, docker.options.procs, docker.options.theory_level)
+        atoms.calc = get_ase_calc(docker)
         
         if traj is not None:
             traj_obj = Trajectory(traj + f'_conf{conf}.traj', mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]), active_pivot))

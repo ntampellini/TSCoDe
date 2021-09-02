@@ -16,14 +16,14 @@ GNU General Public License for more details.
 
 '''
 
-# This library was intentionally meant to be cythonized, but 
-# for the moment it is kept in pure Python.
-
-import numpy as np
 import networkx as nx
-from rmsd import kabsch_rmsd
+import numpy as np
+from rmsd import kabsch_rotate
 from scipy.spatial.distance import cdist
-# from spyrmsd.rmsd import symmrmsd
+
+# These functions are here to facilitate eventual porting to
+# faster precompiled versions of themselves (Cython/C++/Julia/...)
+# if the necessity ever occurs
 
 def compenetration_check(coords, ids, thresh=1.3, max_clashes=0):
 
@@ -58,7 +58,58 @@ def compenetration_check(coords, ids, thresh=1.3, max_clashes=0):
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
 
-def prune_conformers(structures, atomnos, k = 1, max_rmsd = 1.):
+def rmsd_and_max(P, Q):
+    '''
+    ** ADAPTED FROM THE PYTHON RMSD LIBRARY **
+
+    Rotate matrix P unto Q using Kabsch algorithm and calculate the RMSD.
+    Returns RMSD and max deviation.
+
+    Parameters
+    ----------
+    P : array
+        (N,D) matrix, where N is points and D is dimension.
+    Q : array
+        (N,D) matrix, where N is points and D is dimension.
+
+    Returns
+    -------
+    rmsd : float
+        root-mean squared deviation
+    max_delta : float
+        maximum deviation value
+    '''
+
+    Q = Q - Q.mean(axis=0)
+    P = P - P.mean(axis=0)
+    P = kabsch_rotate(P, Q)
+
+    diff = Q - P
+    rmsd = np.sqrt((diff * diff).sum() / len(diff))
+    max_delta = np.linalg.norm(diff, axis=1).max()
+
+    return rmsd, max_delta
+
+def fast_score(coords, close=1.3, far=3):
+    '''
+    return a fast to compute score
+    used as a metric to evaluate
+    the best structure between
+    similar conformers. The higher,
+    the least the structure is stable.
+    '''
+    dist_mat = cdist(coords, coords)
+    close_contacts = dist_mat[dist_mat < far]
+    return np.sum(close_contacts/(close-far) - far/(close-far))
+
+def prune_conformers(structures, atomnos, k=1, max_rmsd=1, max_delta=None):
+    '''
+    Group structures into k subgroups and remove the similar ones.
+    Similarity occurs for structures with both RMSD < max_rmsd and
+    maximum deviation < max_delta.
+    '''
+
+    max_delta = max_rmsd * 2 if max_delta is None else max_delta
 
     heavy_atoms = (atomnos != 1)
     heavy_structures = np.array([structure[heavy_atoms] for structure in structures])
@@ -85,28 +136,25 @@ def prune_conformers(structures, atomnos, k = 1, max_rmsd = 1.):
             # energies_subset = energies[d*step:d*(step+1)]
 
         l = structures_subset.shape[0]
-        rmsd_mat = np.zeros((l, l))
-        rmsd_mat[:] = max_rmsd
 
-        # t0 = time()
+        similarity_mat = np.zeros((l, l))
 
         for i in range(l):
             for j in range(i+1,l):
-                val = kabsch_rmsd(structures_subset[i], structures_subset[j], translate=True)
-                rmsd_mat[i, j] = val
-                if val < max_rmsd:
+                rmsd, max_dev = rmsd_and_max(structures_subset[i], structures_subset[j])
+                if rmsd < max_rmsd and max_dev < max_delta:
+                    similarity_mat[i,j] = 1
                     break
 
-
-        where = np.where(rmsd_mat < max_rmsd)
-        matches = [(i,j) for i,j in zip(where[0], where[1])]
+        matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
 
         g = nx.Graph(matches)
 
         subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
         groups = [tuple(graph.nodes) for graph in subgraphs]
 
-        best_of_cluster = [group[0] for group in groups]
+        best_of_cluster = [sorted(group, key=lambda i: fast_score(structures[i]))[0] for group in groups]
+        # of each cluster, keep the structure that looks the best
 
         rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
         rejects = []
