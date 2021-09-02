@@ -66,8 +66,8 @@ def get_solvent_line(solvent, calculator, theory_level):
 
     if solvent not in epsilon_dict:
         print(f'Solvent \'{solvent}\' not recognized. Implemented solvents are:')
-        for solvent in epsilon_dict:
-            print('    '+solvent)
+        for s in epsilon_dict:
+            print('    '+s)
         print('Please note that not all solvents will work with all calculators.')
         quit()
 

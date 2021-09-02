@@ -362,7 +362,7 @@ class OptionSetter:
 
         if '?' in self.docker.pairings_table or (
             self.docker.embed in ('cyclical','chelotropic') and len(self.docker.pairings_table) < len(self.docker.objects)) or (
-            self.docker.embed == 'string' and not len(self.docker.pairings_table)):
+            self.docker.embed == 'string' and not self.docker.pairings_table):
 
             raise SystemExit('TS keyword does not have sufficient pairing information to run. Make sure you specify the\n'
                              'label of each atomic pairing with the correct set of letters - "a", "b" or "c" for reactive atoms\n'

@@ -566,14 +566,12 @@ class RunEmbedding:
 
             try:
 
-                self.structures[i],
-                self.energies[i],
-                self.exit_status[i] = hyperNEB(self,
-                                                structure,
-                                                self.atomnos,
-                                                self.ids,
-                                                self.constrained_indexes[i],
-                                                title=f'structure_{i+1}')
+                self.structures[i], self.energies[i], self.exit_status[i] = hyperNEB(self,
+                                                                                        structure,
+                                                                                        self.atomnos,
+                                                                                        self.ids,
+                                                                                        self.constrained_indexes[i],
+                                                                                        title=f'structure_{i+1}')
 
                 exit_str = 'COMPLETED' if self.exit_status[i] else 'CRASHED'
 
