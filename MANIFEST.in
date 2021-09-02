@@ -2,5 +2,6 @@ include CHANGELOG.md
 include README.md
 include LICENSE
 include tscode/*
+include tscode/calculators/*
 include tests/*
 include docs/*
