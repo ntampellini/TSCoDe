@@ -20,11 +20,11 @@ from copy import deepcopy
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from ase_manipulations import ase_bend
-from errors import TriangleError
-from utils import (cartesian_product, loadbar, norm, polygonize,
-                   rot_mat_from_pointer, rotation_matrix_from_vectors,
-                   vec_angle)
+from tscode.ase_manipulations import ase_bend
+from tscode.errors import TriangleError
+from tscode.utils import (cartesian_product, loadbar, norm, polygonize,
+                          rot_mat_from_pointer, rotation_matrix_from_vectors,
+                          vec_angle)
 
 
 def string_embed(self):
@@ -598,7 +598,7 @@ def monomolecular_embed(self):
 def dihedral_embed(self):
     '''
     '''
-    from atropisomer_module import ase_torsion_TSs
+    from tscode.atropisomer_module import ase_torsion_TSs
     mol = self.objects[0]
     self.structures, self.energies = [], []
 

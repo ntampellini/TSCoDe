@@ -27,7 +27,7 @@ def run_setup():
 
     import os
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    from settings import DEFAULT_LEVELS, COMMANDS
+    from tscode.settings import DEFAULT_LEVELS, COMMANDS
 
     properties = {
         'OPENBABEL_OPT_BOOL':False,
@@ -140,7 +140,3 @@ def run_setup():
 
     with open('settings.py', 'w') as f:
         f.write(''.join(lines))
-
-
-
-

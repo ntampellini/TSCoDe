@@ -20,8 +20,8 @@ from copy import deepcopy
 
 import numpy as np
 
-from parameters import orb_dim_dict
-from utils import neighbors, norm, pt, rot_mat_from_pointer, vec_angle
+from tscode.parameters import orb_dim_dict
+from tscode.utils import neighbors, norm, pt, rot_mat_from_pointer, vec_angle
 
 class Single:
     

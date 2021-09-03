@@ -16,8 +16,8 @@ GNU General Public License for more details.
 
 '''
 from cclib.io import ccread
-from settings import OPENBABEL_OPT_BOOL
-from utils import scramble_check, write_xyz
+from tscode.settings import OPENBABEL_OPT_BOOL
+from tscode.utils import scramble_check, write_xyz
 
 if OPENBABEL_OPT_BOOL:
 

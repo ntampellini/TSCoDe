@@ -33,12 +33,12 @@ from ase.optimize import BFGS, LBFGS
 from rmsd import kabsch
 from sella import Sella
 
-from hypermolecule_class import graphize
-from settings import COMMANDS, MEM_GB
-from solvents import get_solvent_line
-from utils import (HiddenPrints, findPaths, get_double_bonds_indexes,
-                   molecule_check, neighbors, norm, scramble_check,
-                   time_to_string, write_xyz)
+from tscode.hypermolecule_class import graphize
+from tscode.settings import COMMANDS, MEM_GB
+from tscode.solvents import get_solvent_line
+from tscode.utils import (HiddenPrints, findPaths, get_double_bonds_indexes,
+                          molecule_check, neighbors, norm, scramble_check,
+                          time_to_string, write_xyz)
 
 
 class Spring:
@@ -119,9 +119,14 @@ def get_ase_calc(docker):
     Attach the correct ASE calculator
     to the ASE Atoms object
     '''
-    calculator = docker.options.calculator
-    method = docker.options.theory_level
-    procs = docker.options.procs
+    if isinstance(docker, tuple):
+        calculator, method, procs, solvent = docker
+
+    else:
+        calculator = docker.options.calculator
+        method = docker.options.theory_level
+        procs = docker.options.procs
+        solvent = docker.options.solvent
 
     if calculator == 'XTB':
         try:
@@ -130,15 +135,15 @@ def get_ase_calc(docker):
             raise Exception(('Cannot import xtb python bindings. Install them with:\n'
                              '>>> conda install -c conda-forge xtb-python\n'
                              '(See https://github.com/grimme-lab/xtb-python)'))
-        return XTB(method=method, solvent=docker.options.solvent)
+        return XTB(method=method, solvent=solvent)
 
     
     command = COMMANDS[calculator]
 
     if calculator == 'MOPAC':
 
-        if docker.options.solvent is not None:
-            method = method + ' ' + get_solvent_line(docker.options.solvent, calculator, method)
+        if solvent is not None:
+            method = method + ' ' + get_solvent_line(solvent, calculator, method)
 
         return MOPAC(label='temp',
                     command=f'{command} temp.mop > temp.cmdlog 2>&1',
@@ -151,8 +156,8 @@ def get_ase_calc(docker):
         if procs > 1:
             orcablocks += f'%pal nprocs {procs} end'
 
-        if docker.options.solvent is not None:
-            orcablocks += get_solvent_line(docker.options.solvent, calculator, method)
+        if solvent is not None:
+            orcablocks += get_solvent_line(solvent, calculator, method)
 
         return ORCA(label='temp',
                     command=f'{command} temp.inp > temp.out 2>&1',
@@ -161,8 +166,8 @@ def get_ase_calc(docker):
 
     if calculator == 'GAUSSIAN':
 
-        if docker.options.solvent is not None:
-            method = method + ' ' + get_solvent_line(docker.options.solvent, calculator, method)
+        if solvent is not None:
+            method = method + ' ' + get_solvent_line(solvent, calculator, method)
 
         calc = Gaussian(label='temp',
                         command=f'{command} temp.com',

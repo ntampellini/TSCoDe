@@ -20,8 +20,7 @@ from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
 from cclib.io import ccread
-from solvents import get_solvent_line
-from utils import clean_directory, write_xyz
+from tscode.utils import clean_directory, write_xyz
 
 
 def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', procs=None, solvent=None, title='temp', read_output=True):

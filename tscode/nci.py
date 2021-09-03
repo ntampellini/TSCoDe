@@ -15,11 +15,13 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-from networkx.algorithms.minors import contracted_edge
-import numpy as np
-from parameters import nci_dict
-from utils import dihedral, pt
 from itertools import combinations
+
+import numpy as np
+
+from tscode.parameters import nci_dict
+from tscode.utils import dihedral, pt
+
 
 def get_nci(coords, atomnos, constrained_indexes, ids):
     '''

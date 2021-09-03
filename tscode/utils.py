@@ -25,7 +25,7 @@ import numpy as np
 from periodictable import core, covalent_radius, mass
 from scipy.spatial.transform import Rotation as R
 
-from errors import TriangleError
+from tscode.errors import TriangleError
 
 pt = core.PeriodicTable(table="H=1")
 covalent_radius.init(pt)

@@ -14,7 +14,7 @@ setup(
     description='Computational chemistry general purpose transition state builder',
     keywords=['computational chemistry', 'ASE', 'transition state', 'xtb'],
 
-    package_dir={'':'tscode'},
+    # package_dir={'':'tscode'},
     include_package_data=True,
     classifiers=[
         'Programming Language :: Python :: 3',

@@ -21,24 +21,25 @@ from copy import deepcopy
 
 import numpy as np
 
-from settings import OPENBABEL_OPT_BOOL
+from tscode.settings import OPENBABEL_OPT_BOOL
 
 if OPENBABEL_OPT_BOOL:
     from calculators._openbabel import openbabel_opt
 
-from ase_manipulations import ase_adjust_spacings, ase_saddle
-from calculators._xtb import xtb_metadyn_augmentation
-from embeds import (cyclical_embed, dihedral_embed, monomolecular_embed,
-                    string_embed)
-from errors import MopacReadError, ZeroCandidatesError
-from hypermolecule_class import align_structures
-from nci import get_nci
-from optimization_methods import (fitness_check, hyperNEB, opt_iscans,
-                                  optimize, prune_enantiomers)
-from parameters import orb_dim_dict
-from python_functions import compenetration_check, prune_conformers, scramble
-from utils import (cartesian_product, clean_directory, loadbar, time_to_string,
-                   write_xyz)
+from tscode.ase_manipulations import ase_adjust_spacings, ase_saddle
+from tscode.calculators._xtb import xtb_metadyn_augmentation
+from tscode.embeds import (cyclical_embed, dihedral_embed, monomolecular_embed,
+                           string_embed)
+from tscode.errors import MopacReadError, ZeroCandidatesError
+from tscode.hypermolecule_class import align_structures
+from tscode.nci import get_nci
+from tscode.optimization_methods import (fitness_check, hyperNEB, opt_iscans,
+                                         optimize, prune_enantiomers)
+from tscode.parameters import orb_dim_dict
+from tscode.python_functions import (compenetration_check, prune_conformers,
+                                     scramble)
+from tscode.utils import (cartesian_product, clean_directory, loadbar,
+                          time_to_string, write_xyz)
 
 
 class RunEmbedding:

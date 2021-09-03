@@ -25,9 +25,9 @@ from ase.optimize import LBFGS
 from networkx.algorithms.components.connected import connected_components
 from networkx.algorithms.shortest_paths.generic import shortest_path
 
-from ase_manipulations import ase_neb, ase_saddle, get_ase_calc
-from hypermolecule_class import align_structures, graphize
-from utils import (clean_directory, dihedral, loadbar, molecule_check,
+from tscode.ase_manipulations import ase_neb, ase_saddle, get_ase_calc
+from tscode.hypermolecule_class import align_structures, graphize
+from tscode.utils import (clean_directory, dihedral, loadbar, molecule_check,
                    time_to_string, write_xyz)
 
 

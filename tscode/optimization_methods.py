@@ -23,14 +23,14 @@ import networkx as nx
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from ase_manipulations import ase_neb, ase_popt
-from calculators._gaussian import gaussian_opt
-from calculators._mopac import mopac_opt
-from calculators._orca import orca_opt
-from calculators._xtb import xtb_opt
-from utils import (center_of_mass, diagonalize, kronecker_delta,
-                   molecule_check, norm, pt, scramble_check, time_to_string,
-                   write_xyz)
+from tscode.ase_manipulations import ase_neb, ase_popt
+from tscode.calculators._gaussian import gaussian_opt
+from tscode.calculators._mopac import mopac_opt
+from tscode.calculators._orca import orca_opt
+from tscode.calculators._xtb import xtb_opt
+from tscode.utils import (center_of_mass, diagonalize, kronecker_delta,
+                          molecule_check, norm, pt, scramble_check,
+                          time_to_string, write_xyz)
 
 opt_funcs_dict = {
     'MOPAC':mopac_opt,

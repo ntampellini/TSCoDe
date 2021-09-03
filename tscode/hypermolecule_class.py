@@ -19,18 +19,18 @@ GNU General Public License for more details.
 import os
 import warnings
 from copy import deepcopy
+
 warnings.simplefilter("ignore", UserWarning)
 
 import numpy as np
-import networkx as nx
-from rmsd import kabsch
 from cclib.io import ccread
 from numpy.linalg import LinAlgError
+from rmsd import kabsch
 
-from utils import is_sigmatropic, is_vicinal, pt, graphize
-from reactive_atoms_classes import atom_type_dict
+from tscode.errors import CCReadError
+from tscode.reactive_atoms_classes import atom_type_dict
+from tscode.utils import graphize, is_sigmatropic, is_vicinal, pt
 
-from errors import CCReadError
 
 def align_structures(structures:np.array, indexes=None):
     '''

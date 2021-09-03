@@ -25,10 +25,10 @@ import numpy as np
 from cclib.io import ccread
 from networkx import connected_components
 
-from errors import InputError
-from hypermolecule_class import graphize
-from optimization_methods import optimize
-from utils import suppress_stdout_stderr, time_to_string, write_xyz
+from tscode.errors import InputError
+from tscode.hypermolecule_class import graphize
+from tscode.optimization_methods import optimize
+from tscode.utils import suppress_stdout_stderr, time_to_string, write_xyz
 
 
 def operate(input_string, calculator, theory_level, procs=1, logfunction=None):

@@ -15,7 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-from settings import OPENBABEL_OPT_BOOL, CALCULATOR
+from tscode.settings import OPENBABEL_OPT_BOOL, CALCULATOR
 
 keywords_list = [
             'BYPASS',         # Debug keyword. Used to skip all pruning steps and

@@ -22,12 +22,12 @@ from itertools import groupby
 
 import numpy as np
 
-from docker_options import Options, OptionSetter, keywords_list
-from errors import InputError
-from hypermolecule_class import Hypermolecule, Pivot
-from operators import operate
-from settings import CALCULATOR, DEFAULT_LEVELS, PROCS
-from utils import ase_view, cartesian_product
+from tscode.docker_options import Options, OptionSetter, keywords_list
+from tscode.errors import InputError
+from tscode.hypermolecule_class import Hypermolecule, Pivot
+from tscode.operators import operate
+from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS
+from tscode.utils import ase_view, cartesian_product
 
 class Docker:
     '''

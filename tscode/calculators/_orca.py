@@ -18,9 +18,9 @@ GNU General Public License for more details.
 from subprocess import DEVNULL, STDOUT, check_call
 
 from cclib.io import ccread
-from settings import COMMANDS
-from solvents import get_solvent_line
-from utils import clean_directory, pt
+from tscode.settings import COMMANDS
+from tscode.solvents import get_solvent_line
+from tscode.utils import clean_directory, pt
 
 
 def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, solvent=None, title='temp', read_output=True):

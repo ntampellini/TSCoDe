@@ -25,8 +25,8 @@ Nicolo' Tampellini - nicolo.tampellini@yale.edu
 if __name__ == '__main__':
 
     import os
-    from docker import Docker
-    from run import RunEmbedding
+    from tscode.docker import Docker
+    from tscode.run import RunEmbedding
     import argparse
 
     usage = '''python -m tscode [-h] [-s] [-t] inputfile [-n NAME]
@@ -52,7 +52,7 @@ if __name__ == '__main__':
         parser.error("One of the following arguments are required: inputfile, -t, -s.")
 
     if args.setup:
-        from modify_settings import run_setup
+        from tscode.modify_settings import run_setup
         run_setup()
         print('\nTSCoDe setup performed correctly.')
         quit()
@@ -61,7 +61,7 @@ if __name__ == '__main__':
         print('No citation link is available for TSCoDe yet. You can link to the code on https://www.github.com/ntampellini/TSCoDe')
 
     if args.test:
-        from tests import run_tests
+        from tscode.tests import run_tests
         run_tests()
         quit()
 
