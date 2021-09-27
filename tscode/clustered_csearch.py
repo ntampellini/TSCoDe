@@ -150,7 +150,7 @@ def _is_ester_o(index, graph):
     '''
     if graph.nodes[index]['atomnos'] == 8:
         nb = neighbors(graph, index)
-        if not 1 in nb:
+        if 1 not in nb:
             for n in nb:
                 if graph.nodes[n]['atomnos'] == 6:
                     nb_nb = neighbors(graph, n)
@@ -308,7 +308,7 @@ def _group_torsions(coords, torsions, max_size=3):
         if max([len(group) for group in output]) <= max_size:
             break
 
-    output = sorted(output, key=lambda x: len(x))
+    output = sorted(output, key=len)
     # largest groups last
     
     return output
@@ -404,7 +404,7 @@ def clustered_csearch(coords,
             mask[s] = compenetration_check(structure)
 
         new_structures = new_structures[mask]
-        for_comp = np.count_nonzero(mask == False)
+        for_comp = np.count_nonzero(~mask)
 
         logfunction(f'-> Group {tg+1}/{len(grouped_torsions)} - {len(torsions_group)} bonds, ' +
                     f'{[t.n_fold for t in torsions_group]} n-folds, {len(starting_points)} ' + 
@@ -417,9 +417,9 @@ def clustered_csearch(coords,
             t_start = time.time()
 
             energies = np.zeros(new_structures.shape[0])
-            for c, coords in enumerate(deepcopy(new_structures)):
+            for c, new_coords in enumerate(deepcopy(new_structures)):
 
-                opt_coords, energy, success = optimize(coords,
+                opt_coords, energy, success = optimize(new_coords,
                                                         atomnos,
                                                         calc,
                                                         method=method,
@@ -530,63 +530,3 @@ def _write_torsion_vmd(coords, atomnos, constrained_indexes, grouped_torsions):
 
 
         f.write(s)
-
-if __name__ == '__main__':
-
-    import sys
-    import time
-
-    from cclib.io import ccread
-
-    from hypermolecule_class import align_structures
-    from tscode.utils import time_to_string, write_xyz
-
-
-    def main(filename):
-        # data = ccread(r'C:\Users\Nik\Desktop\complete\ts1.xyz')
-        # constrained_indexes = np.array([[133, 168], [23, 151], [61, 130]])
-
-        # data = ccread(r'C:\Users\Nik\Desktop\miller\pep\pep.xyz')
-        constrained_indexes = np.array([])
-
-        # data = ccread(r'C:\Users\Nik\Desktop\complete\acid_ensemble.xyz')
-        # constrained_indexes = np.array([])
-
-        # data = ccread(r'C:\Users\Nik\Desktop\Coding\TSCoDe\old\Resources\maleimide.xyz')
-        # constrained_indexes = np.array([])    
-
-        data = ccread(filename)
-        assert data is not None, 'ops'
-        # constrained_indexes = np.array([])
-
-        t_start = time.time()
-        new_structs = clustered_csearch(data.atomcoords[0],
-                                        data.atomnos,
-                                        constrained_indexes,
-                                        # ff_opt=True,
-                                        mode=1,
-                                        n=20,
-                                        )
-
-        print(f'Run took {time_to_string(time.time()-t_start)}')
-
-        with open('conf_test.xyz', 'w') as f:
-            for s in align_structures(new_structs, indexes=constrained_indexes.ravel()):
-                write_xyz(s, data.atomnos, f)
-
-    import cProfile
-    import os
-    from pstats import Stats
-
-    cProfile.run("main(sys.argv[1])", "output.dat")
-
-    with open("output_time.txt", "w") as f:
-        p = Stats("output.dat", stream=f)
-        p.sort_stats("time").print_stats()
-
-    with open("output_cumtime.txt", "w") as f:
-        p = Stats("output.dat", stream=f)
-        p.sort_stats("cumtime").print_stats()
-
-    # os.system("notepad output_time.txt")
-    os.system("notepad output_cumtime.txt")

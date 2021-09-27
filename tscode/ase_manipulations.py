@@ -553,7 +553,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
            If it did, returns the initial molecule.
     '''
 
-    identifier = np.sum(original_mol.atomcoords[0])
+    identifier = np.sum(original_mol.atomcoords[conf])
 
     if hasattr(docker, "ase_bent_mols_dict"):
         cached = docker.ase_bent_mols_dict.get((identifier, tuple(sorted(pivot.index)), round(threshold, 3)))
@@ -589,104 +589,99 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
     neighbors_of_1 = neighbors(original_mol.graph, i1)
     neighbors_of_2 = neighbors(original_mol.graph, i2)
 
-    mols = [deepcopy(original_mol) for _ in original_mol.atomcoords]
-    for m, mol in enumerate(mols):
-        mol.atomcoords = np.array([mol.atomcoords[m]])
-
+    mol = deepcopy(original_mol)
     final_mol = deepcopy(original_mol)
 
-    for conf, mol in enumerate(mols):
+    for p in mol.pivots[conf]:
+        if p.index == pivot.index:
+            active_pivot = p
+            break
+    
+    dist = np.linalg.norm(active_pivot.pivot)
 
-        for p in mol.pivots[conf]:
+    atoms = Atoms(mol.atomnos, positions=mol.atomcoords[conf])
+
+    atoms.calc = get_ase_calc(docker)
+    
+    if traj is not None:
+        traj_obj = Trajectory(traj + f'_conf{conf}.traj',
+                                mode='a',
+                                atoms=orbitalized(atoms,
+                                                np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict[0].values()]),
+                                                active_pivot))
+        traj_obj.write()
+
+    unproductive_iterations = 0
+    break_reason = 'MAX ITER'
+    t_start = time.time()
+
+    for iteration in range(500):
+
+        atoms.positions = mol.atomcoords[0]
+
+        orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict[0].items()}
+
+        orb1, orb2 = active_pivot.start, active_pivot.end
+
+        c1 = OrbitalSpring(i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq=threshold)
+
+        c2 = PreventScramblingConstraint(mol.graph,
+                                            atoms,
+                                            double_bond_protection=docker.options.double_bond_protection,
+                                            fix_angles=docker.options.fix_angles_in_deformation)
+
+        atoms.set_constraint([
+                                c1,
+                                c2,
+                                ])
+
+        opt = BFGS(atoms, maxstep=0.2, logfile=None, trajectory=None)
+
+        try:
+            opt.run(fmax=0.5, steps=1)
+        except ValueError:
+            # Shake did not converge
+            break_reason = 'CRASHED'
+            break
+
+        if traj is not None:
+            traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict[0].values()]))
+            traj_obj.write()
+
+        # check if we are stuck
+        if np.max(np.abs(np.linalg.norm(atoms.get_positions() - mol.atomcoords[0], axis=1))) < 0.01:
+            unproductive_iterations += 1
+
+            if unproductive_iterations == 10:
+                break_reason = 'STUCK'
+                break
+
+        else:
+            unproductive_iterations = 0
+
+        mol.atomcoords[0] = atoms.get_positions()
+
+        # Update orbitals and get temp pivots
+        for index, atom in mol.reactive_atoms_classes_dict[0].items():
+            atom.init(mol, index, update=True, orb_dim=orb_memo[index])
+            # orbitals positions are calculated based on the conformer we are working on
+
+        temp_pivots = docker._get_pivots(mol)[0]
+
+        for p in temp_pivots:
             if p.index == pivot.index:
                 active_pivot = p
                 break
-        
+        # print(active_pivot)
+
         dist = np.linalg.norm(active_pivot.pivot)
+        # print(f'{iteration}. {mol.name} conf {conf}: pivot is {round(dist, 3)} (target {round(threshold, 3)})')
 
-        atoms = Atoms(mol.atomnos, positions=mol.atomcoords[0])
-
-        atoms.calc = get_ase_calc(docker)
-        
-        if traj is not None:
-            traj_obj = Trajectory(traj + f'_conf{conf}.traj',
-                                  mode='a',
-                                  atoms=orbitalized(atoms,
-                                                    np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict[0].values()]),
-                                                    active_pivot))
-            traj_obj.write()
-
-        unproductive_iterations = 0
-        break_reason = 'MAX ITER'
-        t_start = time.time()
-
-        for iteration in range(500):
-
-            atoms.positions = mol.atomcoords[0]
-
-            orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict[0].items()}
-
-            orb1, orb2 = active_pivot.start, active_pivot.end
-
-            c1 = OrbitalSpring(i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq=threshold)
-
-            c2 = PreventScramblingConstraint(mol.graph,
-                                             atoms,
-                                             double_bond_protection=docker.options.double_bond_protection,
-                                             fix_angles=docker.options.fix_angles_in_deformation)
-
-            atoms.set_constraint([
-                                  c1,
-                                  c2,
-                                  ])
-
-            opt = BFGS(atoms, maxstep=0.2, logfile=None, trajectory=None)
-
-            try:
-                opt.run(fmax=0.5, steps=1)
-            except ValueError:
-                # Shake did not converge
-                break_reason = 'CRASHED'
-                break
-
-            if traj is not None:
-                traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict[0].values()]))
-                traj_obj.write()
-
-            # check if we are stuck
-            if np.max(np.abs(np.linalg.norm(atoms.get_positions() - mol.atomcoords[0], axis=1))) < 0.01:
-                unproductive_iterations += 1
-
-                if unproductive_iterations == 10:
-                    break_reason = 'STUCK'
-                    break
-
-            else:
-                unproductive_iterations = 0
-
-            mol.atomcoords[0] = atoms.get_positions()
-
-            # Update orbitals and get temp pivots
-            for index, atom in mol.reactive_atoms_classes_dict[0].items():
-                atom.init(mol, index, update=True, orb_dim=orb_memo[index])
-                # orbitals positions are calculated based on the conformer we are working on
-
-            temp_pivots = docker._get_pivots(mol)[0]
-
-            for p in temp_pivots:
-                if p.index == pivot.index:
-                    active_pivot = p
-                    break
-            # print(active_pivot)
-
-            dist = np.linalg.norm(active_pivot.pivot)
-            # print(f'{iteration}. {mol.name} conf {conf}: pivot is {round(dist, 3)} (target {round(threshold, 3)})')
-
-            if dist - threshold < 0.1:
-                break_reason = 'CONVERGED'
-                break
-            # else:
-                # print('delta is ', round(dist - threshold, 3))
+        if dist - threshold < 0.1:
+            break_reason = 'CONVERGED'
+            break
+        # else:
+            # print('delta is ', round(dist - threshold, 3))
 
         docker.log(f'    {title} - conformer {conf} - {break_reason}{" "*(9-len(break_reason))} ({iteration+1}{" "*(3-len(str(iteration+1)))} iterations, {time_to_string(time.time()-t_start)})', p=False)
 
@@ -715,8 +710,8 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
     final_mol.atomcoords = np.array(output)
 
     # Update orbitals and pivots
-    for conf, _ in enumerate(final_mol.atomcoords):
-        for index, atom in final_mol.reactive_atoms_classes_dict[conf].items():
+    for conf_, _ in enumerate(final_mol.atomcoords):
+        for index, atom in final_mol.reactive_atoms_classes_dict[conf_].items():
             atom.init(final_mol, index, update=True, orb_dim=orb_memo[index])
 
     docker._set_pivots(final_mol)

@@ -651,7 +651,7 @@ def monomolecular_embed(docker):
             for conformer in bent_mol.atomcoords:
                 docker.structures.append(conformer)
 
-    loadbar(len(mol.pivots[c]), len(mol.pivots[c]), prefix=f'Bending structures ')
+    loadbar(1, 1, prefix=f'Bending structures ')
 
     docker.structures = np.array(docker.structures)
 

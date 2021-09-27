@@ -42,7 +42,7 @@ def align_structures(structures:np.array, indexes=None):
 
     reference = structures[0]
     targets = structures[1:]
-    if isinstance(indexes, list) or isinstance(indexes, tuple):
+    if isinstance(indexes, (list, tuple)):
         indexes = np.array(indexes)
 
     indexes = slice(0,len(reference)) if indexes is None or len(indexes) == 0 else indexes.ravel()
@@ -224,7 +224,8 @@ class Hypermolecule:
 
                 self.reactive_atoms_classes_dict[c][index] = atom_type
 
-                if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
+                if self.debug:
+                    print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
                 # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
 
     def _scale_orbs(self, value):
