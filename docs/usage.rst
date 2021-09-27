@@ -170,8 +170,9 @@ ketone carbonyl, then the TSCoDe modelization of the reaction should be
 bimolecular. The first molecule is the ketone-thiourea interaction
 complex while the second one is the metal enolate.
 
-3) Use the csearch> operator or provide conformational ensembles.
-
+3) Use the ``csearch>`` operator or provide conformational
+ensembles.
+   
 4) Understand what atoms are reacting for each structure and record
 their index (**starting from 0!**). If you are unsure of reactive atomic
 indexes, you can run a test input without indexes, and the program will
