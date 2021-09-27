@@ -16,6 +16,9 @@ GNU General Public License for more details.
 
 '''
 
+from settings import CALCULATOR, FF_CALC, FF_OPT_BOOL, MEM_GB, PROCS
+
+
 def run_setup():
     '''
     Invoked by the command
@@ -27,10 +30,12 @@ def run_setup():
 
     import os
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    from tscode.settings import DEFAULT_LEVELS, COMMANDS
+    from tscode.settings import DEFAULT_LEVELS, DEFAULT_FF_LEVELS, COMMANDS
 
     properties = {
-        'OPENBABEL_OPT_BOOL':False,
+        'FF_OPT_BOOL':False,
+        'FF_CALC':None,
+        'NEW_FF_DEFAULT':None,
         'CALCULATOR':None,
         'NEW_DEFAULT':None,
         'NEW_COMMAND':None,
@@ -41,41 +46,50 @@ def run_setup():
     def ask(text, accepted=('y','n'), default='n'):
         text = '--> ' + text
         if accepted is None:
-            return input(text)
+            answer = input(text)
+            print()
+            return answer
         answer = None
         while answer not in accepted:
             answer = input(text)
             answer = answer if answer != '' else default
+        print()
         return answer
+
+    tag_dict = {
+        'mop':'MOPAC',
+        'orca':'ORCA',
+        'gau':'GAUSSIAN',
+        'xtb':'XTB',
+        'ob':'OB',
+    }
 
     print('\nTSCoDe setup:\n')
 
     #########################################################################################
 
-    answer = ask('Would you like to use the OpenBabel Force Field implementation? y/[n]: ')
-    if answer == 'y':
-        properties['OPENBABEL_OPT_BOOL'] = True
+    answer = ask('What Force Field calculator would you like to use?\n- XTB -> xtb\n- Openbabel -> ob\n- Gaussian -> gau\n'
+                 '- None -> none\n\nAnswer [xtb]/ob/gau/none: ', accepted=('xtb', 'ob', 'gau', 'none'), default='xtb')
+
+    if answer != 'none':
+        properties['FF_OPT_BOOL'] = True
+        properties['FF_CALC'] = tag_dict[answer]
+
+        answer = ask((f'The default level for {properties["FF_CALC"]} force field calculations is \'{DEFAULT_FF_LEVELS[properties["FF_CALC"]]}\'. ' +
+                       'If you would like to change it, type it here, otherwise press enter : '), accepted=None)
+        if answer != '':
+            properties['NEW_FF_DEFAULT'] = answer
 
     #########################################################################################
 
-    answer = ask('What calculator would like to use?\n- MOPAC -> m\n- ORCA -> o\n- Gaussian -> g\n- XTB -> x\n\nAnswer m/o/g/[x]: ',
-                accepted=('m','o','g','x'), default='x')
+    answer = ask('What calculator would like to use?\n- MOPAC -> mop\n- ORCA -> orca\n- Gaussian -> gau\n- XTB -> xtb\n\nAnswer mop/orca/gau/[xtb]: ',
+                accepted=('mop','orca','gau','xtb'), default='xtb')
 
-    if answer == 'm':
-        properties['CALCULATOR'] = 'MOPAC'
-
-    elif answer == 'o':
-        properties['CALCULATOR'] = 'ORCA'
-
-    elif answer == 'g':
-        properties['CALCULATOR'] = 'GAUSSIAN'
-
-    elif answer == 'x':
-        properties['CALCULATOR'] = 'XTB'
+    properties['CALCULATOR'] = tag_dict[answer]
 
     #########################################################################################
 
-    answer = ask((f'The default level for {properties["CALCULATOR"]} calculations is {DEFAULT_LEVELS[properties["CALCULATOR"]]}. ' +
+    answer = ask((f'The default level for {properties["CALCULATOR"]} calculations is \'{DEFAULT_LEVELS[properties["CALCULATOR"]]}\'. ' +
                 'If you would like to change it, type it here, otherwise press enter : '), accepted=None)
     if answer != '':
         properties['NEW_DEFAULT'] = answer
@@ -107,6 +121,7 @@ def run_setup():
         'ORCA':2,
         'GAUSSIAN':3,
         'XTB':4,
+        'OB':5,
     }
 
     q = "\'"
@@ -118,15 +133,27 @@ def run_setup():
 
     for l, line in enumerate(old_lines):
 
-        if 'OPENBABEL_OPT_BOOL =' in line:
-            lines[l] = 'OPENBABEL_OPT_BOOL = ' + str(properties['OPENBABEL_OPT_BOOL']) + '\n'
+        if 'FF_OPT_BOOL =' in line:
+            lines[l] = 'FF_OPT_BOOL = ' + str(properties['FF_OPT_BOOL']) + '\n'
+            FF_OPT_BOOL = properties['FF_OPT_BOOL']
+
+        if 'FF_CALC =' in line:
+            lines[l] = 'FF_CALC = ' + q + str(properties['FF_CALC']) + q + '\n'
+            FF_CALC = properties['FF_CALC']
 
         elif 'CALCULATOR =' in line:
             lines[l] = 'CALCULATOR = ' + q + properties['CALCULATOR'] + q + '\n'
+            CALCULATOR = properties['CALCULATOR']
 
         elif 'DEFAULT_LEVELS = {' in line:
             if properties['NEW_DEFAULT'] is not None:
                 lines[l+rank[properties['CALCULATOR']]] = ' '*4 + q + properties['CALCULATOR'] + q + ':' + q + properties['NEW_DEFAULT'] + q + ',\n'
+                DEFAULT_LEVELS[CALCULATOR] = properties['NEW_DEFAULT']
+
+        elif 'DEFAULT_FF_LEVELS = {' in line:
+            if properties['NEW_FF_DEFAULT'] is not None:
+                lines[l+rank[properties['FF_CALC']]] = ' '*4 + q + properties['FF_CALC'] + q + ':' + q + properties['NEW_FF_DEFAULT'] + q + ',\n'
+                DEFAULT_FF_LEVELS[FF_CALC] = properties['NEW_FF_DEFAULT']
 
         elif 'COMMANDS = {' in line:
             if properties['NEW_COMMAND'] is not None:
@@ -134,9 +161,25 @@ def run_setup():
 
         elif 'PROCS =' in line:
             lines[l] = 'PROCS = ' + str(properties['PROCS']) + '\n'
+            PROCS = properties['PROCS']
 
         elif 'MEM_GB =' in line:
             lines[l] = 'MEM_GB = ' + str(properties['MEM_GB']) + '\n'
+            MEM_GB = properties['MEM_GB']
 
     with open('settings.py', 'w') as f:
         f.write(''.join(lines))
+
+    print('\nTSCoDe setup performed correctly.')
+
+    ff = f'{FF_CALC}/{DEFAULT_FF_LEVELS[FF_CALC]}' if FF_OPT_BOOL else 'Turned off'
+    opt = f'{CALCULATOR}/{DEFAULT_LEVELS[CALCULATOR]}'
+    s = f'  FF    : {ff}\n  OPT   : {opt}'
+
+    if CALCULATOR in ('GAUSSIAN', 'ORCA'):
+        s += f'\n  PROCS : {PROCS}'
+
+        if CALCULATOR == 'GAUSSIAN':
+            s += f'\n  MEM   : {MEM_GB} GB'
+
+    print(s)

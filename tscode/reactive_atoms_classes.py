@@ -28,7 +28,7 @@ class Single:
     def __repr__(self):
         return 'Single Bond'
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
         '''
         '''
         self.index = i
@@ -36,8 +36,8 @@ class Single:
         neighbors_indexes = neighbors(mol.graph, i)
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.other = mol.atomcoords[atomcoords_index][neighbors_indexes][0]
+        self.coord = mol.atomcoords[conf][i]
+        self.other = mol.atomcoords[conf][neighbors_indexes][0]
 
         if not mol.sp3_sigmastar:
             self.orb_vecs = np.array([norm(self.coord - self.other)])
@@ -51,12 +51,12 @@ class Single:
                         break
             # obtain the reference partner index
 
-            partner = mol.atomcoords[atomcoords_index][parnter_index]
+            partner = mol.atomcoords[conf][parnter_index]
             pivot = norm(partner - self.coord)
 
             neighbors_of_partner = neighbors(mol.graph, parnter_index)
             neighbors_of_partner.remove(i)
-            orb_vec = norm(mol.atomcoords[atomcoords_index][neighbors_of_partner[0]] - partner)
+            orb_vec = norm(mol.atomcoords[conf][neighbors_of_partner[0]] - partner)
             orb_vec = orb_vec - orb_vec @ pivot * pivot
 
             steps = 3 # number of total orbitals
@@ -82,7 +82,7 @@ class Sp2:
     def __repr__(self):
         return f'sp2'
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
         '''
         '''
         self.index = i
@@ -92,8 +92,8 @@ class Sp2:
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+        self.coord = mol.atomcoords[conf][i]
+        self.others = mol.atomcoords[conf][neighbors_indexes]
 
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
         self.orb_vec = norm(np.mean(np.array([np.cross(norm(self.vectors[0]), norm(self.vectors[1])),
@@ -121,14 +121,14 @@ class Sp3:
     def __repr__(self):
         return 'sp3'
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
 
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = neighbors(mol.graph, i)
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+        self.coord = mol.atomcoords[conf][i]
+        self.others = mol.atomcoords[conf][neighbors_indexes]
         
         if not mol.sp3_sigmastar:
 
@@ -179,11 +179,11 @@ class Sp3:
                         break
             # obtain the reference partner index
 
-            pivot = norm(mol.atomcoords[atomcoords_index][parnter_index] - self.coord)
+            pivot = norm(mol.atomcoords[conf][parnter_index] - self.coord)
 
             other_neighbors = deepcopy(neighbors_indexes)
             other_neighbors.remove(parnter_index)
-            orb_vec = norm(mol.atomcoords[atomcoords_index][other_neighbors[0]] - self.coord)
+            orb_vec = norm(mol.atomcoords[conf][other_neighbors[0]] - self.coord)
             orb_vec = orb_vec - orb_vec @ pivot * pivot
 
             steps = 3 # number of total orbitals
@@ -247,7 +247,7 @@ class Ether:
     def __repr__(self):
         return 'Ether'
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
         '''
         '''
         self.index = i
@@ -257,8 +257,8 @@ class Ether:
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+        self.coord = mol.atomcoords[conf][i]
+        self.others = mol.atomcoords[conf][neighbors_indexes]
 
         self.orb_vecs = self.others - self.coord # vectors connecting center to each of the two substituents
 
@@ -275,7 +275,8 @@ class Ether:
 
             orb_mat = rot_mat_from_pointer(np.mean(self.orb_vecs, axis=0), 90) @ rot_mat_from_pointer(norm(np.cross(self.orb_vecs[0], self.orb_vecs[1])), 180)
 
-            self.orb_vecs = np.array([orb_mat @ v for v in self.orb_vecs])
+            # self.orb_vecs = np.array([orb_mat @ v for v in self.orb_vecs])
+            self.orb_vecs = (orb_mat @ self.orb_vecs.T).T
             
             self.center = self.orb_vecs + self.coord
             # two vectors defining the position of the two orbital lobes centers
@@ -286,7 +287,7 @@ class Ketone:
     def __repr__(self):
         return 'Ketone'
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
         '''
         '''
         self.index = i
@@ -295,8 +296,8 @@ class Ketone:
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.other = mol.atomcoords[atomcoords_index][neighbors_indexes][0]
+        self.coord = mol.atomcoords[conf][i]
+        self.other = mol.atomcoords[conf][neighbors_indexes][0]
 
         self.vector = self.other - self.coord # vector connecting center to substituent
 
@@ -318,11 +319,11 @@ class Ketone:
             # if it is a normal ketone (or an enolate), n orbital lobes must be coplanar with
             # atoms connecting to ketone C atom, or p lobes must be placed accordingly
 
-                a1 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[0]]
-                a2 = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[1]]
+                a1 = mol.atomcoords[conf][neighbors_of_neighbor_indexes[0]]
+                a2 = mol.atomcoords[conf][neighbors_of_neighbor_indexes[1]]
                 pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
 
-                if mol.sigmatropic:
+                if mol.sigmatropic[conf]:
                     # two p lobes
                     self.center = np.concatenate(([pivot*orb_dim], [-pivot*orb_dim]))
 
@@ -336,8 +337,8 @@ class Ketone:
                 ketene_sub_indexes = neighbors(mol.graph, neighbors_of_neighbor_indexes[0])
                 ketene_sub_indexes.remove(neighbors_indexes[0])
 
-                ketene_sub_coords = mol.atomcoords[atomcoords_index][ketene_sub_indexes[0]]
-                n_o_n_coords = mol.atomcoords[atomcoords_index][neighbors_of_neighbor_indexes[0]]
+                ketene_sub_coords = mol.atomcoords[conf][ketene_sub_indexes[0]]
+                n_o_n_coords = mol.atomcoords[conf][neighbors_of_neighbor_indexes[0]]
 
                 # vector connecting ketene R with C (O=C=C(R)R)
                 v = (ketene_sub_coords - n_o_n_coords)
@@ -361,7 +362,7 @@ class Imine:
     def __repr__(self):
         return 'Imine'
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
         '''
         '''
         self.index = i
@@ -371,8 +372,8 @@ class Imine:
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+        self.coord = mol.atomcoords[conf][i]
+        self.others = mol.atomcoords[conf][neighbors_indexes]
 
         self.vectors = self.others - self.coord # vector connecting center to substituent
 
@@ -385,7 +386,7 @@ class Imine:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
         
-            if mol.sigmatropic:
+            if mol.sigmatropic[conf]:
                 # two p lobes
                 p_lobe = norm(np.cross(self.vectors[0], self.vectors[1]))*orb_dim
                 self.orb_vecs = np.concatenate(([p_lobe], [-p_lobe]))
@@ -403,7 +404,7 @@ class Sp_or_carbene:
     def __repr__(self):
         return self.type
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
 
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
@@ -411,8 +412,8 @@ class Sp_or_carbene:
         
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
 
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+        self.coord = mol.atomcoords[conf][i]
+        self.others = mol.atomcoords[conf][neighbors_indexes]
 
         self.vectors = self.others - self.coord # vector connecting center to substituent
 
@@ -450,13 +451,13 @@ class Sp_or_carbene:
             neighbors_of_neighbors_indexes[1].remove(i)
                 
             if len(neighbors_of_neighbors_indexes[0]) == 2:
-                substituent = mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[0][0]]
-                ketene_atom = mol.atomcoords[atomcoords_index][neighbors_indexes[0]]
+                substituent = mol.atomcoords[conf][neighbors_of_neighbors_indexes[0][0]]
+                ketene_atom = mol.atomcoords[conf][neighbors_indexes[0]]
                 self.ketene_ref = substituent - ketene_atom
 
             elif len(neighbors_of_neighbors_indexes[1]) == 2:
-                substituent = mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[1][0]]
-                ketene_atom = mol.atomcoords[atomcoords_index][neighbors_indexes[1]]
+                substituent = mol.atomcoords[conf][neighbors_of_neighbors_indexes[1][0]]
+                ketene_atom = mol.atomcoords[conf][neighbors_indexes[1]]
                 self.ketene_ref = substituent - ketene_atom
 
             else:
@@ -485,8 +486,8 @@ class Sp_or_carbene:
                     # versor connecting reactive atom neighbors
                     
                     if self.allene:
-                        ref = (mol.atomcoords[atomcoords_index][neighbors_of_neighbors_indexes[0][0]] -
-                               mol.atomcoords[atomcoords_index][neighbors_indexes[0]])
+                        ref = (mol.atomcoords[conf][neighbors_of_neighbors_indexes[0][0]] -
+                               mol.atomcoords[conf][neighbors_indexes[0]])
                     else:
                         ref = self.ketene_ref
 
@@ -524,15 +525,15 @@ class Metal:
     def __repr__(self):
         return 'Metal'
 
-    def init(self, mol, i, update=False, orb_dim=None, atomcoords_index=0) -> None:
+    def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
 
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indexes = neighbors(mol.graph, i)
         
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
-        self.coord = mol.atomcoords[atomcoords_index][i]
-        self.others = mol.atomcoords[atomcoords_index][neighbors_indexes]
+        self.coord = mol.atomcoords[conf][i]
+        self.others = mol.atomcoords[conf][neighbors_indexes]
 
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
 
@@ -540,7 +541,7 @@ class Metal:
         # v1 connects first bonded atom to the metal itself
 
         neighbor_of_neighbor_index = neighbors(mol.graph, neighbors_indexes[0])[0]
-        v2 = mol.atomcoords[atomcoords_index][neighbor_of_neighbor_index] - self.coord
+        v2 = mol.atomcoords[conf][neighbor_of_neighbor_index] - self.coord
         # v2 connects first neighbor of the first neighbor to the metal itself
 
         self.orb_vec = norm(rot_mat_from_pointer(np.cross(v1, v2), 120) @ v1)

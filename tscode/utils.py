@@ -303,11 +303,11 @@ def ase_view(mol):
     from ase.gui.images import Images
 
     if mol.hyper:
-        centers = np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()])
-        atomnos = np.concatenate((mol.atomnos, [0 for _ in centers]))
         images = []
 
-        for coords in mol.atomcoords:
+        for c, coords in enumerate(mol.atomcoords):
+            centers = np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict[c].values()])
+            atomnos = np.concatenate((mol.atomnos, [0 for _ in centers]))
             totalcoords = np.concatenate((coords, centers))
             images.append(Atoms(atomnos, positions=totalcoords))
 
@@ -386,8 +386,11 @@ def neighbors(graph, index):
     neighbors.remove(index)
     return neighbors
 
-def is_sigmatropic(mol):
+def is_sigmatropic(mol, conf):
     '''
+    mol: Hypermolecule object
+    conf: conformer index
+
     A hypermolecule is considered sigmatropic when:
     - has 2 reactive atoms
     - they are of sp2 or analogous types
@@ -408,9 +411,9 @@ def is_sigmatropic(mol):
     if len(mol.reactive_indexes) == 2:
 
         i1, i2 = mol.reactive_indexes
-        if np.linalg.norm(mol.atomcoords[0][i1] - mol.atomcoords[0][i2]) < 3:
+        if np.linalg.norm(mol.atomcoords[conf][i1] - mol.atomcoords[conf][i2]) < 3:
 
-            if all([str(r_atom) in sp2_types for r_atom in mol.reactive_atoms_classes_dict.values()]):
+            if all([str(r_atom) in sp2_types for r_atom in mol.reactive_atoms_classes_dict[conf].values()]):
 
                 paths = nx.all_simple_paths(mol.graph, i1, i2)
 
@@ -446,7 +449,7 @@ def is_vicinal(mol):
 
         i1, i2 = mol.reactive_indexes
 
-        if all([str(r_atom) in vicinal_types for r_atom in mol.reactive_atoms_classes_dict.values()]):
+        if all([str(r_atom) in vicinal_types for r_atom in mol.reactive_atoms_classes_dict[0].values()]):
             if i1 in neighbors(mol.graph, i2):
                 return True
 
@@ -524,4 +527,34 @@ def graphize(coords, atomnos, mask=None):
                 if np.linalg.norm(coords[i]-coords[j]) < d_min_bond(atomnos[i], atomnos[j]):
                     matrix[i][j] = 1
 
-    return nx.from_numpy_matrix(matrix)
+    graph = nx.from_numpy_matrix(matrix)
+    nx.set_node_attributes(graph, dict(enumerate(atomnos)), 'atomnos')
+
+    return graph
+
+def rotate_dihedral(coords, dihedral, angle, mask=None, indexes_to_be_moved=None):
+    '''
+    Rotate a molecule around a given bond.
+    Atoms that will move are the ones
+    specified by mask or indexes_to_be_moved.
+    If both are None, only the first index of
+    the dihedral iterable is moved.
+
+    angle: angle, in degrees
+    '''
+
+    i1, i2, i3 ,_ = dihedral
+
+    if indexes_to_be_moved is not None:
+        mask = np.array([i in indexes_to_be_moved for i, _ in enumerate(coords)])
+
+    if mask is None:
+        mask = i1
+
+    axis = coords[i2] - coords[i3]
+    mat = rot_mat_from_pointer(axis, angle)
+    center = coords[i3]
+
+    coords[mask] = (mat @ (coords[mask] - center).T).T + center
+
+    return coords

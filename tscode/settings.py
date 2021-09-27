@@ -19,12 +19,29 @@ GNU General Public License for more details.
 # IF YOU MANUALLY EDIT THIS FILE, BE SURE NOT TO
 # CHANGE IDENTATION/WHITESPACES/NEWLINES!
 
-OPENBABEL_OPT_BOOL = False
-# Whether to run Force Field minimization with
-# Openbabel prior to the final one.
-# (set to False if no Openbabel Python bindings are available)
+FF_OPT_BOOL = True
+# Whether to run Force Field optimization with
+# prior to the final one. Set to False if no
+# Openbabel/XTB programs and python bindings
+# are installed.
 
-CALCULATOR = 'MOPAC'
+FF_CALC = 'XTB'
+# Calculator to perform Force Field optimizations.
+# Possibilites are:
+# 'OB' : Openbabel UFF and MMFF methods
+# 'GAUSSIAN' : FF methods supported by Gaussian (UFF, MMFF)
+# 'XTB' : GFN-FF method
+
+DEFAULT_FF_LEVELS = {
+    ### DO NOT REMOVE
+    ### THESE TWO LINES
+    'GAUSSIAN':'UFF',
+    'XTB':'GFN-FF',
+    'OB':'UFF',
+}
+# Default levels used to run calculations, overridden by FFLEVEL keyword
+
+CALCULATOR = 'XTB'
 # Calculator used to run geometry optimization.
 # Possibilites are:
 # 'MOPAC' : Semiempirical MOPAC2016 (PM7, PM6-DH3, ...)
@@ -52,4 +69,4 @@ PROCS = 1
 
 MEM_GB = 1
 # Memory allocated for each job (Gaussian only). If you experience problems
-# in running Gaussian calculation, try setting PROCS to 1 and MEM_GB to 1.
+# in running Gaussian calculation, try setting PROCS to 1 and MEM_GB to 0.5.

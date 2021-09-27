@@ -84,7 +84,7 @@ class Docker:
         # appending to each reactive atom the cumulative
         # number indexing in the TS context
 
-        self._read_pairings(filename)
+        self._read_pairings()
         self._set_options(filename)
         self._calculator_setup()
         self._apply_operators()
@@ -174,12 +174,13 @@ class Docker:
 
         for i, mol in enumerate(self.objects):
             if mol.hyper:
-                for r_atom in mol.reactive_atoms_classes_dict.values():
-                    r_atom.cumnum = r_atom.index
-                    if i > 0:
-                        r_atom.cumnum += sum(self.ids[:i])
+                for c, _ in enumerate(mol.atomcoords):
+                    for r_atom in mol.reactive_atoms_classes_dict[c].values():
+                        r_atom.cumnum = r_atom.index
+                        if i > 0:
+                            r_atom.cumnum += sum(self.ids[:i])
 
-    def _read_pairings(self, filename):
+    def _read_pairings(self):
         '''
         Reads atomic pairings to be respected from the input file, if any are present.
         '''
@@ -293,13 +294,14 @@ class Docker:
                 raise SyntaxError(f'Letter \'{letter}\' is specified in DIST but not present in molecules string.')
 
             for i, mol in enumerate(self.objects):
+                for c, _ in enumerate(mol.atomcoords):
 
-                r_index = self.pairings_dict[i].get(letter)
-                if r_index is None:
-                    continue
+                    r_index = self.pairings_dict[i].get(letter)
+                    if r_index is None:
+                        continue
 
-                r_atom = mol.reactive_atoms_classes_dict[r_index]
-                r_atom.init(mol, r_index, update=True, orb_dim=dist/2)
+                    r_atom = mol.reactive_atoms_classes_dict[c][r_index]
+                    r_atom.init(mol, r_index, update=True, orb_dim=dist/2)
                                 
             # Set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
             # user-specified one, as the final atomic distances will be given by two halves of this length.
@@ -313,47 +315,49 @@ class Docker:
         '''
         mol.pivots = self._get_pivots(mol)
 
-        if len(mol.pivots) == 2:
-        # reactive atoms have one and two centers,
-        # respectively. Apply bridging carboxylic acid correction.
-            symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict.values()]
-            if 'H' in symbols:
-                if ('O' in symbols) or ('S' in symbols):
-                    if max([np.linalg.norm(p.pivot)/self.options.shrink_multiplier for p in mol.pivots]) < 4.5:
-                        class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict.values()]
-                        if 'Single Bond' in class_types and 'Ketone' in class_types:
-                        # if we have a bridging acid, remove the longest of the two pivots,
-                        # as it would lead to weird structures
-                            norms = np.linalg.norm([p.pivot for p in mol.pivots], axis=1)
-                            for sample in norms:
-                                to_keep = [i for i in norms if sample >= i]
-                                if len(to_keep) == 1:
-                                    mask = np.array([i in to_keep for i in norms])
-                                    mol.pivots = mol.pivots[mask]
-                                    break
+        for c, _ in enumerate(mol.atomcoords):
 
-        if self.options.suprafacial:
-            if len(mol.pivots) == 4:
-            # reactive atoms have two centers each.
-            # Applying suprafacial correction, only keeping
-            # the shorter two, as they SHOULD be the suprafacial ones
-                norms = np.linalg.norm([p.pivot for p in mol.pivots], axis=1)
-                for sample in norms:
-                    to_keep = [i for i in norms if sample >= i]
-                    if len(to_keep) == 2:
-                        mask = np.array([i in to_keep for i in norms])
-                        mol.pivots = mol.pivots[mask]
-                        break
+            if len(mol.pivots[c]) == 2:
+            # reactive atoms have one and two centers,
+            # respectively. Apply bridging carboxylic acid correction.
+                symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict[c].values()]
+                if 'H' in symbols:
+                    if ('O' in symbols) or ('S' in symbols):
+                        if max([np.linalg.norm(p.pivot)/self.options.shrink_multiplier for p in mol.pivots[c]]) < 4.5:
+                            class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict[c].values()]
+                            if 'Single Bond' in class_types and 'Ketone' in class_types:
+                            # if we have a bridging acid, remove the longest of the two pivots,
+                            # as it would lead to weird structures
+                                norms = np.linalg.norm([p.pivot for p in mol.pivots[c]], axis=1)
+                                for sample in norms:
+                                    to_keep = [i for i in norms if sample >= i]
+                                    if len(to_keep) == 1:
+                                        mask = np.array([i in to_keep for i in norms])
+                                        mol.pivots[c] = mol.pivots[c][mask]
+                                        break
 
-        if mol.sp3_sigmastar:
-            pivots_lengths = [np.linalg.norm(pivot.pivot) for pivot in mol.pivots]
-            shortest_length = min(pivots_lengths)
-            mask = np.array([(i - shortest_length) < 1e-5 for i in pivots_lengths])
-            mol.pivots = mol.pivots[mask]
-        # if mol is reacting with a sigmastar orbital (two connected reactive Sp3/Single
-        # Bond centers) then remove all pivots that are not the shortest. This ensures
-        # a sort of "suprafaciality" to the pivots used, preventing the embed of
-        # structures that would surely compenetrate
+            if self.options.suprafacial:
+                if len(mol.pivots[c]) == 4:
+                # reactive atoms have two centers each.
+                # Applying suprafacial correction, only keeping
+                # the shorter two, as they should be the suprafacial ones
+                    norms = np.linalg.norm([p.pivot for p in mol.pivots[c]], axis=1)
+                    for sample in norms:
+                        to_keep = [i for i in norms if sample >= i]
+                        if len(to_keep) == 2:
+                            mask = np.array([i in to_keep for i in norms])
+                            mol.pivots[c] = mol.pivots[c][mask]
+                            break
+
+            if mol.sp3_sigmastar:
+                pivots_lengths = [np.linalg.norm(pivot.pivot) for pivot in mol.pivots[c]]
+                shortest_length = min(pivots_lengths)
+                mask = np.array([(i - shortest_length) < 1e-5 for i in pivots_lengths])
+                mol.pivots[c] = mol.pivots[c][mask]
+            # if mol is reacting with a sigmastar orbital (two connected reactive Sp3/Single
+            # Bond centers) then remove all pivots that are not the shortest. This ensures
+            # the "suprafaciality" to the pivots used, preventing the embed of
+            # impossible bonding structures
 
     def _get_pivots(self, mol):
         '''
@@ -361,42 +365,42 @@ class Docker:
         (Cyclical embed) Function that yields the molecule pivots. Called by _set_pivots
         and in pre-conditioning (deforming, bending) the molecules in ase_bend.
         '''
-        pivots_list = []
+        pivots_list = [[] for _ in mol.atomcoords]
 
-        if len(mol.reactive_atoms_classes_dict) == 2:
-        # most molecules: dienes and alkenes for Diels-Alder, conjugated ketones for acid-bridged additions
+        for c, _ in enumerate(mol.atomcoords):
 
-            indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict.values()])
-            # indexes of vectors in reactive_atom.center. Reactive atoms are 2 and so for one center on atom 0 and 
-            # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
+            if len(mol.reactive_atoms_classes_dict[c]) == 2:
+            # most molecules: dienes and alkenes for Diels-Alder, conjugated ketones for acid-bridged additions
 
-            for i,j in indexes:
-                a1 = list(mol.reactive_atoms_classes_dict.values())[0]
-                c1 = a1.center[i]
+                indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict[c].values()])
+                # indexes of vectors in reactive_atom.center. Reactive atoms are 2 and so for one center on atom 0 and 
+                # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
 
-                a2 = list(mol.reactive_atoms_classes_dict.values())[1]
-                c2 = a2.center[j]
+                for i,j in indexes:
+                    a1, a2 = mol.get_r_atoms(c)
+                    
+                    c1 = a1.center[i]
+                    c2 = a2.center[j]
 
-                pivots_list.append(Pivot(c1, c2, a1, a2, i, j))
+                    pivots_list[c].append(Pivot(c1, c2, a1, a2, i, j))
 
-        elif len(mol.reactive_atoms_classes_dict) == 1:
-        # carbenes, oxygen atom in Prilezhaev reaction, SO2 in classic chelotropic reactions
+            elif len(mol.reactive_atoms_classes_dict[c]) == 1:
+            # carbenes, oxygen atom in Prilezhaev reaction, SO2 in classic chelotropic reactions
 
-            indexes = cartesian_product(*[range(len(list(mol.reactive_atoms_classes_dict.values())[0].center)) for _ in range(2)])
-            indexes = [i for i in indexes if i[0] != i[1] and (sorted(i) == i).all()]
-            # indexes of vectors in reactive_atom.center. Reactive atoms is just one, that builds pivots with itself. 
-            # pivots with the same index or inverse order are discarded. 2 centers on one atom 2 yield just [[0,1]]
-            
-            for i,j in indexes:
-                a1 = list(mol.reactive_atoms_classes_dict.values())[0]
-                c1 = a1.center[i]
+                indexes = cartesian_product(*[range(len(mol.get_r_atoms(c)[0].center)) for _ in range(2)])
+                indexes = [i for i in indexes if i[0] != i[1] and (sorted(i) == i).all()]
+                # indexes of vectors in reactive_atom.center. Reactive atoms is just one, that builds pivots with itself. 
+                # pivots with the same index or inverse order are discarded. 2 centers on one atom 2 yield just [[0,1]]
+                
+                for i,j in indexes:
+                    a1, a2 = mol.get_r_atoms(c)
+                    
+                    c1 = a1.center[i]
+                    c2 = a2.center[j]
 
-                a2 = list(mol.reactive_atoms_classes_dict.values())[0]
-                c2 = a2.center[j]
+                    pivots_list[c].append(Pivot(c1, c2, a1, a2, i, j))
 
-                pivots_list.append(Pivot(c1, c2, a1, a2, i, j))
-
-        return np.array(pivots_list)
+        return [np.array(l) for l in pivots_list]
 
     def _setup(self, p=True):
         '''
@@ -427,9 +431,9 @@ class Docker:
         elif len(self.objects) in (2,3):
         # Setting embed type and calculating the number of conformation combinations based on embed type
 
-            cyclical = all([len(molecule.reactive_atoms_classes_dict) == 2 for molecule in self.objects])
-            chelotropic = sorted([len(molecule.reactive_atoms_classes_dict) for molecule in self.objects]) == [1,2]
-            string = all([len(molecule.reactive_atoms_classes_dict) == 1 for molecule in self.objects]) and len(self.objects) == 2
+            cyclical = all([len(molecule.reactive_atoms_classes_dict[0]) == 2 for molecule in self.objects])
+            chelotropic = sorted([len(molecule.reactive_atoms_classes_dict[0]) for molecule in self.objects]) == [1,2]
+            string = all([len(molecule.reactive_atoms_classes_dict[0]) == 1 for molecule in self.objects]) and len(self.objects) == 2
 
             if cyclical or chelotropic:
 
@@ -438,9 +442,10 @@ class Docker:
                 else:
                     self.embed = 'chelotropic'
                     for mol in self.objects:
-                        for index, atom in mol.reactive_atoms_classes_dict.items():
-                            orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
-                            atom.init(mol, index, update=True, orb_dim=orb_dim + 0.2)
+                        for c, _ in enumerate(mol.atomcoords):
+                            for index, atom in mol.reactive_atoms_classes_dict[c].items():
+                                orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
+                                atom.init(mol, index, update=True, orb_dim=orb_dim + 0.2)
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
                     # be generated a tad too close to each other for how the cyclical embed works          
 
@@ -451,7 +456,7 @@ class Docker:
                     self.options.rotation_steps = self.options.custom_rotation_steps
 
                 self.systematic_angles = cartesian_product(*[range(self.options.rotation_steps+1) for _ in self.objects]) \
-                                         * 2*self.options.rotation_range/self.options.rotation_steps - self.options.rotation_range
+                            * 2*self.options.rotation_range/self.options.rotation_steps - self.options.rotation_range
 
                 for molecule in self.objects:
                     self._set_pivots(molecule)
@@ -464,7 +469,9 @@ class Docker:
                 if hasattr(self.options, 'custom_rotation_steps'):
                 # if user specified a custom value, use it.
                     self.options.rotation_steps = self.options.custom_rotation_steps
-                
+
+                self.systematic_angles = [n * 360 / self.options.rotation_steps for n in range(self.options.rotation_steps)]
+   
             else:
                 raise InputError(('Bad input - The only molecular configurations accepted are:\n' 
                                   '1) One molecule with two reactive centers (monomolecular embed)\n'
@@ -500,15 +507,17 @@ class Docker:
         '''
         l = len(self.objects)
         if l == 1:
-            return int(len(self.objects[0].atomcoords)*
-                       len(self.objects[0].pivots))
+            return int(sum([len(self.objects[0].pivots[c])
+                            for c, _ in enumerate(self.objects[0].atomcoords)]))
 
         if self.embed == 'string':
-            return int(self.options.rotation_steps*
-                       np.prod([len(mol.atomcoords) for mol in self.objects])*
-                       np.prod([len(list(mol.reactive_atoms_classes_dict.values())[0].center) for mol in self.objects]))
+            return int(self.options.rotation_steps*(
+                       np.prod([sum([len(mol.get_r_atoms(conf)[0].center)
+                                     for conf, _ in enumerate(mol.atomcoords)]) 
+                                for mol in self.objects]))
+                      )
 
-        candidates = 2*len(self.systematic_angles)*np.prod([len(mol.atomcoords) if self.options.let else min(len(mol.atomcoords), 5)
+        candidates = 2*len(self.systematic_angles)*np.prod([len(mol.atomcoords) if self.options.let else min(len(mol.atomcoords), 10)
                                                             for mol in self.objects])
         
         if l == 3:
@@ -532,7 +541,7 @@ class Docker:
                     else: # trimolecular, 2 (3) pairings imposed
                         candidates /= 8
 
-        candidates *= np.prod([len(mol.pivots) for mol in self.objects])
+        candidates *= np.prod([len(mol.pivots[0]) for mol in self.objects]) # add sum over len(mol.pivots[c])?
         # The more atomic pivots, the more candidates
 
         return int(candidates)
@@ -571,11 +580,7 @@ class Docker:
         '''
         for input_string in self.options.operators:
 
-            outname = operate(input_string,
-                              self.options.calculator,
-                              self.options.theory_level,
-                              procs=self.options.procs,
-                              logfunction=self.log)
+            outname = operate(input_string, self)
 
             names = [mol.name for mol in self.objects]
             filename = input_string.split('>')[-1]
@@ -588,54 +593,6 @@ class Docker:
 
             self._set_reactive_atoms_cumnums()
             # updating the orbital cumnums
-
-    def get_string_constrained_indexes(self, n):
-        '''
-        Get constrained indexes referring to the transition states, repeated n times.
-        :params n: int
-        :return: list of lists consisting in atomic pairs to be constrained.
-        '''
-        # Two molecules, string algorithm, one constraint for all, repeated n times
-        return np.array([[[int(self.objects[0].reactive_indexes[0]),
-                           int(self.objects[1].reactive_indexes[0] + self.ids[0])]] for _ in range(n)])
-
-    def get_cyclical_reactive_indexes(self, pivots, n):
-        '''
-        :params n: index of the n-th disposition of vectors yielded by the polygonize function.
-        :return: list of index couples, to be constrained during the partial optimization.
-        '''
-
-        cumulative_pivots_ids = [[p.start_atom.cumnum, p.end_atom.cumnum] for p in pivots]
-
-        def orient(i,ids,n):
-            if swaps[n][i]:
-                return list(reversed(ids))
-            return ids
-
-        if len(self.objects) == 2:
-
-            swaps = [(0,0),
-                     (0,1)]
-
-            oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
-            couples = [[oriented[0][0], oriented[1][0]], [oriented[0][1], oriented[1][1]]]
-
-            return couples
-
-        swaps = [(0,0,0),
-                    (0,0,1),
-                    (0,1,0),
-                    (0,1,1),
-                    (1,0,0),
-                    (1,1,0),
-                    (1,0,1),
-                    (1,1,1)]
-
-        oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
-        couples = [[oriented[0][1], oriented[1][0]], [oriented[1][1], oriented[2][0]], [oriented[2][1], oriented[0][0]]]
-        couples = [sorted(c) for c in couples]
-
-        return couples
 
     def _inspect_structures(self):
         '''

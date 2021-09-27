@@ -26,11 +26,11 @@ one is accepted, like in ``DIST``.
    The more forgiving, the more structures will reach the geometry
    optimization step. Syntax: ``CLASHES(num=3,dist=1.2)``
 
--  **DEBUG** - Outputs more files and information in general.
+-  **DEBUG** - Outputs more intermediate files and information in general.
    Structural adjustments, distance refining and similar processes will
    output ASE ".traj" trajectory files. It will also produce
-   "hypermolecule" ``.xyz`` files of the first conformer of each
-   structure, with dummy atoms (X) in each orbital position.
+   "hypermolecule" ``.xyz`` files for the first conformer of each
+   structure, with dummy atoms (X) in each TSCoDe "orbital" position.
 
 -  **DEEP** - Performs a deeper search, retaining more starting
    points for calculations and smaller turning angles. Equivalent to
@@ -47,6 +47,18 @@ one is accepted, like in ``DIST``.
    monomolecular embeds, where molecular distortion is often great, and
    undesired isomerization processes can occur.
 
+-  **FFCALC** - Overrides default force field calculator in ``settings.py``.
+   Syntax: ``FFCALC=OB``
+
+-  **FFLEVEL** - Manually set the theory level to be used for force field
+   calculations. Default is UFF for Openbabel and Gaussian, GFN-FF for XTB.
+   Standard values can be modified by running the module with the -s flag
+   (recommended way, run >>>python -m tscode -s) or by manually modifying
+   ``settings.py`` (not recommended).
+
+-  **FFOPT** - Manually turn on ``FF=ON`` or off ``FF=OFF`` the force
+   field optimization step, overriding the value in ``settings.py``.
+
 -  **KCAL** - Dihedral embed: when looking for energy maxima scan
    points in order to run berny optimization, ignore scan peaks below
    this threshold value (default is 5 kcal/mol). All other embeds: trim
@@ -54,7 +66,7 @@ one is accepted, like in ``DIST``.
    None). Syntax: ``KCAL=n``, where n can be an integer or float.
 
 -  **LET** - Overrides safety checks that prevent the program from
-   running too large calculations. Also, removes the limit of five
+   running too large calculations. Also, removes the limit of ten
    conformers per molecule in cyclical embeds.
 
 -  **LEVEL** - Manually set the theory level to be used. Default is
@@ -63,10 +75,8 @@ one is accepted, like in ``DIST``.
    to use the syntax of your calculator, as ORCA wants a space between method
    and basis set while Gaussian a forward slash. Syntax:
    ``LEVEL(B3LYP_def2-TZVP)``. Standard values can be modified by running the
-   module with the -s flag or by manually modifying ``settings.py`` (not recommended).
-
--  **MMFF** - Use the Merck Molecular Force Field during the
-   OpenBabel pre-optimization (default is UFF).
+   module with the -s flag (recommended way, run >>>python -m tscode -s)
+   or by manually modifying ``settings.py`` (not recommended).
 
 -  **MTD** - Augments the conformational sampling of transition
    state candidates through the `XTB metadynamics
@@ -78,24 +88,28 @@ one is accepted, like in ``DIST``.
 
 -  **NEB** - Perform an automatical climbing image nudged elastic
    band (CI-NEB) TS search after the partial optimization step,
-   inferring reagents and products for each generated TS pose. These are
-   guessed by approaching the reactive atoms until they are at the right
-   distance, and then partially constrained (reagents) or free
-   (products) optimizations are carried out to get the start and end
-   points for a CI-NEB TS search. For trimolecular transition states,
-   only the first imposed pairing (a) is approached - *i.e.* the C-C
-   reactive distance in the example above. This ``NEB`` option is only
-   really usable for those reactions in which molecules are bound
-   together (or strongly interacting) after the TS, with no additional
-   species involved (co-products). For example, cycloaddition reactions
-   are great candidates while atom transfer reactions (*i.e.*
-   epoxidations) are not. Of course this implementation is not always
-   reliable, and it is provided more as an experimenting tool than a
-   definitive feature.
+   inferring reagents and products for each generated TS pose. For dihedral
+   embeds, that is atropisomer rotations, scan points around the energy
+   maxima are used. For all other embeds, these are guessed by obtaining
+   reagents and products by bonding/distancing reactive atom pairs and
+   making use of different constrained optimizations. For trimolecular
+   transition states with more than one reactive pairing (``a``, ``b``
+   or ``c``, not ``x``, ``y`` and ``z``), only the first, non-NCI imposed
+   pairing (a) is approached - *i.e.* the C-C reactive distance in the
+   example above. This ``NEB`` option is only really usable for those
+   reactions in which molecules are bound together (or strongly interacting)
+   after the TS, with no additional species involved (co-products). 
+   For example, cycloaddition reactions are great candidates while atom
+   transfer reactions (*i.e.* epoxidations) are not. Of course this
+   implementation is not always reliable, and it is provided more as
+   an experimenting tool than a definitive feature.
 
 -  **NEWBONDS** - Manually specify the maximum number of "new bonds"
    that a TS structure candidate can have to be retained and not to be
    considered scrambled. Default is 0. Syntax: ``NEWBONDS=0``
+
+-  **NOEMBED** - Do not embed structures, but use the one in the input
+   as a starting ensemble as if it came out of a TSCoDe embedding phase.
 
 -  **NOOPT** - Skip the optimization steps, directly writing
    structures to file after compenetration and similarity pruning.
@@ -143,10 +157,12 @@ one is accepted, like in ``DIST``.
    cyclical TSs. Thought for Diels-Alder and other cycloaddition
    reactions.
 
+-  **TS** - Uses various scans/saddle algorithms to locate the TS.
+   Useful for
+
 -  **THRESH** - RMSD threshold (Angstroms) for structure pruning.
    The smaller, the more retained structures (default is 1 A). For
    particularly small structures, a value of 0.5 is better suited, and
    it is set by default for TSs with less than 50 atoms. For dihedral
    embeds, the default value is 0.2 A. Syntax: ``THRESH=n``, where n is
    a number.
-

@@ -25,10 +25,16 @@ from scipy.spatial.distance import cdist
 # faster precompiled versions of themselves (Cython/C++/Julia/...)
 # if the necessity ever occurs
 
-def compenetration_check(coords, ids, thresh=1.3, max_clashes=0):
+def compenetration_check(coords, ids=None, thresh=1.3, max_clashes=0) -> bool:
 
     clashes = 0
     # max_clashes clashes is good, max_clashes + 1 is not
+
+    if ids is None:
+        return False if np.count_nonzero(
+                                (cdist(coords,coords) < 0.95) & (
+                                 cdist(coords,coords) > 0)
+                                        ) > max_clashes else True
 
     if len(ids) == 2:
         m1 = coords[0:ids[0]]
@@ -102,7 +108,7 @@ def fast_score(coords, close=1.3, far=3):
     close_contacts = dist_mat[dist_mat < far]
     return np.sum(close_contacts/(close-far) - far/(close-far))
 
-def prune_conformers(structures, atomnos, k=1, max_rmsd=1, max_delta=None):
+def prune_conformers(structures, atomnos, k=1, max_rmsd=0.5, max_delta=None):
     '''
     Group structures into k subgroups and remove the similar ones.
     Similarity occurs for structures with both RMSD < max_rmsd and

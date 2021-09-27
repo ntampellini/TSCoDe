@@ -23,7 +23,7 @@ from cclib.io import ccread
 from tscode.utils import clean_directory, write_xyz
 
 
-def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', procs=None, solvent=None, title='temp', read_output=True):
+def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', solvent=None, title='temp', read_output=True, **kwargs):
     '''
     This function writes an XTB .inp file, runs it with the subprocess
     module and reads its output.
@@ -70,6 +70,9 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', procs=
 
         else:
             flags += f' --alpb {solvent}'
+
+    elif method.upper() in ('GFN-FF', 'GFNFF'):
+        flags += f' --alpb thf'
 
     try:
         check_call(f'xtb --input {title}.inp {title}.xyz {flags} > temp.log 2>&1'.split(), stdout=DEVNULL, stderr=STDOUT)

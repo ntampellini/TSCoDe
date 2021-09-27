@@ -80,12 +80,13 @@ def _get_nci_atomic_pairs(coords, symbols, constrained_indexes, ids):
     '''
     print_list = []
     nci = []
+
     cum_ids = np.cumsum(ids)
 
     for i1, _ in enumerate(coords):
     # check atomic pairs (O-H, N-H, ...)
 
-        start_of_next_mol = cum_ids[next(i for i,n in enumerate(np.cumsum(ids)) if i1 < n)]
+        start_of_next_mol = cum_ids[next(i for i,n in enumerate(cum_ids) if i1 < n)]
         # ensures that we are only taking into account intermolecular NCIs
 
         for i2, _ in enumerate(coords[start_of_next_mol:]):

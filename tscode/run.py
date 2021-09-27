@@ -21,11 +21,6 @@ from copy import deepcopy
 
 import numpy as np
 
-from tscode.settings import OPENBABEL_OPT_BOOL
-
-if OPENBABEL_OPT_BOOL:
-    from calculators._openbabel import openbabel_opt
-
 from tscode.ase_manipulations import ase_adjust_spacings, ase_saddle
 from tscode.calculators._xtb import xtb_metadyn_augmentation
 from tscode.embeds import (cyclical_embed, dihedral_embed, monomolecular_embed,
@@ -76,78 +71,22 @@ class RunEmbedding:
         Generate a series of candidate structures by the proper embed algorithm.
         '''
 
-        if self.embed == 'dihedral':
-            dihedral_embed(self)
-            self.atomnos = self.objects[0].atomnos
+        embed_functions = {
+            'chelotropic' : cyclical_embed,
+            'cyclical' : cyclical_embed,
+            'dihedral' : dihedral_embed,
+            'monomolecular' : monomolecular_embed,
+            'string' : string_embed,
+        }
 
-            if len(self.structures) == 0:
-                s = ('\n--> Dihedral embed did not find any suitable maxima above the set threshold\n'
-                    f'    ({self.options.kcal_thresh} kcal/mol) during the scan procedure. Observe the\n'
-                     '    generated energy plot and try lowering the threshold value (KCAL keyword).')
-                self.log(s)
-                raise ZeroCandidatesError()
+        if self.options.noembed:
+            return
 
+        self.structures = embed_functions[self.embed](self)
+        self.atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
+        # cumulative list of atomic numbers associated with coordinates
 
-        elif self.embed == 'monomolecular':
-            monomolecular_embed(self)
-            self.atomnos = self.objects[0].atomnos
-            self.energies = np.zeros(len(self.structures))
-            self.exit_status = np.zeros(len(self.structures), dtype=bool)
-            self.graphs = [self.objects[0].graph]
-
-            self.constrained_indexes = np.array([[self.objects[0].reactive_indexes] for _ in range(self.candidates)])
-
-        else:
-
-            if self.embed in ('cyclical', 'chelotropic'):
-                embedded_structures = cyclical_embed(self)
-
-                if embedded_structures == []:
-                    s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
-                           '    This is probably because one molecule has two reactive centers at a great distance,\n' +
-                           '    preventing the other two molecules from forming a closed, cyclical structure.')
-                    self.log(s, p=False)
-                    raise ZeroCandidatesError(s)
-
-            else: # self.embed == 'string'
-                embedded_structures = string_embed(self)
-
-
-            clean_directory() # removing temporary files from ase_bend
-
-            self.atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
-            # cumulative list of atomic numbers associated with coordinates
-
-            conf_number = [len(molecule.atomcoords) for molecule in self.objects]
-            conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
-            # first index of each vector is the conformer number of the first molecule and so on
-
-            self.structures = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), len(self.atomnos), 3)) # like atomcoords property, but containing multimolecular arrangements
-            n_of_constraints = self.dispositions_constrained_indexes.shape[1]
-            self.constrained_indexes = np.zeros((int(len(conf_indexes)*int(len(embedded_structures))), n_of_constraints, 2), dtype=int)
-            # we will be getting constrained indexes for each combination of conformations from the general self.disposition_constrained_indexes array
-
-            for geometry_number, geometry in enumerate(embedded_structures):
-
-                for molecule in geometry:
-                    molecule.calc_positioned_conformers()
-
-                for i, conf_index in enumerate(conf_indexes): # 0, [0,0,0] then 1, [0,0,1] then 2, [0,1,1]
-                    count_atoms = 0
-
-                    for molecule_number, conformation in enumerate(conf_index): # (0,0) then (1,0) then (2,0) (first [] of outer for-loop)
-                        coords = geometry[molecule_number].positioned_conformers[conformation]
-                        n = len(geometry[molecule_number].atomnos)
-                        self.structures[geometry_number*len(conf_indexes)+i][count_atoms:count_atoms+n] = coords
-                        self.constrained_indexes[geometry_number*len(conf_indexes)+i] = self.dispositions_constrained_indexes[geometry_number]
-                        count_atoms += n
-            # Calculating new coordinates for embedded_structures and storing them in self.structures
-
-            del self.dispositions_constrained_indexes
-            # cleaning the old, general data on indexes that ignored conformations
-
-        t_end = time.time()
-        self.log(f'Generated {len(self.structures)} transition state candidates ({time_to_string(t_end-self.t_start_run)})\n')
+        self.log(f'Generated {len(self.structures)} transition state candidates ({time_to_string(time.time()-self.t_start_run)})\n')
 
     def compenetration_refining(self):
         '''
@@ -160,8 +99,7 @@ class RunEmbedding:
         mask = np.zeros(len(self.structures), dtype=bool)
         num = len(self.structures)
         for s, structure in enumerate(self.structures):
-            p = True if num > 100 and s % (num // 100) == 0 else False
-            if p:
+            if num > 100 and num % 100 != 0 and s % (num % 100) == 99:
                 loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
             mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
 
@@ -263,9 +201,9 @@ class RunEmbedding:
 
     def force_field_refining(self):
         '''
-        Performs structural optimizations with the UFF or MMFF force field,
-        through the OpenBabel package. Only structures that do not scramble during
-        MM optimization are updated, while others are kept as they are.
+        Performs structural optimizations with the docker force field caculator.
+        Only structures that do not scramble during FF optimization are updated,
+        while the rest are kept as they are.
         '''
 
         ################################################# CHECKPOINT BEFORE MM OPTIMIZATION
@@ -278,13 +216,18 @@ class RunEmbedding:
 
         ################################################# GEOMETRY OPTIMIZATION - FORCE FIELD
 
-        self.log(f'--> Structure optimization ({self.options.openbabel_level} level)')
+        self.log(f'--> Structure optimization ({self.options.ff_level} level via {self.options.ff_calc})')
         t_start = time.time()
 
         for i, structure in enumerate(deepcopy(self.structures)):
             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
             try:
-                new_structure, self.exit_status[i] = openbabel_opt(structure, self.atomnos, self.constrained_indexes[i], self.graphs, method=self.options.openbabel_level)
+                new_structure, _, self.exit_status[i] = optimize(structure,
+                                                                    self.atomnos,
+                                                                    self.options.ff_calc,
+                                                                    method=self.options.ff_level,
+                                                                    constrained_indexes=self.constrained_indexes[i],
+                                                                    mols_graphs=self.graphs)
 
                 if self.exit_status[i]:
                     self.structures[i] = new_structure
@@ -294,11 +237,11 @@ class RunEmbedding:
 
         loadbar(1, 1, prefix=f'Optimizing structure {len(self.structures)}/{len(self.structures)} ')
         t_end = time.time()
-        self.log(f'Openbabel {self.options.openbabel_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+        self.log(f'Force Field {self.options.ff_level} optimization took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
         
         ################################################# EXIT STATUS
 
-        self.log(f'Successfully pre-refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at {self.options.openbabel_level} level.')
+        self.log(f'Successfully pre-refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at {self.options.ff_level} level.')
         
         ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
 
@@ -309,7 +252,7 @@ class RunEmbedding:
 
         with open(self.outname, 'w') as f:        
             for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                exit_str = f'{self.options.openbabel_level} REFINED' if self.exit_status[i] else 'RAW'
+                exit_str = f'{self.options.ff_level} REFINED' if self.exit_status[i] else 'RAW'
                 write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before {self.options.calculator} optimization')
         self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file before {self.options.calculator} optimization.\n')
 
@@ -325,7 +268,7 @@ class RunEmbedding:
 
         r_atoms = {}
         for mol in self.objects:
-            for letter, r_atom in mol.reactive_atoms_classes_dict.items():
+            for letter, r_atom in mol.reactive_atoms_classes_dict[0].items():
                 if letter not in ("x", "y", "z"):
                     r_atoms[r_atom.cumnum] = r_atom
 
@@ -363,7 +306,7 @@ class RunEmbedding:
 
         t_start = time.time()
 
-        self.log(f'--> Structure optimization ({self.options.theory_level} level)')
+        self.log(f'--> Structure optimization ({self.options.theory_level} level via {self.options.calculator})')
 
         if self.options.calculator == 'MOPAC':
             method = f'{self.options.theory_level} GEO-OK CYCLES=500'
@@ -375,9 +318,9 @@ class RunEmbedding:
             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
             try:
                 t_start_opt = time.time()
-                new_structure, self.energies[i], self.exit_status[i] = optimize(self.options.calculator,
-                                                                                    structure,
+                new_structure, self.energies[i], self.exit_status[i] = optimize(structure,
                                                                                     self.atomnos,
+                                                                                    self.options.calculator,
                                                                                     method=method,
                                                                                     constrained_indexes=self.constrained_indexes[i],
                                                                                     mols_graphs=self.graphs,
@@ -417,70 +360,76 @@ class RunEmbedding:
 
         ################################################# REFINING: BONDING DISTANCES
 
-        self.write_structures('TS_guesses_unrefined', energies=False, p=False)
-        self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures before distance refinement.\n')
+        if not self.options.noembed:
 
-        self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level} level)')
+            self.write_structures('TS_guesses_unrefined', energies=False, p=False)
+            self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures before distance refinement.\n')
 
-        if self.options.openbabel_opt:
-            try:
-                os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
-                # We don't need the pre-optimized structures anymore
-            except FileNotFoundError:
-                pass
+            self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level} level)')
 
-        self._set_target_distances()
-        t_start = time.time()
+            if self.options.ff_opt:
+                try:
+                    os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
+                    # We don't need the pre-optimized structures anymore
+                except FileNotFoundError:
+                    pass
 
-        for i, structure in enumerate(deepcopy(self.structures)):
-            loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-            try:
+            self._set_target_distances()
+            t_start = time.time()
 
-                traj = f'refine_{i}.traj' if self.options.debug else None
+            for i, structure in enumerate(deepcopy(self.structures)):
+                loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+                try:
 
-                new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
-                                                                                        structure,
-                                                                                        self.atomnos,
-                                                                                        self.constrained_indexes[i],
-                                                                                        title=i,
-                                                                                        traj=traj
-                                                                                        )
+                    traj = f'refine_{i}.traj' if self.options.debug else None
 
-                if self.exit_status[i]:
-                    self.structures[i] = new_structure
-                    self.energies[i] = new_energy
-                                                                                                                        
-            except ValueError as e:
-                # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
-                # This occurs when one or more of them is not defined, that is when the calculation did not end well.
-                # The easiest solution is to reject the structure and go on.
-                self.log(repr(e))
-                self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
-        
-        loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
-        t_end = time.time()
-        self.log(f'{self.options.calculator} {self.options.theory_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
+                    new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
+                                                                                            structure,
+                                                                                            self.atomnos,
+                                                                                            self.constrained_indexes[i],
+                                                                                            title=i,
+                                                                                            traj=traj
+                                                                                            )
 
-        before = len(self.structures)
-        if self.options.only_refined:
+                    if self.exit_status[i]:
+                        self.structures[i] = new_structure
+                        self.energies[i] = new_energy
+                                                                                                                            
+                except ValueError as e:
+                    # ase will throw a ValueError if the output lacks a space in the "FINAL POINTS AND DERIVATIVES" table.
+                    # This occurs when one or more of them is not defined, that is when the calculation did not end well.
+                    # The easiest solution is to reject the structure and go on.
+                    self.log(repr(e))
+                    self.log(f'Failed to read MOPAC file for Structure {i+1}, skipping distance refinement', p=False)                                    
+            
+            loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
+            t_end = time.time()
+            self.log(f'{self.options.calculator} {self.options.theory_level} refinement took {time_to_string(t_end-t_start)} (~{time_to_string((t_end-t_start)/len(self.structures))} per structure)')
 
-            mask = self.exit_status
-            self.apply_mask(('structures', 'energies', 'exit_status', 'constrained_indexes'), mask)
+            before = len(self.structures)
+            if self.options.only_refined:
 
-            s = f'Discarded {len([i for i in mask if not i])} unrefined structures.'
+                mask = self.exit_status
+                self.apply_mask(('structures', 'energies', 'exit_status', 'constrained_indexes'), mask)
 
-        else:
-            s = 'Non-refined ones will not be discarded.'
+                s = f'Discarded {len([i for i in mask if not i])} unrefined structures.'
+
+            else:
+                s = 'Non-refined ones will not be discarded.'
 
 
-        self.log(f'Successfully refined {len([i for i in self.exit_status if i])}/{before} structures. {s}')
+            self.log(f'Successfully refined {len([i for i in self.exit_status if i])}/{before} structures. {s}')
 
-        ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
+            ################################################# PRUNING: SIMILARITY (POST REFINEMENT)
 
-        self.zero_candidates_check()
-        self.similarity_refining()
+            self.zero_candidates_check()
+            self.similarity_refining()
 
-        ################################################# PRUNING: ENERGY (POST REFINEMENT)
+            ################################################# PRUNING: FITNESS 
+
+            self.fitness_refining()
+
+        ################################################# PRUNING: ENERGY
 
         self.energies = self.energies - np.min(self.energies)
         _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
@@ -497,10 +446,6 @@ class RunEmbedding:
 
             if False in mask:
                 self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy (Threshold set to {self.options.kcal_thresh} kcal/mol)')
-
-        ################################################# PRUNING: FITNESS 
-
-        self.fitness_refining()
         
         ################################################# XYZ GUESSES OUTPUT 
 
@@ -786,7 +731,7 @@ class RunEmbedding:
                     self.log(f'    {nci_type} between indexes {i1}/{i2} is present in {len(shared_by)}/{len(self.structures)} structures {tuple([i+1 for i in shared_by])}')
                 self.log()
 
-    def print_header(self):
+    def write_header(self):
         '''
         Writes information about the TSCoDe parameters used in the calculation.
         '''
@@ -796,21 +741,25 @@ class RunEmbedding:
             head = ''
             for i, mol in enumerate(self.objects):
                 descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A, ' +
-                        f'{len(atom.center)} center{"s" if len(atom.center) > 1 else ""})' for atom in mol.reactive_atoms_classes_dict.values()]
+                        f'{len(atom.center)} center{"s" if len(atom.center) != 1 else ""})' for atom in mol.reactive_atoms_classes_dict[0].values()]
 
                 t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
                
-                pivot_line = ''
+                mol_line = f' -> {len(mol.atomcoords[0])} atoms, {len(mol.atomcoords)} conformer{"s" if len(mol.atomcoords) != 1 else ""}'
                 if hasattr(mol, 'pivots'):
-                    pivot_line += f' -> {len(mol.pivots)} pivot{"s" if len(mol.pivots) > 1 else ""}'
+                    mol_line += f', {len(mol.pivots[0])} pivot{"s" if len(mol.pivots[0]) != 1 else ""}'
 
                     if mol.sp3_sigmastar:
-                        pivot_line += ', sp3_sigmastar'
+                        mol_line += ', sp3_sigmastar'
 
-                    if mol.sigmatropic:
-                        pivot_line += ', sigmatropic'
+                    if any(mol.sigmatropic):
+                        mol_line += ', sigmatropic'
+                        if all(mol.sigmatropic):
+                            mol_line += ' (all conformers)'
+                        else:
+                            mol_line += ' (some conformers)'
 
-                head += f'\n    {i+1}. {mol.name}{pivot_line}\n        {t}\n'
+                head += f'\n    {i+1}. {mol.name}{mol_line}\n        {t}\n'
 
             self.log('--> Input structures & reactive indexes data:\n' + head)
 
@@ -896,41 +845,28 @@ class RunEmbedding:
             assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message'
                                            ' and proceed, add the LET keyword to the input file.')
 
-        self.print_header()
+        self.write_header()
         self.t_start_run = time.time()
 
         try: # except KeyboardInterrupt
-
             try: # except ZeroCandidatesError()
-
                 self.generate_candidates()
-
-                if self.embed == 'dihedral':
-                    
-                    self.similarity_refining()
-                    self.write_structures('TS_guesses', indexes=self.objects[0].reactive_indexes)
-                    self.write_vmd(indexes=self.objects[0].reactive_indexes)
+                
+                if self.options.bypass:
+                    self.write_structures('unoptimized', energies=False)
                     self.normal_termination()
 
-                else:
+                if not self.embed == 'monomolecular':
+                    self.compenetration_refining()
 
-                    if not self.options.bypass:
+                self.similarity_refining(verbose=True)
 
-                        if not self.embed == 'monomolecular':
-                            self.compenetration_refining()
+                if self.options.optimization:
 
-                        self.similarity_refining(verbose=True)
+                    if self.options.ff_opt:
+                        self.force_field_refining()
 
-                    if self.options.optimization:
-
-                        if self.options.openbabel_opt:
-                            self.force_field_refining()
-
-                        self.optimization_refining()
-
-                    else:
-                        self.write_structures('unoptimized', energies=False)
-
+                    self.optimization_refining()
 
             except ZeroCandidatesError:
                 t_end_run = time.time()

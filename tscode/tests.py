@@ -25,7 +25,7 @@ def run_tests():
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     # sys.path.append(os.getcwd())
 
-    from tscode.settings import COMMANDS, OPENBABEL_OPT_BOOL, CALCULATOR, PROCS, DEFAULT_LEVELS
+    from tscode.settings import COMMANDS, FF_OPT_BOOL, FF_CALC, CALCULATOR, PROCS, DEFAULT_LEVELS, DEFAULT_FF_LEVELS
 
     if CALCULATOR not in ('MOPAC','ORCA','GAUSSIAN','XTB'):
         raise Exception(f'{CALCULATOR} is not a valid calculator. Use MOPAC, ORCA, GAUSSIAN or XTB.')
@@ -76,18 +76,35 @@ def run_tests():
     
     ##########################################################################
 
-    print(f'\n{OPENBABEL_OPT_BOOL=}')
-    ff = 'on. Checking its status.' if OPENBABEL_OPT_BOOL else 'off.'
+    print(f'\n{FF_OPT_BOOL=}')
+    ff = f'on. Calculator is {FF_CALC}. Checking its status.' if FF_OPT_BOOL else 'off.'
     print(f'Force Field optimization is turned {ff}')
 
-    if OPENBABEL_OPT_BOOL:
-        try:
-            print('Trying to import the OpenBabel Python Module...')
-            from openbabel import openbabel
-            print('Module imported successfully.')
+    if FF_OPT_BOOL:
+        if FF_CALC == 'OB':
+            try:
+                print('Trying to import the OpenBabel Python Module...')
+                from openbabel import openbabel
+                print('Module imported successfully.')
 
-        except ImportError:
-            raise Exception(f'Could not import OpenBabel Python module. Is standalone openbabel correctly installed?')
+            except ImportError:
+                raise Exception(f'Could not import OpenBabel Python module. Is standalone openbabel correctly installed?')
+        else: # == 'XTB', 'GAUSSIAN'
+            opt_funcs_dict[FF_CALC](data.atomcoords[0],
+                                    data.atomnos,
+                                    method=DEFAULT_FF_LEVELS[FF_CALC],
+                                    procs=PROCS,
+                                    read_output=False)
+
+        print(f'{FF_CALC} raw calculator works.')
+
+        ##########################################################################
+
+        atoms.calc = get_ase_calc((FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], PROCS, None))
+        LBFGS(atoms, logfile=None).run()
+
+        clean_directory()
+        print(f'{FF_CALC} ASE calculator works.')
 
     print('\nNo installation faults detected with the current settings. Running tests.')
 

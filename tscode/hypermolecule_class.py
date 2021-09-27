@@ -42,11 +42,10 @@ def align_structures(structures:np.array, indexes=None):
 
     reference = structures[0]
     targets = structures[1:]
-    if isinstance(indexes, list):
+    if isinstance(indexes, list) or isinstance(indexes, tuple):
         indexes = np.array(indexes)
-    indexes = indexes.ravel()
 
-    indexes = slice(0,len(reference)) if indexes is None else indexes
+    indexes = slice(0,len(reference)) if indexes is None or len(indexes) == 0 else indexes.ravel()
 
     reference -= np.mean(reference[indexes], axis=0)
     for t, _ in enumerate(targets):
@@ -64,7 +63,8 @@ def align_structures(structures:np.array, indexes=None):
         # it is actually possible for the kabsch alg not to converge
             matrix = np.eye(3)
         
-        output[t+1] = np.array([matrix @ vector for vector in target])
+        # output[t+1] = np.array([matrix @ vector for vector in target])
+        output[t+1] = (matrix @ target.T).T
 
     return output
 
@@ -74,7 +74,7 @@ class Hypermolecule:
     '''
 
     def __repr__(self):
-        return self.rootname + f' {[str(atom) for atom in self.reactive_atoms_classes_dict.values()]}, ID = {id(self)}'
+        return self.rootname + f' {[str(atom) for atom in self.reactive_atoms_classes_dict[0].values()]}, ID = {id(self)}'
 
     def __init__(self, filename, reactive_atoms=None, hyper=True, debug=False):
         '''
@@ -146,12 +146,13 @@ class Hypermolecule:
             # sets reactive atoms properties
 
             self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
-            self.sigmatropic = is_sigmatropic(self)
+            self.sigmatropic = [is_sigmatropic(self, c) for c, _ in enumerate(self.atomcoords)]
             self.sp3_sigmastar = is_vicinal(self)
 
-            for index, reactive_atom in self.reactive_atoms_classes_dict.items():   
-                reactive_atom.init(self, index, update=True)
-                # update properties into reactive_atom class
+            for c, _ in enumerate(self.atomcoords):
+                for index, reactive_atom in self.reactive_atoms_classes_dict[c].items():
+                    reactive_atom.init(self, index, update=True)
+                    # update properties into reactive_atom class
 
         self.atoms = np.array([atom for structure in self.atomcoords for atom in structure])       # single list with all atomic positions
         
@@ -194,9 +195,10 @@ class Hypermolecule:
         :param reactive atoms: int or list of ints
         :return: list of indexes
         '''
+        if len(self.reactive_indexes) == 0:
+            return None
 
         indexes = set()
-
         for atom in self.reactive_indexes:
             indexes |= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
         if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
@@ -206,35 +208,48 @@ class Hypermolecule:
         '''
         Control the type of reactive atoms and sets the class attribute self.reactive_atoms_classes_dict
         '''
-        self.reactive_atoms_classes_dict = {}
+        self.reactive_atoms_classes_dict = {c:{} for c, _ in enumerate(self.atomcoords)}
+        
+        for c, _ in enumerate(self.atomcoords):
+            for index in self.reactive_indexes:
+                symbol = pt[self.atomnos[index]].symbol
 
-        for index in self.reactive_indexes:
-            symbol = pt[self.atomnos[index]].symbol
+                neighbors_indexes = list([(a, b) for a, b in self.graph.adjacency()][index][1].keys())
+                neighbors_indexes.remove(index)
 
-            neighbors_indexes = list([(a, b) for a, b in self.graph.adjacency()][index][1].keys())
-            neighbors_indexes.remove(index)
+                atom_type = deepcopy(atom_type_dict[symbol + str(len(neighbors_indexes))])
 
-            atom_type = deepcopy(atom_type_dict[symbol + str(len(neighbors_indexes))])
+                atom_type.init(self, index)
+                # setting the reactive_atom class type
 
-            atom_type.init(self, index)
-            # setting the reactive_atom class type
+                self.reactive_atoms_classes_dict[c][index] = atom_type
 
-            self.reactive_atoms_classes_dict[index] = atom_type
-
-            if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
-            # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
+                if self.debug: print(f'DEBUG--> Reactive atom {index+1} is a {symbol} atom of {atom_type} type. It is bonded to {len(neighbors_indexes)} atom(s): {atom_type.neighbors_symbols}')
+                # understanding the type of reactive atom in order to align the ensemble correctly and build the correct pseudo-orbitals
 
     def _scale_orbs(self, value):
         '''
         Scale each orbital dimension according to value.
         '''
-        for index, atom in self.reactive_atoms_classes_dict.items():
-            orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
-            atom.init(self, index, update=True, orb_dim=orb_dim*value)
+        for c, _ in enumerate(self.atomcoords):
+            for index, atom in self.reactive_atoms_classes_dict[c].items():
+                orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
+                atom.init(self, index, update=True, orb_dim=orb_dim*value)
 
-    def calc_positioned_conformers(self):
-        self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
+    def get_r_atoms(self, c):
+        '''
+        c: conformer number
+        '''
+        return list(self.reactive_atoms_classes_dict[c].values())
+    
+    def get_centers(self, c):
+        '''
+        c: conformer number
+        '''
+        return np.array([[v for v in atom.center] for atom in self.get_r_atoms(c)])
 
+    # def calc_positioned_conformers(self):
+    #     self.positioned_conformers = np.array([[self.rotation @ v + self.position for v in conformer] for conformer in self.atomcoords])
 
     def _compute_hypermolecule(self):
         '''
@@ -296,14 +311,15 @@ class Hypermolecule:
 
         hyp_name = self.rootname + '_hypermolecule.xyz'
         with open(hyp_name, 'w') as f:
-            f.write(str(sum([len(atom.center) for atom in self.reactive_atoms_classes_dict.values()]) + len(self.atomcoords[0])))
-            f.write(f'\nTSCoDe Hypermolecule for {self.rootname} - reactive indexes {self.reactive_indexes}\n')
-            orbs =np.vstack([atom_type.center for atom_type in self.reactive_atoms_classes_dict.values()]).ravel()
-            orbs = orbs.reshape((int(len(orbs)/3), 3))
-            for i, atom in enumerate(self.atomcoords[0]):
-                f.write('%-5s %-8s %-8s %-8s\n' % (pt[self.atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
-            for orb in orbs:
-                f.write('%-5s %-8s %-8s %-8s\n' % ('X', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
+            for c, _ in enumerate(self.atomcoords):
+                f.write(str(sum([len(atom.center) for atom in self.reactive_atoms_classes_dict[c].values()]) + len(self.atomcoords[0])))
+                f.write(f'\nTSCoDe Hypermolecule {c} for {self.rootname} - reactive indexes {self.reactive_indexes}\n')
+                orbs =np.vstack([atom_type.center for atom_type in self.reactive_atoms_classes_dict[c].values()]).ravel()
+                orbs = orbs.reshape((int(len(orbs)/3), 3))
+                for i, atom in enumerate(self.atomcoords[c]):
+                    f.write('%-5s %-8s %-8s %-8s\n' % (pt[self.atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
+                for orb in orbs:
+                    f.write('%-5s %-8s %-8s %-8s\n' % ('X', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
 
 class Pivot:
     '''
@@ -373,8 +389,8 @@ if __name__ == '__main__':
     for i in (19,):
         t = Hypermolecule(test[i][0], test[i][1])
 
-        # t.reactive_atoms_classes_dict.values()[0].init(t, t.reactive_indexes[0], update=True, orb_dim=1)
-        # t.reactive_atoms_classes_dict.values()[1].init(t, t.reactive_indexes[1], update=True, orb_dim=1.5)
+        # t.reactive_atoms_classes_dict[c].values()[0].init(t, t.reactive_indexes[0], update=True, orb_dim=1)
+        # t.reactive_atoms_classes_dict[c].values()[1].init(t, t.reactive_indexes[1], update=True, orb_dim=1.5)
         # t._update_orbs()
 
         t._compute_hypermolecule()

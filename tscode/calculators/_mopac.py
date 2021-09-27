@@ -78,7 +78,7 @@ def read_mop_out(filename):
     
     raise MopacReadError(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
 
-def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', procs=None, solvent=None, title='temp', read_output=True):
+def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=None, title='temp', read_output=True, **kwargs):
     '''
     This function writes a MOPAC .mop input, runs it with the subprocess
     module and reads its output. Coordinates used are mixed

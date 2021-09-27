@@ -16,75 +16,82 @@ GNU General Public License for more details.
 
 '''
 from copy import deepcopy
+from re import A
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from tscode.ase_manipulations import ase_bend
-from tscode.errors import TriangleError
+from tscode.errors import TriangleError, ZeroCandidatesError
 from tscode.utils import (cartesian_product, loadbar, norm, polygonize,
                           rot_mat_from_pointer, rotation_matrix_from_vectors,
                           vec_angle)
 
 
-def string_embed(self):
+def string_embed(docker):
     '''
     return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
-    into self.structures. Algorithm used is the "string" algorithm (see docs).
+    into docker.structures. Algorithm used is the "string" algorithm (see docs).
     '''
-    assert len(self.objects) == 2
+    assert len(docker.objects) == 2
 
-    self.log(f'\n--> Performing string embed ({self.candidates} candidates)')
+    docker.log(f'\n--> Performing string embed ({docker.candidates} candidates)')
 
-    for mol in self.objects:
-        mol.centers = list(mol.reactive_atoms_classes_dict.values())[0].center
-        mol.orb_vers = np.array([norm(v) for v in list(mol.reactive_atoms_classes_dict.values())[0].orb_vecs])
+    conf_number = [len(mol.atomcoords) for mol in docker.objects]
+    conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
+    # (n,2) vectors where the every element is the conformer index for that molecule
 
-    centers_indexes = cartesian_product(*[np.array(range(len(mol.centers))) for mol in self.objects])
+    r_atoms_centers_indexes = cartesian_product(*[np.array(range(len(mol.get_centers(0)[0]))) for mol in docker.objects])
     # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
-    
-    threads = []
-    for _ in range(self.options.rotation_steps*len(centers_indexes)):
-        threads.append([deepcopy(obj) for obj in self.objects])
 
-    for t, thread in enumerate(threads): # each run is a different "regioisomer", repeated self.options.rotation_steps times
+    mol1, mol2 = docker.objects
 
-        indexes = centers_indexes[t % len(centers_indexes)] # looping over the indexes that define "regiochemistry"
-        repeated = True if t // len(centers_indexes) > 0 else False
+    poses = []
+    for c1, c2 in conf_indexes:
+        for ai1, ai2 in r_atoms_centers_indexes:
+            for angle in docker.systematic_angles:
 
-        for i, molecule in enumerate(thread[1:]): #first molecule is always frozen in place, other(s) are placed with an orbital criterion
+                ra1 = mol1.get_r_atoms(c1)[0]
+                ra2 = mol2.get_r_atoms(c2)[0]
 
-            ref_orb_vec = thread[i].centers[indexes[i]]  # absolute, arbitrarily long
-            # reference molecule is the one just before molecule, so the i-th for how the loop is set up
-            mol_orb_vec = molecule.centers[indexes[i+1]]
+                ref_vec = ra1.center[ai1]
+                mol_vec = ra2.center[ai2]
 
-            ref_orb_vers = thread[i].orb_vers[indexes[i]]  # unit length, relative to orbital orientation
-            # reference molecule is the one just before
-            mol_orb_vers = molecule.orb_vers[indexes[i+1]]
+                mol2.rotation = rotation_matrix_from_vectors(mol_vec, -ref_vec)
 
-            molecule.rotation = rotation_matrix_from_vectors(mol_orb_vers, -ref_orb_vers)
+                pointer = mol2.rotation @ mol_vec
 
-            molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
+                if angle != 0:                  
+                    delta_rot = rot_mat_from_pointer(pointer, angle)
+                    mol2.rotation = delta_rot @ mol2.rotation
 
-            if repeated:
+                mol2.position = mol1.rotation @ ref_vec + mol1.position - pointer
 
-                pointer = molecule.rotation @ mol_orb_vers
-                # rotation = (np.random.rand()*2. - 1.) * np.pi    # random angle (radians) between -pi and pi
-                rotation = t % self.options.rotation_steps * 360/self.options.rotation_steps       # sistematic incremental step angle
-                
-                delta_rot = rot_mat_from_pointer(pointer, rotation)
-                molecule.rotation = delta_rot @ molecule.rotation
+                # coords1 = (mol1.rotation @ mol1.atomcoords[c1].T).T + mol1.position
+                # coords2 = (mol2.rotation @ mol2.atomcoords[c2].T).T + mol2.position
 
-                molecule.position = thread[i].rotation @ ref_orb_vec + thread[i].position - molecule.rotation @ mol_orb_vec
+                # poses.append(np.concatenate((coords1, coords2)))
 
-    self.dispositions_constrained_indexes = self.get_string_constrained_indexes(len(threads))
+                poses.append(get_embed((mol1, mol2), (c1, c2)))
 
-    return threads
+    docker.constrained_indexes = _get_string_constrained_indexes(docker, len(poses))
 
-def cyclical_embed(self):
+    return np.array(poses)
+
+def _get_string_constrained_indexes(docker, n):
+    '''
+    Get constrained indexes referring to the transition states, repeated n times.
+    :params n: int
+    :return: list of lists consisting in atomic pairs to be constrained.
+    '''
+    # Two molecules, string algorithm, one constraint for all, repeated n times
+    return np.array([[[int(docker.objects[0].reactive_indexes[0]),
+                        int(docker.objects[1].reactive_indexes[0] + docker.ids[0])]] for _ in range(n)])
+
+def cyclical_embed(docker):
     '''
     return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
-                    into self.structures. Algorithm used is the "cyclical" algorithm (see docs).
+                    into docker.structures. Algorithm used is the "cyclical" algorithm (see docs).
     '''
     
     def _get_directions(norms):
@@ -157,7 +164,7 @@ def cyclical_embed(self):
 
         return np.vstack((dir1, dir2, dir3))
 
-    def _adjust_directions(self, directions, constrained_indexes, triangle_vectors, v, pivots):
+    def _adjust_directions(docker, directions, constrained_indexes, triangle_vectors, pivots, conf_ids):
         '''
         For trimolecular TSs, correct molecules pre-alignment. That is, after the initial estimate
         based on pivot triangle circocentrum, systematically rotate each molecule around its pivot
@@ -168,7 +175,7 @@ def cyclical_embed(self):
         '''
         assert directions.shape[0] == 3
 
-        mols = deepcopy(self.objects)
+        mols = deepcopy(docker.objects)
         p0, p1, p2 = [end - start for start, end in triangle_vectors]
         p0_mean, p1_mean, p2_mean = [np.mean((end, start), axis=0) for start, end in triangle_vectors]
 
@@ -208,7 +215,7 @@ def cyclical_embed(self):
 
             start, end = triangle_vectors[i]
 
-            mol_direction = pivots[i].meanpoint - np.mean(self.objects[i].atomcoords[0][self.objects[i].reactive_indexes], axis=0)
+            mol_direction = pivots[i].meanpoint - np.mean(docker.objects[i].atomcoords[conf_ids[i]][docker.objects[i].reactive_indexes], axis=0)
             if np.all(mol_direction == 0.):
                 mol_direction = pivots[i].meanpoint
 
@@ -219,8 +226,8 @@ def cyclical_embed(self):
 
         pairings = [[None, None] for _ in constrained_indexes]
         for i, c in enumerate(constrained_indexes):
-            for m, mol in enumerate(self.objects):
-                for index, r_atom in mol.reactive_atoms_classes_dict.items():
+            for m, mol in enumerate(docker.objects):
+                for index, r_atom in mol.reactive_atoms_classes_dict[0].items():
                     if r_atom.cumnum == c[0]:
                         pairings[i][0] = (m, index)
                     if r_atom.cumnum == c[1]:
@@ -295,333 +302,418 @@ def cyclical_embed(self):
         
         return np.array(directions)
 
-    self.log(f'\n--> Performing {self.embed} embed ({self.candidates} candidates)')
+    s = f'\n--> Performing {docker.embed} embed'
+    if len(docker.objects) == 2:
+        s += f' ({docker.candidates} candidates)'
+    else:
+        s += f' (ideally {docker.candidates} candidates, maybe less)'
 
-    if not self.options.rigid:
-        self.ase_bent_mols_dict = {}
+    docker.log(s)
+
+    if not docker.options.rigid:
+        docker.ase_bent_mols_dict = {}
         # used as molecular cache for ase_bend
         # keys are tuples with: ((identifier, pivot.index, target_pivot_length), obtained with:
         # (np.sum(original_mol.atomcoords[0]), tuple(sorted(pivot.index)), round(threshold,3))
 
-    if not self.options.let:
-        for mol in self.objects:
-            if len(mol.atomcoords) > 5:
-                mol.atomcoords = mol.atomcoords[0:5]
-                self.log(f'Using only the first 5 conformers of molecule {mol.name} (override with LET keyword)')
-        # Do not keep more than 5 conformations, since the algorithm scales quite fast
+    if not docker.options.let:
+        for mol in docker.objects:
+            if len(mol.atomcoords) > 10:
+                mol.atomcoords = mol.atomcoords[0:10]
+                docker.log(f'Using only the first 10 conformers of molecule {mol.name} (override with LET keyword)')
+        # Do not keep more than 10 conformations, unless LET keyword is provided
 
-    pivots_indexes = cartesian_product(*[range(len(mol.pivots)) for mol in self.objects])
-    # indexes of pivots in each molecule self.pivots list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
-    
-    threads = []
+    conf_number = [len(mol.atomcoords) for mol in docker.objects]
+    conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
+
+    poses = []
     constrained_indexes = []
-    for p, pi in enumerate(pivots_indexes):
+    for ci, conf_ids in enumerate(conf_indexes):
 
-        loadbar(p, len(pivots_indexes), prefix=f'Embedding structures ')
+        pivots_indexes = cartesian_product(*[range(len(mol.pivots[conf_ids[i]])) for i, mol in enumerate(docker.objects)])
+        # indexes of pivots in each molecule self.pivots[conf] list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
         
-        thread_objects = deepcopy(self.objects)
-        # Objects to be used to embed structures. Modified later if necessary.
+        for p, pi in enumerate(pivots_indexes):
 
-        pivots = [thread_objects[m].pivots[pi[m]] for m, _ in enumerate(self.objects)]
-        # getting the active pivot for each molecule for this run
-        
-        norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
-        # getting the pivots norms to feed into the polygonize function
+            loadbar(p+ci*(len(pivots_indexes)), len(pivots_indexes)*len(conf_indexes), prefix=f'Embedding structures ')
+            
+            pivots = [docker.objects[m].pivots[conf_ids[m]][pi[m]] for m, _ in enumerate(docker.objects)]
+            # getting the active pivot for each molecule for this run
+            
+            norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
+            # getting the pivots norms to feed into the polygonize function
 
-        if len(norms) == 2:
+            if len(norms) == 2:
 
-            if abs(norms[0] - norms[1]) < 2.5:
-                norms_type = 'digon'
+                if abs(norms[0] - norms[1]) < 2.5:
+                    norms_type = 'digon'
+
+                else:
+                    norms_type = 'impossible_digon'
 
             else:
-                norms_type = 'impossible_digon'
+                if all([norms[i] < norms[i-1] + norms[i-2] for i in (0,1,2)]):
+                    norms_type = 'triangle'
 
-        else:
-            if all([norms[i] < norms[i-1] + norms[i-2] for i in (0,1,2)]):
-                norms_type = 'triangle'
+                else:
+                    norms_type = 'impossible_triangle'
 
-            else:
-                norms_type = 'impossible_triangle'
+            if norms_type in ('triangle', 'digon'):
 
+                polygon_vectors = polygonize(norms)
 
-        if norms_type in ('triangle', 'digon'):
+            elif norms_type == 'impossible_triangle':
+                # Accessed if we cannot build a triangle with the given norms.
+                # Try to bend the structure if it was close or just skip this triangle and go on.
 
-            polygon_vectors = polygonize(norms)
+                deltas = [norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)]
 
-        elif norms_type == 'impossible_triangle':
-            # Accessed if we cannot build a triangle with the given norms.
-            # Try to bend the structure if it was close or just skip this triangle and go on.
+                rel_delta = max([deltas[i]/norms[i] for i in range(3)])
+                # s = 'Rejected triangle, delta was %s, %s of side length' % (round(delta, 3), str(round(100*rel_delta, 3)) + ' %')
+                # docker.log(s, p=False)
 
-            deltas = [norms[i] - (norms[i-1] + norms[i-2]) for i in range(3)]
+                if rel_delta < 0.2 and not docker.options.rigid:
+                # correct the molecule structure with the longest
+                # side if the distances are at most 20% off.
 
-            rel_delta = max([deltas[i]/norms[i] for i in range(3)])
-            # s = 'Rejected triangle, delta was %s, %s of side length' % (round(delta, 3), str(round(100*rel_delta, 3)) + ' %')
-            # self.log(s, p=False)
+                    index = deltas.index(max(deltas))
+                    mol = docker.objects[index]
 
-            if rel_delta < 0.2 and not self.options.rigid:
-            # correct the molecule structure with the longest
-            # side if the distances are at most 20% off.
+                    if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
+                        # do not try to bend molecules where the two reactive indices are bonded
 
-                index = deltas.index(max(deltas))
-                mol = thread_objects[index]
+                        pivot = pivots[index]
 
-                if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
-                    # do not try to bend molecules where the two reactive indices are bonded
+                        # ase_view(mol)
+                        maxval = norms[index-1] + norms[index-2]
 
-                    pivot = pivots[index]
+                        traj = f'bend_{mol.name}_p{p}_tgt_{round(0.9*maxval, 3)}' if docker.options.debug else None
 
-                    # ase_view(mol)
-                    maxval = norms[index-1] + norms[index-2]
+                        bent_mol = ase_bend(docker,
+                                            mol,
+                                            conf_ids[index],
+                                            pivot,
+                                            0.9*maxval,
+                                            title=f'{mol.rootname} - pivot {p}',
+                                            traj=traj
+                                            )
 
-                    traj = f'bend_{mol.name}_p{p}_tgt_{round(0.9*maxval, 3)}' if self.options.debug else None
+                        docker.objects[index] = bent_mol
 
-                    bent_mol = ase_bend(self,
-                                        mol,
-                                        pivot,
-                                        0.9*maxval,
-                                        title=f'{mol.rootname} - pivot {p}',
-                                        traj=traj
-                                        )
+                        try:
+                            pivots = [docker.objects[m].pivots[conf_ids[m]][pi[m]] for m, _ in enumerate(docker.objects)]
+                            # updating the active pivot for each molecule for this run
+                        except IndexError:
+                            raise Exception((f'The number of pivots for molecule {index} ({bent_mol.name}) most likely decreased during ' +
+                                            'its bending, causing this error. Adding the RIGID (and maybe also SHRINK) keyword to the ' +
+                                            'input file should solve the issue. I do not think this should ever happen under common ' +
+                                            'circumstances, but if it does, it may be reasonable to print a statement on the log, ' +
+                                            'discard the bent molecule, and then proceed with the embed. If you see this error, ' +
+                                            'please report your input and structures on a GitHub issue. Thank you.'))
+                        
+                        norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
+                        # updating the pivots norms to feed into the polygonize function
 
-                    thread_objects[index] = bent_mol
+                        try:
+                            polygon_vectors = polygonize(norms)
+                            # repeating the failed polygon creation. If it fails again, skip these pivots
 
-                    try:
-                        pivots = [thread_objects[m].pivots[pi[m]] for m, _ in enumerate(self.objects)]
-                        # updating the active pivot for each molecule for this run
-                    except IndexError:
-                        raise Exception((f'The number of pivots for molecule {index} ({bent_mol.name}) most likely decreased during ' +
-                                          'its bending, causing this error. Adding the RIGID (and maybe also SHRINK) keyword to the ' +
-                                          'input file should solve the issue. I do not think this should ever happen under common ' +
-                                          'circumstances, but if it does, it may be reasonable to print a statement on the log, ' +
-                                          'discard the bent molecule, and then proceed with the embed. If you see this error, ' +
-                                          'please report your input and structures on a GitHub issue. Thank you.'))
-                    
-                    norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
-                    # updating the pivots norms to feed into the polygonize function
+                        except TriangleError:
+                            continue
 
-                    try:
-                        polygon_vectors = polygonize(norms)
-                        # repeating the failed polygon creation. If it fails again, skip these pivots
-
-                    except TriangleError:
+                    else:
                         continue
 
                 else:
                     continue
-
-            else:
-                continue
-        
-        else: # norms type == 'impossible_digon', that is sides are too different in length
-
-            if not self.options.rigid:
-
-                if self.embed == 'chelotropic':
-                    target_length = min(norms)
-
-                else:
-                    maxgap = 3 # in Angstrom
-                    gap = abs(norms[0]-norms[1])
-                    r = 0.3 + 0.5*(gap/maxgap)
-                    r = np.clip(5, 0.5, 0.8)
-
-                    # r is the ratio for calculating target_length based
-                    # on the gap that deformations will need to cover.
-                    # It ranges from 0.5 to 0.8 and is shifted more toward
-                    # the shorter norm as the gap rises. For gaps of more
-                    # than maxgap Angstroms, the target length is very close
-                    # to the shortest molecule, and only the molecule 
-                    # with the longest pivot is bent.
-
-                    target_length = min(norms)*r + max(norms)*(1-r)
             
-                for i, mol in enumerate(deepcopy(thread_objects)):
+            else: # norms type == 'impossible_digon', that is sides are too different in length
 
-                    if len(mol.reactive_indexes) > 1:
-                    # do not try to bend molecules that react with a single atom
+                if not docker.options.rigid:
 
-                        if tuple(sorted(mol.reactive_indexes)) not in list(mol.graph.edges):
-                        # do not try to bend molecules where the two reactive indices are bonded
+                    if docker.embed == 'chelotropic':
+                        target_length = min(norms)
 
-                            traj = f'bend_{mol.name}_p{p}_tgt_{round(target_length, 3)}' if self.options.debug else None
+                    else:
+                        maxgap = 3 # in Angstrom
+                        gap = abs(norms[0]-norms[1])
+                        r = 0.3 + 0.5*(gap/maxgap)
+                        r = np.clip(5, 0.5, 0.8)
 
-                            bent_mol = ase_bend(self,
-                                                mol,
-                                                pivots[i],
-                                                target_length,
-                                                title=f'{mol.rootname} - pivot {p}',
-                                                traj=traj
-                                                )
+                        # r is the ratio for calculating target_length based
+                        # on the gap that deformations will need to cover.
+                        # It ranges from 0.5 to 0.8 and is shifted more toward
+                        # the shorter norm as the gap rises. For gaps of more
+                        # than maxgap Angstroms, the target length is very close
+                        # to the shortest molecule, and only the molecule 
+                        # with the longest pivot is bent.
 
-                            # ase_view(bent_mol)
-                            thread_objects[i] = bent_mol
-
-                # Repeating the previous polygonization steps with the bent molecules
-
-                pivots = [thread_objects[m].pivots[pi[m]] for m, _ in enumerate(self.objects)]
-                # updating the active pivot for each molecule for this run
+                        target_length = min(norms)*r + max(norms)*(1-r)
                 
-                norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
-                # updating the pivots norms to feed into the polygonize function
+                    for i, mol in enumerate(deepcopy(docker.objects)):
 
-            polygon_vectors = polygonize(norms)
-            # repeating the failed polygon creation
+                        if len(mol.reactive_indexes) > 1:
+                        # do not try to bend molecules that react with a single atom
 
+                            if tuple(sorted(mol.reactive_indexes)) not in list(mol.graph.edges):
+                            # do not try to bend molecules where the two reactive indices are bonded
 
+                                traj = f'bend_{mol.name}_p{p}_tgt_{round(target_length, 3)}' if docker.options.debug else None
 
-        directions = _get_directions(norms)
-        # directions to orient the molecules toward, orthogonal to each vec_pair
+                                bent_mol = ase_bend(docker,
+                                                    mol,
+                                                    conf_ids[i],
+                                                    pivots[i],
+                                                    target_length,
+                                                    title=f'{mol.rootname} - pivot {p}',
+                                                    traj=traj
+                                                    )
 
-        for v, vecs in enumerate(polygon_vectors):
-        # getting vertexes to embed molecules with and iterating over start/end points
+                                # ase_view(bent_mol)
+                                docker.objects[i] = bent_mol
 
-            ids = self.get_cyclical_reactive_indexes(pivots, v)
-            # get indexes of atoms that face each other
+                    # Repeating the previous polygonization steps with the bent molecules
 
-            if not self.pairings_table or all([pair in ids for pair in self.pairings_table.values()]):
-            # ensure that the active arrangement has all the pairings that the user specified
-
-                if len(self.objects) == 3:
-
-                    directions = _adjust_directions(self, directions, ids, vecs, v, pivots)
-                    # For trimolecular TSs, the alignment direction previously get is 
-                    # just a general first approximation that needs to be corrected
-                    # for the specific case through another algorithm.
+                    pivots = [docker.objects[m].pivots[conf_ids[m]][pi[m]] for m, _ in enumerate(docker.objects)]
+                    # updating the active pivot for each molecule for this run
                     
-                for angles in self.systematic_angles:
+                    norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
+                    # updating the pivots norms to feed into the polygonize function
 
-                    threads.append([deepcopy(obj) for obj in thread_objects])
-                    thread = threads[-1]
-                    # generating the thread we are going to modify and setting the thread pointer
+                polygon_vectors = polygonize(norms)
+                # repeating the failed polygon creation
 
-                    constrained_indexes.append(ids)
-                    # Save indexes to be constrained later in the optimization step
 
-                    for i, vec_pair in enumerate(vecs):
-                    # setting molecular positions and rotations (embedding)
-                    # i is the molecule index, vecs is a tuple of start and end positions
-                    # for the pivot vector
+            directions = _get_directions(norms)
+            # directions to orient the molecules toward, orthogonal to each vec_pair
 
-                        start, end = vec_pair
-                        angle = angles[i]
+            for v, vecs in enumerate(polygon_vectors):
+            # getting vertexes to embed molecules with and iterating over start/end points
 
-                        reactive_coords = thread_objects[i].atomcoords[0][thread_objects[i].reactive_indexes]
-                        # coordinates for the reactive atoms in this run
+                ids = _get_cyclical_reactive_indexes(docker, pivots, v)
+                # get indexes of atoms that face each other
 
-                        atomic_pivot_mean = np.mean(reactive_coords, axis=0)
-                        # mean position of the atoms active in this run 
+                if not docker.pairings_table or all([pair in ids for pair in docker.pairings_table.values()]):
+                # ensure that the active arrangement has all the pairings that the user specified
 
-                        mol_direction = pivots[i].meanpoint-atomic_pivot_mean
-                        if np.all(mol_direction == 0.):
-                            mol_direction = pivots[i].meanpoint
-                            # log.write(f'mol {i} - improper pivot? Thread {len(threads)-1}\n')
+                    if len(docker.objects) == 3:
 
-                        # Direction in which the molecule should be oriented, based on the meand of reactive
-                        # atom positions and the mean point of the active pivot for the run.
-                        # If this vector is too small and gets rounded to zero (as it can happen for
-                        # "antrafacial" vectors), we fallback to the vector starting from the molecule
-                        # center (mean of atomic positions) and ending in pivot_means[i], so to avoid
-                        # numeric errors in the next function.
-                            
-                        alignment_rotation = R.align_vectors((end-start, directions[i]),
-                                                             (pivots[i].pivot, mol_direction))[0].as_matrix()
-                        # this rotation superimposes the molecular orbitals active in this run (pivots[i].pivot
-                        # goes to end-start) and also aligns the molecules so that they face each other
-                        # (mol_direction goes to directions[i])
+                        directions = _adjust_directions(docker, directions, ids, vecs, pivots, conf_ids)
+                        # For trimolecular TSs, the alignment direction previously get is 
+                        # just a general first approximation that needs to be corrected
+                        # for the specific case through another algorithm.
                         
-                        if len(reactive_coords) == 2:
-                            axis_of_step_rotation = alignment_rotation @ (reactive_coords[0]-reactive_coords[1])
-                        else:
-                            axis_of_step_rotation = alignment_rotation @ pivots[i].pivot
-                        # molecules with two reactive atoms are step-rotated around the line connecting
-                        # the reactive atoms, while single reactive atom mols around their active pivot
+                    for angles in docker.systematic_angles:
 
-                        step_rotation = rot_mat_from_pointer(axis_of_step_rotation, angle)
-                        # this rotation cycles through all different rotation angles for each molecule
+                        for i, vec_pair in enumerate(vecs):
+                        # setting molecular positions and rotations (embedding)
+                        # i is the molecule index, vecs is a tuple of start and end positions
+                        # for the pivot vector
 
-                        center_of_rotation = alignment_rotation @ atomic_pivot_mean
-                        # center_of_rotation is the mean point between the reactive atoms so
-                        # as to keep the reactive distances constant
+                            start, end = vec_pair
+                            angle = angles[i]
 
-                        thread[i].rotation = step_rotation @ alignment_rotation# @ pre_alignment_rot
-                        # overall rotation for the molecule is given by the matrices product
+                            reactive_coords = docker.objects[i].atomcoords[conf_ids[i]][docker.objects[i].reactive_indexes]
+                            # coordinates for the reactive atoms in this run
 
-                        pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pivots[i].meanpoint
-                        thread[i].position += center_of_rotation - step_rotation @ center_of_rotation + pos
-                        # overall position is given by superimposing mean of active pivot (connecting orbitals)
-                        # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
+                            atomic_pivot_mean = np.mean(reactive_coords, axis=0)
+                            # mean position of the atoms active in this run 
+
+                            mol_direction = pivots[i].meanpoint-atomic_pivot_mean
+                            if np.all(mol_direction == 0.):
+                                mol_direction = pivots[i].meanpoint
+                                # log.write(f'mol {i} - improper pivot? Thread {len(threads)-1}\n')
+
+                            # Direction in which the molecule should be oriented, based on the mean of reactive
+                            # atom positions and the mean point of the active pivot for the run.
+                            # If this vector is too small and gets rounded to zero (as it can happen for
+                            # "antrafacial" vectors), we fallback to the vector starting from the molecule
+                            # center (mean of atomic positions) and ending in pivot_means[i], so to avoid
+                            # numeric errors in the next function.
+                                
+                            alignment_rotation = R.align_vectors((end-start, directions[i]),
+                                                                (pivots[i].pivot, mol_direction))[0].as_matrix()
+                            # this rotation superimposes the molecular orbitals active in this run (pivots[i].pivot
+                            # goes to end-start) and also aligns the molecules so that they face each other
+                            # (mol_direction goes to directions[i])
+                            
+                            if len(reactive_coords) == 2:
+                                axis_of_step_rotation = alignment_rotation @ (reactive_coords[0]-reactive_coords[1])
+                            else:
+                                axis_of_step_rotation = alignment_rotation @ pivots[i].pivot
+                            # molecules with two reactive atoms are step-rotated around the line connecting
+                            # the reactive atoms, while single reactive atom mols around their active pivot
+
+                            step_rotation = rot_mat_from_pointer(axis_of_step_rotation, angle)
+                            # this rotation cycles through all different rotation angles for each molecule
+
+                            center_of_rotation = alignment_rotation @ atomic_pivot_mean
+                            # center_of_rotation is the mean point between the reactive atoms so
+                            # as to keep the reactive distances constant
+
+                            docker.objects[i].rotation = step_rotation @ alignment_rotation# @ pre_alignment_rot
+                            # overall rotation for the molecule is given by the matrices product
+
+                            pos = np.mean(vec_pair, axis=0) - alignment_rotation @ pivots[i].meanpoint
+                            docker.objects[i].position = center_of_rotation - step_rotation @ center_of_rotation + pos
+                            # overall position is given by superimposing mean of active pivot (connecting orbitals)
+                            # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
+
+                        poses.append(get_embed(docker.objects, conf_ids))
+
+                        constrained_indexes.append(ids)
+                        # Save indexes to be constrained later in the optimization step
 
     loadbar(1, 1, prefix=f'Embedding structures ')
 
-    self.dispositions_constrained_indexes = np.array(constrained_indexes)
+    docker.constrained_indexes = np.array(constrained_indexes)
 
-    return threads
+    if not poses:
+        s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
+                '    This is probably because one molecule has two reactive centers at a great distance,\n' +
+                '    preventing the other two molecules from forming a closed, cyclical structure.')
+        docker.log(s, p=False)
+        raise ZeroCandidatesError(s)
 
-def monomolecular_embed(self):
+    return np.array(poses)
+
+def _get_cyclical_reactive_indexes(docker, pivots, n):
+    '''
+    :params n: index of the n-th disposition of vectors yielded by the polygonize function.
+    :return: list of index couples, to be constrained during the partial optimization.
+    '''
+
+    cumulative_pivots_ids = [[p.start_atom.cumnum, p.end_atom.cumnum] for p in pivots]
+
+    def orient(i,ids,n):
+        if swaps[n][i]:
+            return list(reversed(ids))
+        return ids
+
+    if len(docker.objects) == 2:
+
+        swaps = [(0,0),
+                    (0,1)]
+
+        oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
+        couples = [[oriented[0][0], oriented[1][0]], [oriented[0][1], oriented[1][1]]]
+
+        return couples
+
+    swaps = [(0,0,0),
+                (0,0,1),
+                (0,1,0),
+                (0,1,1),
+                (1,0,0),
+                (1,1,0),
+                (1,0,1),
+                (1,1,1)]
+
+    oriented = [orient(i,ids,n) for i, ids in enumerate(cumulative_pivots_ids)]
+    couples = [[oriented[0][1], oriented[1][0]], [oriented[1][1], oriented[2][0]], [oriented[2][1], oriented[0][0]]]
+    couples = [sorted(c) for c in couples]
+
+    return couples
+
+def monomolecular_embed(docker):
     '''
     return threads: embeds structures by bending molecules, storing them
-    in self.structures. Algorithm used is the "monomolecular" algorithm (see docs).
+    in docker.structures. Algorithm used is the "monomolecular" algorithm (see docs).
     '''
 
-    assert len(self.objects) == 1
+    assert len(docker.objects) == 1
 
-    self.log(f'\n--> Performing monomolecular embed ({self.candidates} candidates)')
+    docker.log(f'\n--> Performing monomolecular embed ({docker.candidates} candidates)')
 
-    mol = self.objects[0]
+    mol = docker.objects[0]
     
-    self.structures = []
+    docker.structures = []
 
-    for p, pivot in enumerate(mol.pivots):
+    for c, _ in enumerate(mol.atomcoords):
+        for p, pivot in enumerate(mol.pivots[c]):
 
-        loadbar(p, len(mol.pivots), prefix=f'Bending structures ')
+            loadbar(p, len(mol.pivots[c]), prefix=f'Bending structures ')
 
-        traj = f'bend_{p}_monomol' if self.options.debug else None
+            traj = f'bend_{p}_monomol' if docker.options.debug else None
 
-        bent_mol = ase_bend(self,
-                            mol,
-                            pivot,
-                            1, # bend until we are within 1 A to
-                               # the target distance between atoms
-                            title=f'{mol.rootname} - pivot {p}',
-                            traj=traj,
-                            check=False, # avoid returning the non-bent molecule,
-                                         # even if this means having it scrambled
-                            )
+            bent_mol = ase_bend(docker,
+                                mol,
+                                c,
+                                pivot,
+                                1, # bend until we are within 1 A to
+                                # the target distance between atoms
+                                title=f'{mol.rootname} - pivot {p}',
+                                traj=traj,
+                                check=False, # avoid returning the non-bent molecule,
+                                            # even if this means having it scrambled
+                                )
 
-        for conformer in bent_mol.atomcoords:
-            self.structures.append(conformer)
+            for conformer in bent_mol.atomcoords:
+                docker.structures.append(conformer)
 
-    loadbar(len(mol.pivots), len(mol.pivots), prefix=f'Bending structures ')
+    loadbar(len(mol.pivots[c]), len(mol.pivots[c]), prefix=f'Bending structures ')
 
-    self.structures = np.array(self.structures)
+    docker.structures = np.array(docker.structures)
 
-def dihedral_embed(self):
+    docker.atomnos = mol.atomnos
+    docker.energies = np.zeros(len(docker.structures))
+    docker.exit_status = np.zeros(len(docker.structures), dtype=bool)
+    docker.graphs = [mol.graph]
+
+    docker.constrained_indexes = np.array([[mol.reactive_indexes] for _ in range(docker.candidates)])
+
+    return docker.structures
+
+def dihedral_embed(docker):
     '''
     '''
     from tscode.atropisomer_module import ase_torsion_TSs
-    mol = self.objects[0]
-    self.structures, self.energies = [], []
+    mol = docker.objects[0]
+    docker.structures, docker.energies = [], []
 
-    self.log(f'\n--> {mol.name} - performing a scan of dihedral angle with indices {mol.reactive_indexes}\n')
+    docker.log(f'\n--> {mol.name} - performing a scan of dihedral angle with indices {mol.reactive_indexes}\n')
 
     for c, coords in enumerate(mol.atomcoords):
 
-        self.log(f'--> Performing Scans and saddle optimizations (conformer {c+1}/{len(mol.atomcoords)})')
+        docker.log(f'--> Performing Scans and saddle optimizations (conformer {c+1}/{len(mol.atomcoords)})')
 
-        structures, energies = ase_torsion_TSs(self,
+        structures, energies = ase_torsion_TSs(docker,
                                                 coords,
                                                 mol.atomnos,
                                                 mol.reactive_indexes,
-                                                threshold_kcal=self.options.kcal_thresh,
+                                                threshold_kcal=docker.options.kcal_thresh,
                                                 title=mol.rootname+f'_conf_{c+1}',
-                                                optimization=self.options.optimization,
-                                                logfile=self.logfile,
-                                                bernytraj=mol.rootname + '_berny' if self.options.debug else None,
+                                                optimization=docker.options.optimization,
+                                                logfile=docker.logfile,
+                                                bernytraj=mol.rootname + '_berny' if docker.options.debug else None,
                                                 plot=True)
 
         for structure, energy in zip(structures, energies):
-            self.structures.append(structure)
-            self.energies.append(energy)
+            docker.structures.append(structure)
+            docker.energies.append(energy)
 
-    self.structures = np.array(self.structures)
-    self.energies = np.array(self.energies)
+    docker.structures = np.array(docker.structures)
+    docker.energies = np.array(docker.energies)
+
+    if len(docker.structures) == 0:
+        s = ('\n--> Dihedral embed did not find any suitable maxima above the set threshold\n'
+            f'    ({docker.options.kcal_thresh} kcal/mol) during the scan procedure. Observe the\n'
+                '    generated energy plot and try lowering the threshold value (KCAL keyword).')
+        docker.log(s)
+        raise ZeroCandidatesError()
+
+    docker.atomnos = mol.atomnos
+    docker.similarity_refining()
+    docker.write_structures('TS_guesses', indexes=docker.objects[0].reactive_indexes)
+    docker.write_vmd(indexes=docker.objects[0].reactive_indexes)
+    docker.normal_termination()
+
+def get_embed(mols, conf_ids):
+    '''
+    mols: iterable of Hypermolecule objects
+    conf_ids: iterable of conformer indexes for each mol
+
+    Returns an np.array with the coordinates
+    of every molecule as a concatenated array.
+    '''
+    return np.concatenate([(mol.rotation @ mol.atomcoords[c].T).T + mol.position for mol, c in zip(mols, conf_ids)])

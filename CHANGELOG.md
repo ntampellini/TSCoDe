@@ -17,3 +17,14 @@
 - Added solvent support for calculators (SOLVENT keyword)
 - Dihedral embeds now support both the SADDLE and NEB keywords
 - Similar structures are now pruned in a rational way: the best looking is kept (fast_score)
+
+### 0.0.6 (2021)
+- Updated module call adding __main__.py file to tscode/
+- All internal imports are now relative to main module (import 'tscode.module' instead of 'import module')
+- Maximum number of conformers per molecule is now 10, since the compenetration/similarity pruning algs are faster and more efficient (still overridden by LET keyword)
+- Removed strict versioning for python required libraries
+- Removed MMFF keyword
+- Added NOEMBED, FFOPT, FFCALC, FFLEVEL and TS keywords
+- Added a Clustered Conformational Search implementation
+- Old csearch> operator is now called confab>
+- New csearch> operator is the TSCoDe conformational search engine

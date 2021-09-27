@@ -126,7 +126,7 @@ Operators
 +++++++++
 
 Molecule files can be preceded by *operators*, like
-``csearch>molecule.xyz``. They operate on the input file before it is
+``opt>molecule.xyz``. They operate on the input file before it is
 fed to TSCoDe. It is important not to include any space character
 between the operator and the molecule name.
 
@@ -134,30 +134,33 @@ between the operator and the molecule name.
    using it/them in TSCoDe. Generates a new ``molecule_opt.xyz`` file
    with the optimized coordinates.
 
--  ``csearch>`` - Performs a simple Openbabel conformational search
-   and optimizes all obtained conformers. Then, a maximum of five best
+-  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational search through
+   TSCoDe. Then, a maximum of 10 best
    conformers are used to run TSCoDe (overriden with ``LET`` keyword).
    Generates a new ``molecule_confs.xyz`` file with all optimized
    conformers.
 
-Good practice and suggested options
-+++++++++++++++++++++++++++++++++++
+-  ``confab>`` - Performs a simple confab conformational search through
+   Openbabel and optimizes all obtained conformers. Then, a maximum of 10 best
+   conformers are used to run TSCoDe (overriden with ``LET`` keyword).
+   Generates a new ``molecule_confab.xyz`` file with all optimized
+   conformers. (max 7-8 rotable bonds ideally)
+
+Good practice and suggested options (work in progress)
+++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 When modeling a reaction through TSCoDe, I suggest following these
 guidelines. Not all of them apply to all embed types, but they will
 surely help in leveraging the program in the best way.
 
-1) Assess that the reaction is supported by TSCoDe. See Input
+0) Assess that the reaction is supported by TSCoDe. See Input
 formatting.
 
 1) Obtain molecular structures in .xyz format. If more conformers are to
-be used, they must be in a multimolecular .xyz file, and atom ordering
-must be consistent throughout all structures. I suggest using a maximum
-of 5 conformers for each structure (ideally less) as these calculations
-have a steep combinatorial scaling (particularly for trimolecular
-cyclical embeds).
+be used, they must be in a multimolecular ``.xyz`` file, and atom ordering
+must be consistent throughout all structures.
 
-2) If a given molecules is present in the transition state, but it is
+2) If a given molecule is present in the transition state, but it is
 not strictly involved in bonds breaking/forming, then that molecule
 needs to be joined with the one with which it is interacting. That is,
 this new molecule should be the bimolecular interaction complex. This is
@@ -167,7 +170,9 @@ ketone carbonyl, then the TSCoDe modelization of the reaction should be
 bimolecular. The first molecule is the ketone-thiourea interaction
 complex while the second one is the metal enolate.
 
-3) Understand what atoms are reacting for each structure and record
+3) Use the csearch> operator or provide conformational ensembles.
+
+4) Understand what atoms are reacting for each structure and record
 their index (**starting from 0!**). If you are unsure of reactive atomic
 indexes, you can run a test input without indexes, and the program will
 ask you to manually specify them from the ASE GUI by clicking. This is
@@ -177,14 +182,14 @@ possible to specify atom pairings. Therefore, I suggest using this
 option only to check the reactive atoms indexes and then building a
 standard input file.
 
-4) Optionally, after specifying reactive indexes, the ``CHECK`` keyword
+5) Optionally, after specifying reactive indexes, the ``CHECK`` keyword
 can be used. A series of pop-up ASE GUI windows will be displayed,
 showing each molecule with a series of red dots around the reactive
 atoms chosen. This can be used to check "orbital" positions or conformer
 reading faults (scroll through conformers with page-up and down
 buttons). Program will terminate after the last visualization is closed.
 
-5) By default, TSCoDe parameters are optimized to yield good results
+6) By default, TSCoDe parameters are optimized to yield good results
 without specifying any keyword nor atom pairing. However, if you already
 have information on your system, I strongly encourage you to specify all
 the desired pairings. Trimolecular TSs without imposed pairings are 8
@@ -196,12 +201,12 @@ calculation or can be inferred by similar reactions. If no pairing
 distances are provided, a guess is performed by reading editable
 parameters on the ``parameters.py`` file.
 
-6) If the reaction involves big molecules, or if a lot of conformations
+7) If the reaction involves big molecules, or if a lot of conformations
 are to be used, a preliminar run using the ``NOOPT`` keyword may be a
 good idea to see how many structures are generated and would require
 MOPAC/ORCA optimization in a standard run.
 
-7) If TSCoDe does not find any suitable candidate for the given reacion,
+8) If TSCoDe does not find any suitable candidate for the given reacion,
 most of the times this is because of compenetration pruning. This mean
 that a lot of structures are generated, but all of them have some atoms
 compenetrating one into the other, and are therefore discarded. A

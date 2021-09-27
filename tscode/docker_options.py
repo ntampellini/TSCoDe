@@ -15,7 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-from tscode.settings import OPENBABEL_OPT_BOOL, CALCULATOR
+from tscode.settings import DEFAULT_FF_LEVELS, FF_OPT_BOOL, FF_CALC, CALCULATOR
+import numpy as np
 
 keywords_list = [
             'BYPASS',         # Debug keyword. Used to skip all pruning steps and
@@ -45,19 +46,23 @@ keywords_list = [
 
             'EZPROT',         # Double bond protection
 
+            'FFOPT',          #Manually turn on ``FF=ON`` or off ``FF=OFF`` the force
+                                # field optimization step, overriding the value in ``settings.py``.
+
+            'FFCALC'          # Manually overrides the force field calculator in "settings.py"
+
+            'FFLEVEL',        # Manually set the theory level to be used.
+                                # . Syntax: `FFLEVEL=UFF
+
             'KCAL',           # Trim output structures to a given value of relative energy.
                                 # Syntax: `KCAL=n`, where n can be an integer or float.
                                 
             'LET',            # Overrides safety checks that prevent the
-                                # program from running too large calculations,
-                                # removes the limit of 5 conformers for cyclical embeds
+                                # program from running too large calculations
 
             'LEVEL',          # Manually set the theory level to be used.
                                 # . Syntax: `LEVEL(PM7_EPS=6.15)
                                 
-            'MMFF',           # Use the Merck Molecular Force Field during the
-                                # OpenBabel pre-optimization (default is UFF).
-
             'MTD',            # Run conformational augmentation through metadynamic sampling (XTB)
 
             'NCI',            # Estimate and print non-covalent interactions present in the generated poses.
@@ -81,6 +86,9 @@ keywords_list = [
             'NEWBONDS',       # Manually specify the maximum number of "new bonds" that a
                                 # TS structure can have to be retained and not to be considered
                                 # scrambled. Default is 1. Syntax: `NEWBONDS=1`
+
+            'NOEMBED',        # Do not embed structures, but use the one in the input
+                                # as a starting ensemble as if it came out of a TSCoDe embedding phase.
 
             'NOOPT',          # Skip the optimization steps, directly writing structures to file.
 
@@ -139,8 +147,9 @@ class Options:
     theory_level = None        # set later in _calculator_setup()
     procs = None               # set later in _calculator_setup()
     solvent = None
-    openbabel_opt = OPENBABEL_OPT_BOOL
-    openbabel_level = 'UFF'
+    ff_opt = FF_OPT_BOOL
+    ff_calc = FF_CALC
+    ff_level = DEFAULT_FF_LEVELS[FF_CALC]
 
     neb = False
     saddle = False
@@ -166,6 +175,7 @@ class Options:
     debug = False
     let = False
     check_structures = False
+    noembed = False
     # Default values, updated if _parse_input
     # finds keywords and calls _set_options
 
@@ -185,7 +195,9 @@ class Options:
             'nci',
             'neb',
             'saddle',
-            'ts'
+            'ts',
+            'ff_opt',
+            'noembed',
         )
         
         for name in repr_if_true:
@@ -201,8 +213,9 @@ class Options:
             if d[name] is None:
                 d.pop(name)
 
-        if not OPENBABEL_OPT_BOOL:
-            d.pop('openbabel_level')
+        if not FF_OPT_BOOL:
+            d.pop('ff_level')
+            d.pop('ff_calc')
 
         if self.procs == 1 or self.calculator not in ('ORCA', ' GAUSSIAN'):
             d.pop('procs')
@@ -228,7 +241,20 @@ class OptionSetter:
                 if k not in keywords_list:
                     raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
-        docker.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple))
+        docker.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple) + '\n')
+
+    def noembed(self, options, *args):
+        if len(self.docker.objects) > 1:
+            raise SystemExit((f'NOEMBED keyword takes only one multimolecular file, preferably '
+                               'in .xyz format. ({len(self.docker.objects)} found in input file)'))
+
+        options.noembed = True
+        self.docker.structures = self.docker.objects[0].atomcoords
+        self.docker.atomnos = self.docker.objects[0].atomnos
+        self.docker.constrained_indexes = np.array([[] for _ in self.docker.structures])
+        self.docker.energies = np.array([0 for _ in self.docker.structures])
+        self.docker.exit_status = np.ones(self.docker.structures.shape[0], dtype=bool)
+
 
     def bypass(self, options, *args):
         options.bypass = True
@@ -257,7 +283,15 @@ class OptionSetter:
 
     def noopt(self, options, *args):
         options.optimization = False
-            
+
+    def ffopt(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('FFOPT')]
+        value = kw.split('=')[1].upper()
+        if value not in ('ON', 'OFF'):
+            raise SystemExit('FFOPT keyword can only have value \'ON\' or \'OFF\' (i.e. \'FFOPT=OFF\'')
+
+        options.ff_opt = True if value == 'ON' else False
+
     def bypass(self, options, *args):
         options.bypass = True
         options.optimization = False
@@ -294,7 +328,11 @@ class OptionSetter:
 
     def level(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('LEVEL')]
-        options.theory_level = kw.split('(')[1][:-1].upper().replace('_', ' ')
+        options.theory_level = kw.split('=')[1].upper().replace('_', ' ')
+
+    def fflevel(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('FFLEVEL')]
+        options.ff_level = kw.split('=')[1].upper().replace('_', ' ')
 
     def rigid(self, options, *args):
         options.rigid = True
@@ -310,9 +348,6 @@ class OptionSetter:
 
     def check(self, options, *args):
         options.check_structures = True
-
-    def mmff(self, options, *args):
-        options.openbabel_level = 'MMFF'
 
     def kcal(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('KCAL')]
@@ -340,6 +375,10 @@ class OptionSetter:
 
     def calc(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('CALC')]
+        options.calculator = kw.split('=')[1]
+
+    def ffcalc(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('FFCALC')]
         options.calculator = kw.split('=')[1]
 
     def mtd(self, options, *args):
@@ -372,7 +411,6 @@ class OptionSetter:
             raise SystemExit('TS keyword not available with diheral embeds.\n'
                              'The embed itself yields first-order saddle point optimized structures.')
 
-        
         options.ts = True
 
     def solvent(self, options, *args):

@@ -45,7 +45,7 @@ def ase_torsion_TSs(docker,
     '''
     
     assert len(indexes) == 4
-    cyclical = False
+    # cyclical = False
     
     ts_structures, energies = [], []
 
@@ -63,7 +63,7 @@ def ase_torsion_TSs(docker,
 
         if i1 in indexes_to_be_moved:
 
-            cyclical = True
+            # cyclical = True
             indexes_to_be_moved = [i4]
             # if molecule is cyclical, just move the fourth atom and
             # let the rest of the structure relax
@@ -78,7 +78,7 @@ def ase_torsion_TSs(docker,
         # just move the fourth atom and
         # let the rest of the structure relax
         indexes_to_be_moved = [i4]
-        cyclical = True
+        # cyclical = True
 
         s = 'The specified dihedral angle is made up of non-contiguous atoms.\nThis might cause some unexpected results.'
         print(s)

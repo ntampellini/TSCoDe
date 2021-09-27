@@ -28,6 +28,7 @@ from tscode.calculators._gaussian import gaussian_opt
 from tscode.calculators._mopac import mopac_opt
 from tscode.calculators._orca import orca_opt
 from tscode.calculators._xtb import xtb_opt
+from tscode.settings import DEFAULT_LEVELS, FF_CALC
 from tscode.utils import (center_of_mass, diagonalize, kronecker_delta,
                           molecule_check, norm, pt, scramble_check,
                           time_to_string, write_xyz)
@@ -39,7 +40,12 @@ opt_funcs_dict = {
     'XTB':xtb_opt,
 }
 
-def optimize(calculator, coords, atomnos,  method, constrained_indexes=None, mols_graphs=None, procs=1, solvent=None, max_newbonds=0, title='temp', check=True):
+if FF_CALC == 'OB':
+    from tscode.calculators._openbabel import openbabel_opt
+    opt_funcs_dict['OB'] = openbabel_opt
+
+def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None,
+             mols_graphs=None, procs=1, solvent=None, max_newbonds=0, title='temp', check=True):
     '''
     Performs a geometry [partial] optimization (OPT/POPT) with MOPAC, ORCA, Gaussian or XTB at $method level, 
     constraining the distance between the specified atom pairs, if any. Moreover, if $check, performs a check on atomic
@@ -59,6 +65,9 @@ def optimize(calculator, coords, atomnos,  method, constrained_indexes=None, mol
     if mols_graphs is not None:
         assert len(coords) == sum([len(graph.nodes) for graph in mols_graphs])
 
+    if method is None:
+        method = DEFAULT_LEVELS[calculator]
+
     constrained_indexes = np.array(()) if constrained_indexes is None else constrained_indexes
 
     opt_func = opt_funcs_dict[calculator]
@@ -72,14 +81,17 @@ def optimize(calculator, coords, atomnos,  method, constrained_indexes=None, mol
                                             title=title)
     # success checks that calculation had a normal termination
 
-    if success and check:
+    if success:
+        if check:
         # check boolean ensures that no scrambling occurred during the optimization
-        if mols_graphs is not None:
-            success = scramble_check(opt_coords, atomnos, constrained_indexes, mols_graphs, max_newbonds=max_newbonds)
-        else:
-            success = molecule_check(coords, opt_coords, atomnos, max_newbonds=max_newbonds)
+            if mols_graphs is not None:
+                success = scramble_check(opt_coords, atomnos, constrained_indexes, mols_graphs, max_newbonds=max_newbonds)
+            else:
+                success = molecule_check(coords, opt_coords, atomnos, max_newbonds=max_newbonds)
 
-    return opt_coords, energy, success
+        return opt_coords, energy, success
+
+    return coords, energy, False
 
 def hyperNEB(docker, coords, atomnos, ids, constrained_indexes, title='temp'):
     '''
@@ -96,7 +108,8 @@ def hyperNEB(docker, coords, atomnos, ids, constrained_indexes, title='temp'):
     # centering both structures on the centroid of reactive atoms
 
     aligment_rotation = R.align_vectors(reagents, products)
-    products = np.array([aligment_rotation @ v for v in products])
+    # products = np.array([aligment_rotation @ v for v in products])
+    products = (aligment_rotation @ products.T).T
     # rotating the two structures to minimize differences
 
     ts_coords, ts_energy, success = ase_neb(docker, reagents, products, atomnos, title=title)
@@ -353,7 +366,7 @@ def opt_iscans(docker, coords, atomnos, title='temp', logfile=None, xyztraj=None
                                                     indexes,
                                                     docker.constrained_indexes[0],
                                                     # safe=True,
-                                                    title=title+f' scan {i}',
+                                                    title=title+f' scan {i+1}',
                                                     logfile=logfile,
                                                     xyztraj=xyztraj,
                                                     )
@@ -405,9 +418,9 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
     t_start = time.time()
     total_iter = 0
 
-    _, energy, _ = optimize(docker.options.calculator,
-                            coords,
+    _, energy, _ = optimize(coords,
                             atomnos,
+                            docker.options.calculator,
                             docker.options.theory_level,
                             constrained_indexes=constrained_indexes,
                             mols_graphs=docker.graphs,
@@ -447,9 +460,9 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
             else: # use faster raw optimization function, might scramble more often than the ASE one
 
                 active_coords[i2] += sign * norm(direction) * step_size
-                active_coords, energy, success = optimize(docker.options.calculator,
-                                                            active_coords,
+                active_coords, energy, success = optimize(active_coords,
                                                             atomnos,
+                                                            docker.options.calculator,
                                                             docker.options.theory_level,
                                                             constrained_indexes=constrained_indexes,
                                                             mols_graphs=docker.graphs,
@@ -496,9 +509,9 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
     direction = closest_geom[i1] - closest_geom[i2]
     closest_geom[i1] += norm(direction) * (best_distance-closest_dist)
 
-    final_geom, final_energy, _ = optimize(docker.options.calculator,
-                                            closest_geom,
+    final_geom, final_energy, _ = optimize(closest_geom,
                                             atomnos,
+                                            docker.options.calculator,
                                             docker.options.theory_level,
                                             constrained_indexes=constrained_indexes,
                                             mols_graphs=docker.graphs,

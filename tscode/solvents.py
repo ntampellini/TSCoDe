@@ -15,32 +15,60 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+
+xtb_solvents = [
+    'acetone',
+    'acetonitrile',
+    'aniline',
+    'benzaldehyde',
+    'benzene',
+    'ch2cl2',
+    'chcl3',
+    'cs2',
+    'dioxane',
+    'dmf',
+    'dmso',
+    'ether',
+    'ethylacetate',
+    'furane',
+    'hexadecane',
+    'hexane',
+    'methanol',
+    'nitromethane',
+    'octanol',
+    'octanolwet',
+    'phenol',
+    'toluene',
+    'thf',
+    'water',
+
+    'none', # This is required for the ASE get_calc function
+]
+
+xtb_solvents = xtb_solvents + ['' for _ in range(3-len(xtb_solvents)%3)]
+gap = 18
+xtb_supported = ''.join([(f'{xtb_solvents[i]}{" "*(gap-len(xtb_solvents[i]))}'
+                          f'{xtb_solvents[i+1]}{" "*(gap-len(xtb_solvents[i+1]))}'
+                          f'{xtb_solvents[i+2]}\n')
+                          for i, _ in enumerate(xtb_solvents) if i%3==0])
+
 epsilon_dict = {
     'aceticacid':6.15,
-    'ch3cooh':6.15,
     'acetone':20.7,
     'acetonitrile':37.5,
-    'ch3cn':37.5,
     'aniline':7.06,
     'benzaldehyde':17.9,
     'benzene':2.28,
     'chloroform':4.8,
-    'ch3cl':4.8,
-    'carbondisulphide':2.63,
     'cs2':2.63,
-    'dcm':8.93,
     'ch2cl2':8.93,
     'dioxane':2.25,
     'dmf':36.71,
     'dmso':46.68,
-    'diethylether':4.27,
     'et2o':4.27,
     'dimethylether':6.18,
     'ethanol':24.3,
-    'etoh':24.3,
     'methanol':32.63,
-    'ch3oh':32.63,
-    'meoh':32.63,
     'ethylacetate':6.02,
     'furan':2.94,
     'hexadecane':2.05,
@@ -49,7 +77,20 @@ epsilon_dict = {
     'toluene':2.38,
     'thf':7.58,
     'water':80.1,
-    'h2o':80.1,
+}
+
+solvent_synonyms = {
+    'ch3cooh':'aceticacid',
+    'ch3cn':'acetonitrile',
+    'ch3cl':'chloroform',
+    'dcm':'ch2cl2',
+    'carbondisuphide':'cs2',
+    'carbondisulfide':'cs2',
+    'diethylether':'et2o',
+    'etoh':'ethanol',
+    'ch3oh':'methanol',
+    'meoh':'methanol',
+    'h2o':'water',    
 }
 
 new_theory_level = {
@@ -64,6 +105,9 @@ def get_solvent_line(solvent, calculator, theory_level):
     if solvent is None:
         return ''
 
+    if solvent in solvent_synonyms:
+        solvent = solvent_synonyms[solvent]
+
     if solvent not in epsilon_dict:
         print(f'Solvent \'{solvent}\' not recognized. Implemented solvents are:')
         for s in epsilon_dict:
@@ -75,3 +119,4 @@ def get_solvent_line(solvent, calculator, theory_level):
 
 if __name__ == '__main__':
     print(get_solvent_line('aceticacid', 'ORCA', 'PM7'))
+    print(xtb_supported)

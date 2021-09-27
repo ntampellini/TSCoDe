@@ -1,3 +1,3 @@
-SHRINK TS DEBUG SOLVENT=aceticacid
+SHRINK TS DEBUG SOLVENT=methanol
 CH3Cl.xyz 0a
 HCOOH.xyz 3a

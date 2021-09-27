@@ -54,7 +54,6 @@ if __name__ == '__main__':
     if args.setup:
         from tscode.modify_settings import run_setup
         run_setup()
-        print('\nTSCoDe setup performed correctly.')
         quit()
 
     if args.cite:

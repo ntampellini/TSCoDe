@@ -16,17 +16,19 @@ GNU General Public License for more details.
 
 '''
 from cclib.io import ccread
-from tscode.settings import OPENBABEL_OPT_BOOL
+from tscode.settings import FF_OPT_BOOL, FF_CALC
 from tscode.utils import scramble_check, write_xyz
 
-if OPENBABEL_OPT_BOOL:
+if FF_OPT_BOOL and FF_CALC == 'OB':
 
     from openbabel import openbabel as ob
 
-    def openbabel_opt(structure, atomnos, constrained_indexes, graphs, method='UFF'):
+    def openbabel_opt(structure, atomnos, constrained_indexes, graphs=None, check=False, method='UFF', **kwargs):
         '''
         return : MM-optimized structure (UFF/MMFF)
         '''
+
+        assert not check or graphs is not None, 'Either provide molecular graphs or do not check for scrambling.'
 
         filename='temp_ob_in.xyz'
 
@@ -63,6 +65,7 @@ if OPENBABEL_OPT_BOOL:
         # (or less if converges) and save the coordinates to mol.
         forcefield.ConjugateGradients(500)
         forcefield.GetCoordinates(mol)
+        energy = forcefield.Energy()
 
         # Write the mol to a file
         conv.WriteFile(mol,outname)
@@ -70,6 +73,9 @@ if OPENBABEL_OPT_BOOL:
 
         opt_coords = ccread(outname).atomcoords[0]
 
-        success = scramble_check(opt_coords, atomnos, constrained_indexes, graphs)
+        if check:
+            success = scramble_check(opt_coords, atomnos, constrained_indexes, graphs)
+        else:
+            success = True
 
-        return opt_coords, success
+        return opt_coords, energy, success

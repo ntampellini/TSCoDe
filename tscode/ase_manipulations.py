@@ -36,9 +36,9 @@ from sella import Sella
 from tscode.hypermolecule_class import graphize
 from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
-from tscode.utils import (HiddenPrints, findPaths, get_double_bonds_indexes,
-                          molecule_check, neighbors, norm, scramble_check,
-                          time_to_string, write_xyz)
+from tscode.utils import (HiddenPrints, clean_directory, findPaths,
+                          get_double_bonds_indexes, molecule_check, neighbors,
+                          norm, scramble_check, time_to_string, write_xyz)
 
 
 class Spring:
@@ -117,7 +117,10 @@ class HalfSpring:
 def get_ase_calc(docker):
     '''
     Attach the correct ASE calculator
-    to the ASE Atoms object
+    to the ASE Atoms object.
+    docker: either a TSCoDe docker object or
+        a 4-element strings tuple containing
+        (calculator, method, procs, solvent)
     '''
     if isinstance(docker, tuple):
         calculator, method, procs, solvent = docker
@@ -135,6 +138,15 @@ def get_ase_calc(docker):
             raise Exception(('Cannot import xtb python bindings. Install them with:\n'
                              '>>> conda install -c conda-forge xtb-python\n'
                              '(See https://github.com/grimme-lab/xtb-python)'))
+
+        from tscode.solvents import (solvent_synonyms, xtb_solvents,
+                                     xtb_supported)
+        solvent = solvent_synonyms[solvent] if solvent in solvent_synonyms else solvent
+        solvent = 'none' if solvent is None else solvent
+
+        if solvent not in xtb_solvents:
+            raise Exception(f'Solvent \'{solvent}\' not supported by XTB. Supported solvents are:\n{xtb_supported}')
+
         return XTB(method=method, solvent=solvent)
 
     
@@ -169,11 +181,13 @@ def get_ase_calc(docker):
         if solvent is not None:
             method = method + ' ' + get_solvent_line(solvent, calculator, method)
 
+        mem = str(MEM_GB)+'GB' if MEM_GB >= 1 else str(int(1000*MEM_GB))+'MB'
+
         calc = Gaussian(label='temp',
                         command=f'{command} temp.com',
                         method=method,
                         nprocshared=procs,
-                        mem=str(MEM_GB)+'GB',
+                        mem=mem,
                         )
 
         if 'g09' in command:
@@ -525,10 +539,11 @@ def ase_popt(docker, coords, atomnos, constrained_indexes=None, targets=None, sa
 
     return new_structure, atoms.get_total_energy(), success
 
-def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, check=True):
+def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=None, check=True):
     '''
     docker: TSCoDe docker object
     original_mol: Hypermolecule object to be bent
+    conf: index of conformation in original_mol to be used
     pivot: pivot connecting two Hypermolecule orbitals to be approached/distanced
     threshold: target distance for the specified pivot, in Angstroms
     title: name to be used for referring to this structure in the docker log
@@ -571,11 +586,8 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
     i1, i2 = original_mol.reactive_indexes
 
-    neighbors_of_1 = list([(a, b) for a, b in original_mol.graph.adjacency()][i1][1].keys())
-    neighbors_of_1.remove(i1)
-
-    neighbors_of_2 = list([(a, b) for a, b in original_mol.graph.adjacency()][i2][1].keys())
-    neighbors_of_2.remove(i2)
+    neighbors_of_1 = neighbors(original_mol.graph, i1)
+    neighbors_of_2 = neighbors(original_mol.graph, i2)
 
     mols = [deepcopy(original_mol) for _ in original_mol.atomcoords]
     for m, mol in enumerate(mols):
@@ -585,7 +597,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
     for conf, mol in enumerate(mols):
 
-        for p in mol.pivots:
+        for p in mol.pivots[conf]:
             if p.index == pivot.index:
                 active_pivot = p
                 break
@@ -597,7 +609,11 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
         atoms.calc = get_ase_calc(docker)
         
         if traj is not None:
-            traj_obj = Trajectory(traj + f'_conf{conf}.traj', mode='a', atoms=orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]), active_pivot))
+            traj_obj = Trajectory(traj + f'_conf{conf}.traj',
+                                  mode='a',
+                                  atoms=orbitalized(atoms,
+                                                    np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict[0].values()]),
+                                                    active_pivot))
             traj_obj.write()
 
         unproductive_iterations = 0
@@ -608,7 +624,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
 
             atoms.positions = mol.atomcoords[0]
 
-            orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict.items()}
+            orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict[0].items()}
 
             orb1, orb2 = active_pivot.start, active_pivot.end
 
@@ -634,7 +650,7 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
                 break
 
             if traj is not None:
-                traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict.values()]))
+                traj_obj.atoms = orbitalized(atoms, np.vstack([atom.center for atom in mol.reactive_atoms_classes_dict[0].values()]))
                 traj_obj.write()
 
             # check if we are stuck
@@ -651,11 +667,11 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
             mol.atomcoords[0] = atoms.get_positions()
 
             # Update orbitals and get temp pivots
-            for index, atom in mol.reactive_atoms_classes_dict.items():
+            for index, atom in mol.reactive_atoms_classes_dict[0].items():
                 atom.init(mol, index, update=True, orb_dim=orb_memo[index])
                 # orbitals positions are calculated based on the conformer we are working on
 
-            temp_pivots = docker._get_pivots(mol)
+            temp_pivots = docker._get_pivots(mol)[0]
 
             for p in temp_pivots:
                 if p.index == pivot.index:
@@ -699,14 +715,17 @@ def ase_bend(docker, original_mol, pivot, threshold, title='temp', traj=None, ch
     final_mol.atomcoords = np.array(output)
 
     # Update orbitals and pivots
-    for index, atom in final_mol.reactive_atoms_classes_dict.items():
-        atom.init(final_mol, index, update=True, orb_dim=orb_memo[index])
+    for conf, _ in enumerate(final_mol.atomcoords):
+        for index, atom in final_mol.reactive_atoms_classes_dict[conf].items():
+            atom.init(final_mol, index, update=True, orb_dim=orb_memo[index])
 
     docker._set_pivots(final_mol)
 
     # add result to cache (if we have it) so we avoid recomputing it
     if hasattr(docker, "ase_bent_mols_dict"):
         docker.ase_bent_mols_dict[(identifier, tuple(sorted(pivot.index)), round(threshold, 3))] = final_mol
+
+    clean_directory()
 
     return final_mol
 
