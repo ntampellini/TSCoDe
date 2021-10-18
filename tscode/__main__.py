@@ -14,7 +14,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-Version 0.0.4 - Public Beta
+Version 0.0.6 - Public Beta
 
 https://github.com/ntampellini/TSCoDe
 
