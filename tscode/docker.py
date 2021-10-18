@@ -380,7 +380,7 @@ class Docker:
 
                 for i,j in indexes:
                     a1, a2 = mol.get_r_atoms(c)
-                    
+                   
                     c1 = a1.center[i]
                     c2 = a2.center[j]
 
@@ -395,12 +395,13 @@ class Docker:
                 # pivots with the same index or inverse order are discarded. 2 centers on one atom 2 yield just [[0,1]]
                 
                 for i,j in indexes:
-                    a1, a2 = mol.get_r_atoms(c)
-                    
-                    c1 = a1.center[i]
-                    c2 = a2.center[j]
+                    a1 = mol.get_r_atoms(c)[0]
+                    # chelotropic embeds have pivots that start/end on the same atom
 
-                    pivots_list[c].append(Pivot(c1, c2, a1, a2, i, j))
+                    c1 = a1.center[i]
+                    c2 = a1.center[j]
+
+                    pivots_list[c].append(Pivot(c1, c2, a1, a1, i, j))
 
         return [np.array(l) for l in pivots_list]
 

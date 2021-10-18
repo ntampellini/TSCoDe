@@ -149,7 +149,9 @@ class Options:
     solvent = None
     ff_opt = FF_OPT_BOOL
     ff_calc = FF_CALC
-    ff_level = DEFAULT_FF_LEVELS[FF_CALC]
+
+    if ff_opt:
+        ff_level = DEFAULT_FF_LEVELS[FF_CALC]
 
     neb = False
     saddle = False
@@ -214,7 +216,6 @@ class Options:
                 d.pop(name)
 
         if not FF_OPT_BOOL:
-            d.pop('ff_level')
             d.pop('ff_calc')
 
         if self.procs == 1 or self.calculator not in ('ORCA', ' GAUSSIAN'):

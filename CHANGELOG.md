@@ -28,3 +28,5 @@
 - Added a Clustered Conformational Search implementation
 - Old csearch> operator is now called confab>
 - New csearch> operator is the TSCoDe conformational search engine
+- General code optimizations
+- Added profiling command line keyword (-p)

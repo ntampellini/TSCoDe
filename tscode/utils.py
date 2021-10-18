@@ -200,14 +200,12 @@ def rotation_matrix_from_vectors(vec1, vec2):
         rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
         return rotation_matrix
     
-    else:
     # if the cross product is zero, then vecs must be parallel or perpendicular
-
-        if norm_of(a + b) == 0:
-            pointer = np.array([0,0,1])
-            return rot_mat_from_pointer(pointer, 180)
-            
-        return np.eye(3)
+    if norm_of(a + b) == 0:
+        pointer = np.array([0,0,1])
+        return rot_mat_from_pointer(pointer, 180)
+        
+    return np.eye(3)
 
 def rot_mat_from_pointer(pointer, angle):
     '''

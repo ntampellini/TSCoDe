@@ -221,7 +221,8 @@ def cyclical_embed(docker):
             if np.all(mol_direction == 0.):
                 mol_direction = pivots[i].meanpoint
 
-            mols[i].rotation = align_vec_pair((end-start, directions[i]), (pivots[i].pivot, mol_direction))
+            mols[i].rotation = align_vec_pair(np.array([end-start, directions[i]]),
+                                              np.array([pivots[i].pivot, mol_direction]))
             mols[i].position = np.mean(triangle_vectors[i], axis=0) - mols[i].rotation @ pivots[i].meanpoint
 
         ############### set up pairings between reactive atoms
@@ -533,8 +534,8 @@ def cyclical_embed(docker):
                             # center (mean of atomic positions) and ending in pivot_means[i], so to avoid
                             # numeric errors in the next function.
                                 
-                            alignment_rotation = align_vec_pair((end-start, directions[i]),
-                                                                (pivots[i].pivot, mol_direction))
+                            alignment_rotation = align_vec_pair(np.array([end-start, directions[i]]),
+                                                                np.array([pivots[i].pivot, mol_direction]))
                             # this rotation superimposes the molecular orbitals active in this run (pivots[i].pivot
                             # goes to end-start) and also aligns the molecules so that they face each other
                             # (mol_direction goes to directions[i])

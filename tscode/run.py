@@ -93,26 +93,29 @@ class RunEmbedding:
         Performing a sanity check for excessive compenetration
         on generated structures, discarding the ones that look too bad.
         '''
-        self.log('--> Checking structures for compenetrations')
 
-        t_start = time.time()
-        mask = np.zeros(len(self.structures), dtype=bool)
-        num = len(self.structures)
-        for s, structure in enumerate(self.structures):
-            # if num > 100 and num % 100 != 0 and s % (num % 100) == 99:
-            #     loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
-            mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
+        if not (self.embed == 'monomolecular' or len(self.objects) == 3):
+            
+            self.log('--> Checking structures for compenetrations')
 
-        # loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
+            t_start = time.time()
+            mask = np.zeros(len(self.structures), dtype=bool)
+            num = len(self.structures)
+            for s, structure in enumerate(self.structures):
+                # if num > 100 and num % 100 != 0 and s % (num % 100) == 99:
+                #     loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
+                mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
 
-        self.apply_mask(('structures', 'constrained_indexes'), mask)
-        t_end = time.time()
+            # loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
 
-        if False in mask:
-            self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
-        else:
-            self.log('All structures passed the compenetration check')
-        self.log()
+            self.apply_mask(('structures', 'constrained_indexes'), mask)
+            t_end = time.time()
+
+            if False in mask:
+                self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+            else:
+                self.log('All structures passed the compenetration check')
+            self.log()
 
         self.zero_candidates_check()
 
@@ -857,9 +860,7 @@ class RunEmbedding:
                     self.write_structures('unoptimized', energies=False)
                     self.normal_termination()
 
-                if not (self.embed == 'monomolecular' or len(self.objects) == 3):
-                    self.compenetration_refining()
-
+                self.compenetration_refining()
                 self.similarity_refining(verbose=True)
 
                 if self.options.optimization:
