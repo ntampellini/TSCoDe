@@ -28,6 +28,7 @@ from numpy.linalg import LinAlgError
 from rmsd import kabsch
 
 from tscode.errors import CCReadError
+from tscode.fast_algebra import norm_of
 from tscode.reactive_atoms_classes import atom_type_dict
 from tscode.utils import graphize, is_sigmatropic, is_vicinal, pt
 
@@ -234,7 +235,7 @@ class Hypermolecule:
         '''
         for c, _ in enumerate(self.atomcoords):
             for index, atom in self.reactive_atoms_classes_dict[c].items():
-                orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
+                orb_dim = norm_of(atom.center[0]-atom.coord)
                 atom.init(self, index, update=True, orb_dim=orb_dim*value)
 
     def get_r_atoms(self, c):
@@ -272,7 +273,7 @@ class Hypermolecule:
                 # print(f'Atom {i} in conf {j+1} weight is {weight} - rel. E was {self.energies[j+1]}')
 
                 for cluster_number, reference in deepcopy(clusters[i]).items():
-                    if np.linalg.norm(atom - reference[0]) < radii:
+                    if norm_of(atom - reference[0]) < radii:
                         clusters[i][cluster_number][1] += weight
                     else:
                         clusters[i][max(clusters[i].keys())+1] = [atom, weight]
@@ -354,7 +355,7 @@ class Pivot:
         # and to the index2-th center of the second
 
     def __repr__(self):
-        return f'Pivot object - index {self.index}, norm {round(np.linalg.norm(self.pivot), 3)}, meanpoint {self.meanpoint}'
+        return f'Pivot object - index {self.index}, norm {round(norm_of(self.pivot), 3)}, meanpoint {self.meanpoint}'
 
 if __name__ == '__main__':
     # TESTING PURPOSES

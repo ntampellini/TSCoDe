@@ -19,6 +19,7 @@ from itertools import combinations
 
 import numpy as np
 
+from tscode.fast_algebra import norm_of
 from tscode.parameters import nci_dict
 from tscode.utils import dihedral, pt
 
@@ -100,7 +101,7 @@ def _get_nci_atomic_pairs(coords, symbols, constrained_indexes, ids):
 
                     if s in nci_dict:
                         threshold, nci_type = nci_dict[s]
-                        dist = np.linalg.norm(coords[i1]-coords[i2])
+                        dist = norm_of(coords[i1]-coords[i2])
 
                         if dist < threshold:
 
@@ -133,7 +134,7 @@ def _get_nci_aromatic_rings(coords, symbols, ids, aromatic_centers):
                 if s in nci_dict:
 
                     threshold, nci_type = nci_dict[s]
-                    dist = np.linalg.norm(center - atom)
+                    dist = norm_of(center - atom)
 
                     if dist < threshold:
 
@@ -151,7 +152,7 @@ def _get_nci_aromatic_rings(coords, symbols, ids, aromatic_centers):
             # if this atom belongs to a molecule different than owner
 
                     threshold, nci_type = nci_dict['PhPh']
-                    dist = np.linalg.norm(center1 - center2)
+                    dist = norm_of(center1 - center2)
 
                     if dist < threshold:
 

@@ -37,6 +37,7 @@ setup(
         'ase',
         'sella',
         'sklearn',
+        'numba',
     ],
 
     url='https://www.github.com/ntampellini/tscode',

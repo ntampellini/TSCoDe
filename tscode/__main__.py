@@ -25,8 +25,6 @@ Nicolo' Tampellini - nicolo.tampellini@yale.edu
 if __name__ == '__main__':
 
     import os
-    from tscode.docker import Docker
-    from tscode.run import RunEmbedding
     import argparse
 
     usage = '''python -m tscode [-h] [-s] [-t] inputfile [-n NAME]
@@ -38,7 +36,9 @@ if __name__ == '__main__':
           -h, --help              Show this help message and exit.
           -s, --setup             Guided setup of the calculation settings.
           -t, --test              Perform some tests to check the TSCoDe installation.
-          -n NAME, --name NAME    Custom name for the run.\n'''
+          -n NAME, --name NAME    Custom name for the run.
+          -c, --cite              Print citation links.
+          -p, --profile           Profile the run through cProfiler.\n'''
 
     parser = argparse.ArgumentParser(usage=usage)
     parser.add_argument("-s", "--setup", help="Guided setup of the calculation settings.", action="store_true")
@@ -46,6 +46,7 @@ if __name__ == '__main__':
     parser.add_argument("inputfile", help="Input filename, can be any text file.", action='store', nargs='?', default=None)
     parser.add_argument("-n", "--name", help="Custom name for the run.", action='store', required=False)
     parser.add_argument("-c", "--cite", help="Print the appropriate document links for citation purposes.", action='store_true', required=False)
+    parser.add_argument("-p", "--profile", help="Profile the run through cProfiler.", action='store_true', required=False)
     args = parser.parse_args()
 
     if (not (args.test or args.setup)) and args.inputfile is None:
@@ -65,6 +66,14 @@ if __name__ == '__main__':
         quit()
 
     filename = os.path.realpath(args.inputfile)
+
+    from tscode.docker import Docker
+    from tscode.run import RunEmbedding
+
+    if args.profile:
+        from tscode.profiler import profiled_wrapper
+        profiled_wrapper(filename, args.name)
+        quit()
 
     docker = Docker(filename, args.name)
     # initialize docker from input file

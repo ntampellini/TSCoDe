@@ -18,7 +18,7 @@ GNU General Public License for more details.
 
 import os
 import sys
-from subprocess import DEVNULL, STDOUT, CalledProcessError, check_call, run
+from subprocess import CalledProcessError, run
 
 import networkx as nx
 import numpy as np
@@ -26,10 +26,12 @@ from periodictable import core, covalent_radius, mass
 from scipy.spatial.transform import Rotation as R
 
 from tscode.errors import TriangleError
+from tscode.fast_algebra import norm, norm_of
 
 pt = core.PeriodicTable(table="H=1")
 covalent_radius.init(pt)
 mass.init(pt)
+
 
 class suppress_stdout_stderr(object):
     '''
@@ -104,18 +106,6 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
         string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
     output.write(string)
 
-def get_pdb_structure(coords, atomnos, title='temp'):
-    '''
-    return: pdb filename
-    '''
-    with open(title+'.xyz', 'w') as f:
-        write_xyz(coords, atomnos, f, title)
-
-    check_call(f'obabel {title}.xyz -O {title}.pdb'.split(), stdout=DEVNULL, stderr=STDOUT)
-    os.remove(title+'.xyz')
-
-    return title+'.pdb'
-
 def time_to_string(total_time: float, verbose=False):
     '''
     Converts totaltime (float) to a timestring
@@ -145,12 +135,9 @@ def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill=
     if iteration == total:
         print()
 
-def norm(vec):
-    return vec / np.linalg.norm(vec)
-
 def dihedral(p):
     '''
-    Returns dihedral angle in degrees
+    Returns dihedral angle in degrees from 4 3D vecs
     Praxeolitic formula: 1 sqrt, 1 cross product
     
     '''
@@ -165,7 +152,7 @@ def dihedral(p):
 
     # normalize b1 so that it does not influence magnitude of vector
     # rejections that come next
-    b1 /= np.linalg.norm(b1)
+    b1 /= norm_of(b1)
 
     # vector rejections
     # v = projection of b0 onto plane perpendicular to b1
@@ -204,11 +191,11 @@ def rotation_matrix_from_vectors(vec1, vec2):
     assert vec1.shape == (3,)
     assert vec2.shape == (3,)
 
-    a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
+    a, b = (vec1 / norm_of(vec1)).reshape(3), (vec2 / norm_of(vec2)).reshape(3)
     v = np.cross(a, b)
-    if np.linalg.norm(v) != 0:
+    if norm_of(v) != 0:
         c = np.dot(a, b)
-        s = np.linalg.norm(v)
+        s = norm_of(v)
         kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
         rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
         return rotation_matrix
@@ -216,7 +203,7 @@ def rotation_matrix_from_vectors(vec1, vec2):
     else:
     # if the cross product is zero, then vecs must be parallel or perpendicular
 
-        if np.linalg.norm(a + b) == 0:
+        if norm_of(a + b) == 0:
             pointer = np.array([0,0,1])
             return rot_mat_from_pointer(pointer, 180)
             
@@ -316,24 +303,6 @@ def ase_view(mol):
         
     GUI(images=Images(images), show_bonds=True).run()
 
-def center_of_mass(coords, atomnos):
-    '''
-    Returns the center of mass for the atomic system.
-    '''
-    return (np.sum([coords[i]*pt[atomnos[i]].mass for i, _ in enumerate(atomnos)], axis=0) /
-            np.sum([pt[atomnos[i]].mass for i, _ in enumerate(atomnos)]))
-
-def kronecker_delta(i, j):
-    if i == j:
-        return 1
-    return 0
-
-def diagonalize(A):
-    eigenvalues_of_A, eigenvectors_of_A = np.linalg.eig(A)
-    B = eigenvectors_of_A[:,abs(eigenvalues_of_A).argsort()]   
-    diagonal_matrix= np.dot(np.linalg.inv(B), np.dot(A, B))
-    return diagonal_matrix
-
 double_bonds_thresholds_dict = {
     'CC':1.4,
     'CN':1.3,
@@ -352,7 +321,7 @@ def get_double_bonds_indexes(coords, atomnos):
 
     for i1, _ in enumerate(coords):
         for i2 in range(i1+1, len(coords)):
-            dist = np.linalg.norm(coords[i1] - coords[i2])
+            dist = norm_of(coords[i1] - coords[i2])
             tag = ''.join(sorted([pt[atomnos[i1]].symbol,
                                   pt[atomnos[i2]].symbol]))
             
@@ -411,7 +380,7 @@ def is_sigmatropic(mol, conf):
     if len(mol.reactive_indexes) == 2:
 
         i1, i2 = mol.reactive_indexes
-        if np.linalg.norm(mol.atomcoords[conf][i1] - mol.atomcoords[conf][i2]) < 3:
+        if norm_of(mol.atomcoords[conf][i1] - mol.atomcoords[conf][i2]) < 3:
 
             if all([str(r_atom) in sp2_types for r_atom in mol.reactive_atoms_classes_dict[conf].values()]):
 
@@ -524,7 +493,7 @@ def graphize(coords, atomnos, mask=None):
     for i, _ in enumerate(coords):
         for j in range(i,len(coords)):
             if mask[i] and mask[j]:
-                if np.linalg.norm(coords[i]-coords[j]) < d_min_bond(atomnos[i], atomnos[j]):
+                if norm_of(coords[i]-coords[j]) < d_min_bond(atomnos[i], atomnos[j]):
                     matrix[i][j] = 1
 
     graph = nx.from_numpy_matrix(matrix)

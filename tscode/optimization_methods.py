@@ -28,10 +28,10 @@ from tscode.calculators._gaussian import gaussian_opt
 from tscode.calculators._mopac import mopac_opt
 from tscode.calculators._orca import orca_opt
 from tscode.calculators._xtb import xtb_opt
+from tscode.fast_algebra import get_inertia_moments, norm, norm_of
 from tscode.settings import DEFAULT_LEVELS, FF_CALC
-from tscode.utils import (center_of_mass, diagonalize, kronecker_delta,
-                          molecule_check, norm, pt, scramble_check,
-                          time_to_string, write_xyz)
+from tscode.utils import (molecule_check, pt, scramble_check, time_to_string,
+                          write_xyz)
 
 opt_funcs_dict = {
     'MOPAC':mopac_opt,
@@ -146,7 +146,7 @@ def get_product(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
         threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius +
                                         pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
 
-        reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
+        reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indexes]
         # distances between reactive atoms
 
         while not np.all([reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indexes)]):
@@ -156,12 +156,12 @@ def get_product(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
 
             coords, _, _ = opt_func(coords, atomnos, constrained_indexes, method=method)
 
-            reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
+            reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indexes]
 
         newcoords, _, _ = opt_func(coords, atomnos, method=method)
         # finally, when structures are close enough, do a free optimization to get the reaction product
 
-        new_reactive_dists = [np.linalg.norm(newcoords[a] - newcoords[b]) for a, b in constrained_indexes]
+        new_reactive_dists = [norm_of(newcoords[a] - newcoords[b]) for a, b in constrained_indexes]
 
         if np.all([new_reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indexes)]):
         # return the freely optimized structure only if the reagents did not repel each other
@@ -184,18 +184,18 @@ def get_product(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
     motion = (coords[reference] - coords[index_to_be_moved])
     # vector from the atom to be moved to the target reactive atom
 
-    while np.linalg.norm(motion) > threshold_dist:
+    while norm_of(motion) > threshold_dist:
     # check if the reactive atoms are sufficiently close to converge to products
 
         for i, atom in enumerate(coords[moving_molecule_slice]):
-            dist = np.linalg.norm(atom - coords[index_to_be_moved])
+            dist = norm_of(atom - coords[index_to_be_moved])
             # for any atom in the molecule, distance from the reactive atom
 
             atom_step = step_size*np.exp(-0.5*dist)
             coords[moving_molecule_slice][i] += norm(motion)*atom_step
             # the more they are close, the more they are moved
 
-        # print('Reactive dist -', np.linalg.norm(motion))
+        # print('Reactive dist -', norm_of(motion))
         coords, _, _ = opt_func(coords, atomnos, constrained_indexes, method=method)
         # when all atoms are moved, optimize the geometry with the previous constraints
 
@@ -204,7 +204,7 @@ def get_product(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
     newcoords, _, _ = opt_func(coords, atomnos, method=method)
     # finally, when structures are close enough, do a free optimization to get the reaction product
 
-    new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
+    new_reactive_dist = norm_of(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
 
     if new_reactive_dist < threshold_dist:
     # return the freely optimized structure only if the reagents did not repel each other
@@ -238,7 +238,7 @@ def get_reagent(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
 
         threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius + pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
 
-        reactive_dists = [np.linalg.norm(coords[a] - coords[b]) for a, b in constrained_indexes]
+        reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indexes]
         # distances between reactive atoms
 
         coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
@@ -263,11 +263,11 @@ def get_reagent(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
     motion = (coords[reference] - coords[index_to_be_moved])
     # vector from the atom to be moved to the target reactive atom
 
-    displacement = norm(motion)*(threshold_dist-np.linalg.norm(motion))
+    displacement = norm(motion)*(threshold_dist-norm_of(motion))
     # vector to be applied to the reactive atom to push it far just enough
 
     for i, atom in enumerate(coords[moving_molecule_slice]):
-        dist = np.linalg.norm(atom - coords[index_to_be_moved])
+        dist = norm_of(atom - coords[index_to_be_moved])
         # for any atom in the molecule, distance from the reactive atom
 
         coords[moving_molecule_slice][i] -= displacement*np.exp(-0.5*dist)
@@ -279,7 +279,7 @@ def get_reagent(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
     newcoords, _, _ = opt_func(coords, atomnos, method=method)
     # finally, when structures are close enough, do a free optimization to get the reaction product
 
-    new_reactive_dist = np.linalg.norm(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
+    new_reactive_dist = norm_of(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
 
     if new_reactive_dist > threshold_dist:
     # return the freely optimized structure only if the reagents did not approached back each other
@@ -287,25 +287,6 @@ def get_reagent(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
         return newcoords
     
     return coords
-
-def get_inertia_moments(coords, atomnos):
-    '''
-    Returns the diagonal of the diagonalized inertia tensor, that is
-    a shape (3,) array with the moments of inertia along the main axes.
-    (I_x, I_y and largest I_z last)
-    '''
-
-    coords -= center_of_mass(coords, atomnos)
-    inertia_moment_matrix = np.zeros((3,3))
-
-    for i in range(3):
-        for j in range(3):
-            k = kronecker_delta(i,j)
-            inertia_moment_matrix[i][j] = np.sum([pt[atomnos[n]].mass*((np.linalg.norm(coords[n])**2)*k - coords[n][i]*coords[n][j]) for n, _ in enumerate(atomnos)])
-
-    inertia_moment_matrix = diagonalize(inertia_moment_matrix)
-
-    return np.diag(inertia_moment_matrix)
 
 def prune_enantiomers(structures, atomnos, max_delta=10):
     '''
@@ -318,12 +299,15 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
 
     l = len(structures)
     mat = np.zeros((l,l), dtype=int)
+    masses = np.array([pt[a].mass for a in atomnos])
     for i in range(l):
+        im_i = get_inertia_moments(structures[i], atomnos, masses)
         for j in range(i+1,l):
-            im_i = get_inertia_moments(structures[i], atomnos)
-            im_j = get_inertia_moments(structures[j], atomnos)
+            im_j = get_inertia_moments(structures[j], atomnos, masses)
             delta = np.abs(im_i - im_j)
-            mat[i,j] = 1 if np.all(delta < max_delta) else 0
+            if np.all(delta < max_delta):
+                mat[i,j] = 1
+                break
 
     where = np.where(mat == 1)
     matches = [(i,j) for i,j in zip(where[0], where[1])]
@@ -429,7 +413,7 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
                             )
 
     direction = coords[i1] - coords[i2]
-    base_dist = np.linalg.norm(direction)
+    base_dist = norm_of(direction)
     energies, geometries = [energy], [coords]
 
     for sign in (1, -1):
@@ -444,9 +428,9 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
             
             if safe: # use ASE optimization function - more reliable, but locks all interatomic dists
 
-                targets = [np.linalg.norm(active_coords[a]-active_coords[b]) - step_size
+                targets = [norm_of(active_coords[a]-active_coords[b]) - step_size
                            if (a in scan_indexes and b in scan_indexes)
-                           else np.linalg.norm(active_coords[a]-active_coords[b])
+                           else norm_of(active_coords[a]-active_coords[b])
                            for a, b in constrained_indexes]
 
                 active_coords, energy, success = ase_popt(docker,
@@ -482,7 +466,7 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
                 break
             
             direction = active_coords[i1] - active_coords[i2]
-            dist = np.linalg.norm(direction)
+            dist = norm_of(direction)
 
             total_iter += 1
             geometries.append(active_coords)
@@ -499,7 +483,7 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
                 ):
                 break
             
-    distances = [np.linalg.norm(g[i1]-g[i2]) for g in geometries]
+    distances = [norm_of(g[i1]-g[i2]) for g in geometries]
     best_distance = distances[energies.index(max(energies))]
 
     distances_delta = [abs(d-best_distance) for d in distances]
@@ -525,14 +509,14 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
         if docker.options.debug:
             with open(xyztraj, 'a') as f:
                 write_xyz(active_coords, atomnos, f, title=title+(
-                    f' FINAL - d({i1}-{i2}) = {round(np.linalg.norm(final_geom[i1]-final_geom[i2]), 3)} A,'
+                    f' FINAL - d({i1}-{i2}) = {round(norm_of(final_geom[i1]-final_geom[i2]), 3)} A,'
                     f' Rel. E = {round(final_energy-energies[0], 3)} kcal/mol'))
 
         import matplotlib.pyplot as plt
 
         plt.figure()
 
-        distances = [np.linalg.norm(geom[i1]-geom[i2]) for geom in geometries]
+        distances = [norm_of(geom[i1]-geom[i2]) for geom in geometries]
         distances, sorted_energies = zip(*sorted(zip(distances, energies), key=lambda x: x[0]))
 
         plt.plot(distances,
@@ -543,7 +527,7 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
                 linewidth=3,
                 alpha=0.5)
 
-        plt.plot(np.linalg.norm(coords[i1]-coords[i2]),
+        plt.plot(norm_of(coords[i1]-coords[i2]),
                 0,
                 marker='o',
                 color='tab:blue',
@@ -589,7 +573,7 @@ def fitness_check(docker, coords) -> bool:
             
             if letter in ('a', 'b', 'c'):
                 i1, i2 = pairing
-                dist = np.linalg.norm(coords[i1]-coords[i2])
+                dist = norm_of(coords[i1]-coords[i2])
                 target = docker.pairings_dists.get(letter)
 
                 if target is not None and abs(target-dist) > 0.05:

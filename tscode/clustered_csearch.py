@@ -22,12 +22,13 @@ import networkx as nx
 import numpy as np
 from sklearn.cluster import KMeans
 
+from tscode.fast_algebra import norm_of
 from tscode.hypermolecule_class import align_structures, graphize
 from tscode.optimization_methods import optimize
 from tscode.parameters import nci_dict
-from tscode.python_functions import compenetration_check, prune_conformers
-from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC, FF_OPT_BOOL
-from tscode.utils import (cartesian_product, findPaths, loadbar, neighbors, pt,
+from tscode.python_functions import compenetration_check
+from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC
+from tscode.utils import (cartesian_product, findPaths, neighbors, pt,
                           rotate_dihedral, time_to_string)
 
 
@@ -238,7 +239,7 @@ def _get_hydrogen_bonds(coords, atomnos, graph):
             
                 if tag in nci_dict:
                     thresh, _ = nci_dict[tag]
-                    dist = np.linalg.norm(coord1-coord2)
+                    dist = norm_of(coord1-coord2)
 
                     if dist < thresh:
                         output.append((i1, i2))
@@ -368,11 +369,13 @@ def clustered_csearch(coords,
                 f'{[len(t) for t in grouped_torsions]}')
     
     ############################################## DEBUG
-    with open('n_fold_log.txt', 'w') as f:
-        for t in torsions:
-            f.write(f'{t.torsion} - {t.n_fold}-fold\n')
+
+    # with open('n_fold_log.txt', 'w') as f:
+    #     for t in torsions:
+    #         f.write(f'{t.torsion} - {t.n_fold}-fold\n')
+
     _write_torsion_vmd(coords, atomnos, constrained_indexes, grouped_torsions)
-    # quit()
+
     ############################################## DEBUG
 
     output_structures = []

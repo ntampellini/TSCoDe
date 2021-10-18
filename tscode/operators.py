@@ -138,7 +138,7 @@ def csearch_operator(filename, docker):
     calc, method, procs = _get_lowest_calc(docker)
     # conformers, energies = _refine_structures(conformers, data.atomnos, *lowest_calc, loadstring='Optimizing conformer')
 
-    opt_coords, _, _ = optimize(data.atomcoords[0], data.atomnos, calculator=calc, method=method, procs=procs)
+    opt_coords = optimize(data.atomcoords[0], data.atomnos, calculator=calc, method=method, procs=procs)[0] if docker.options.optimization else data.atomcoords[0]
 
     conformers = clustered_csearch(opt_coords, data.atomnos, logfunction=docker.log)
     # energies = []

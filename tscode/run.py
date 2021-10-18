@@ -26,6 +26,7 @@ from tscode.calculators._xtb import xtb_metadyn_augmentation
 from tscode.embeds import (cyclical_embed, dihedral_embed, monomolecular_embed,
                            string_embed)
 from tscode.errors import MopacReadError, ZeroCandidatesError
+from tscode.fast_algebra import norm_of
 from tscode.hypermolecule_class import align_structures
 from tscode.nci import get_nci
 from tscode.optimization_methods import (fitness_check, hyperNEB, opt_iscans,
@@ -33,8 +34,7 @@ from tscode.optimization_methods import (fitness_check, hyperNEB, opt_iscans,
 from tscode.parameters import orb_dim_dict
 from tscode.python_functions import (compenetration_check, prune_conformers,
                                      scramble)
-from tscode.utils import (cartesian_product, clean_directory, loadbar,
-                          time_to_string, write_xyz)
+from tscode.utils import clean_directory, loadbar, time_to_string, write_xyz
 
 
 class RunEmbedding:
@@ -99,17 +99,19 @@ class RunEmbedding:
         mask = np.zeros(len(self.structures), dtype=bool)
         num = len(self.structures)
         for s, structure in enumerate(self.structures):
-            if num > 100 and num % 100 != 0 and s % (num % 100) == 99:
-                loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
+            # if num > 100 and num % 100 != 0 and s % (num % 100) == 99:
+            #     loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
             mask[s] = compenetration_check(structure, self.ids, max_clashes=self.options.max_clashes, thresh=self.options.clash_thresh)
 
-        loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
+        # loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
 
         self.apply_mask(('structures', 'constrained_indexes'), mask)
         t_end = time.time()
 
         if False in mask:
             self.log(f'Discarded {len([b for b in mask if not b])} candidates for compenetration ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
+        else:
+            self.log('All structures passed the compenetration check')
         self.log()
 
         self.zero_candidates_check()
@@ -159,10 +161,20 @@ class RunEmbedding:
             self.log('--> Similarity Processing')
 
         t_start = time.time()
-
         before = len(self.structures)
         attr = ('constrained_indexes', 'energies', 'exit_status')
 
+        if not self.options.keep_enantiomers:
+
+            self.structures, mask = prune_enantiomers(self.structures, self.atomnos)
+            
+            self.apply_mask(attr, mask)
+           
+            if False in mask:
+                self.log(f'Discarded {len([b for b in mask if not b])} enantiomeric structures ({len([b for b in mask if b])} left, {time_to_string(time.time()-t_start)})')
+            self.log()
+
+        t_start = time.time()
         for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
             if 5*k < len(self.structures):
                 t_start_int = time.time()
@@ -176,28 +188,14 @@ class RunEmbedding:
         
         t_start_int = time.time()
         self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
-        t_end = time.time()
 
         if verbose:
-            self.log(f'    - similarity final processing (k=1) - {time_to_string(t_end-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
+            self.log(f'    - similarity final processing (k=1) - {time_to_string(time.time()-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
 
         self.apply_mask(attr, mask)
 
         if before > len(self.structures):
-            self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
-
-        if not self.options.keep_enantiomers:
-
-            t_start = time.time()
-            self.structures, mask = prune_enantiomers(self.structures, self.atomnos)
-            
-            self.apply_mask(attr, mask)
-
-            t_end = time.time()
-            
-            if False in mask:
-                self.log(f'Discarded {len([b for b in mask if not b])} enantiomeric structures ({len([b for b in mask if b])} left, {time_to_string(t_end-t_start)})')
-            self.log()
+            self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(time.time()-t_start)})')
 
     def force_field_refining(self):
         '''
@@ -457,8 +455,11 @@ class RunEmbedding:
 
                 write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
-        os.remove(f'TSCoDe_TS_guesses_unrefined_{self.stamp}.xyz')
-        # since we have the refined structures, we can get rid of the unrefined ones
+        try:
+            os.remove(f'TSCoDe_TS_guesses_unrefined_{self.stamp}.xyz')
+            # since we have the refined structures, we can get rid of the unrefined ones
+        except FileNotFoundError:
+            pass
 
         self.log(f'Wrote {len(self.structures)} rough TS structures to {self.outname} file.\n')
 
@@ -740,7 +741,7 @@ class RunEmbedding:
 
             head = ''
             for i, mol in enumerate(self.objects):
-                descs = [atom.symbol+'('+str(atom)+f', {round(np.linalg.norm(atom.center[0]-atom.coord), 3)} A, ' +
+                descs = [atom.symbol+'('+str(atom)+f', {round(norm_of(atom.center[0]-atom.coord), 3)} A, ' +
                         f'{len(atom.center)} center{"s" if len(atom.center) != 1 else ""})' for atom in mol.reactive_atoms_classes_dict[0].values()]
 
                 t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
@@ -856,7 +857,7 @@ class RunEmbedding:
                     self.write_structures('unoptimized', energies=False)
                     self.normal_termination()
 
-                if not self.embed == 'monomolecular':
+                if not (self.embed == 'monomolecular' or len(self.objects) == 3):
                     self.compenetration_refining()
 
                 self.similarity_refining(verbose=True)
@@ -894,7 +895,7 @@ class RunEmbedding:
 
             ##################### POST TSCODE - SADDLE, NEB, NCI, VMD
 
-            if not self.options.bypass:
+            if self.options.optimization and not self.options.bypass:
                 self.write_vmd()
 
             if self.options.neb:

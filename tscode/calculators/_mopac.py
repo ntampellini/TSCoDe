@@ -20,10 +20,11 @@ from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
 from tscode.errors import MopacReadError
+from tscode.fast_algebra import norm, norm_of
 from tscode.python_functions import scramble
 from tscode.settings import COMMANDS
 from tscode.solvents import get_solvent_line
-from tscode.utils import dihedral, norm, pt, vec_angle
+from tscode.utils import dihedral, pt, vec_angle
 
 
 def read_mop_out(filename):
@@ -123,7 +124,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
                 c, d = np.random.choice(free_indexes, 2)
             # indexes of reference atoms, from unconstraind atoms set
 
-            dist = np.linalg.norm(coords[a] - coords[b]) # in Angstrom
+            dist = norm_of(coords[a] - coords[b]) # in Angstrom
             # print(f'DIST - {dist} - between {a} {b}')
 
             angle = vec_angle(norm(coords[a] - coords[b]), norm(coords[c] - coords[b]))
@@ -166,7 +167,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
             c, d = np.random.choice(free_indexes, 2)
         # indexes of reference atoms, from unconstraind atoms set
 
-        dist = np.linalg.norm(coords[central] - coords[others[0]]) # in Angstrom
+        dist = norm_of(coords[central] - coords[others[0]]) # in Angstrom
 
         angle = vec_angle(norm(coords[central] - coords[others[0]]), norm(coords[others[0]] - coords[c]))
 
@@ -187,7 +188,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
             c1, d1 = np.random.choice(free_indexes, 2)
         # indexes of reference atoms, from unconstraind atoms set
 
-        dist1 = np.linalg.norm(coords[others[1]] - coords[central]) # in Angstrom
+        dist1 = norm_of(coords[others[1]] - coords[central]) # in Angstrom
 
         angle1 = np.arccos(norm(coords[others[1]] - coords[central]) @ norm(coords[others[1]] - coords[c1]))*180/np.pi # in degrees
 

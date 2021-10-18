@@ -20,6 +20,7 @@ from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
 from cclib.io import ccread
+from tscode.fast_algebra import norm_of
 from tscode.utils import clean_directory, write_xyz
 
 
@@ -45,7 +46,7 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', solven
     if constrained_indexes is not None:
         s += '\n$constrain\n'
         for a, b in constrained_indexes:
-            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(np.linalg.norm(coords[a]-coords[b]), 5))
+            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(norm_of(coords[a]-coords[b]), 5))
     
     if method.upper() in ('GFN-XTB', 'GFNXTB'):
         s += '\n$gfn\n   method=1\n'
@@ -135,7 +136,7 @@ def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_stru
     if constrained_indexes is not None:
         s += '\n$constrain\n'
         for a, b in constrained_indexes:
-            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(np.linalg.norm(coords[a]-coords[b]), 5))
+            s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(norm_of(coords[a]-coords[b]), 5))
 
     s = ''.join(s)
     with open(f'temp.inp', 'w') as f:

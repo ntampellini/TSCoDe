@@ -33,12 +33,13 @@ from ase.optimize import BFGS, LBFGS
 from rmsd import kabsch
 from sella import Sella
 
+from tscode.fast_algebra import norm, norm_of
 from tscode.hypermolecule_class import graphize
 from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
 from tscode.utils import (HiddenPrints, clean_directory, findPaths,
                           get_double_bonds_indexes, molecule_check, neighbors,
-                          norm, scramble_check, time_to_string, write_xyz)
+                          scramble_check, time_to_string, write_xyz)
 
 
 class Spring:
@@ -62,7 +63,7 @@ class Spring:
         direction = atoms.positions[self.i2] - atoms.positions[self.i1]
         # vector connecting atom1 to atom2
 
-        spring_force = self.k * (np.linalg.norm(direction) - self.d_eq)
+        spring_force = self.k * (norm_of(direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
         if not self.tight:
@@ -99,9 +100,9 @@ class HalfSpring:
         direction = atoms.positions[self.i2] - atoms.positions[self.i1]
         # vector connecting atom1 to atom2
 
-        if np.linalg.norm(direction) > self.d_max:
+        if norm_of(direction) > self.d_max:
 
-            spring_force = self.k * (np.linalg.norm(direction) - self.d_max)
+            spring_force = self.k * (norm_of(direction) - self.d_max)
             # absolute spring force (float). Positive if spring is overstretched.
 
             spring_force = np.clip(spring_force, -50, 50)
@@ -411,15 +412,15 @@ class OrbitalSpring:
 
         # First, assess if we have to move atoms 1 and 2 at all
 
-        sum_of_distances = (np.linalg.norm(atoms.positions[self.i1] - self.orb1) +
-                            np.linalg.norm(atoms.positions[self.i2] - self.orb2) + self.d_eq)
+        sum_of_distances = (norm_of(atoms.positions[self.i1] - self.orb1) +
+                            norm_of(atoms.positions[self.i2] - self.orb2) + self.d_eq)
 
-        reactive_atoms_distance = np.linalg.norm(atoms.positions[self.i1] - atoms.positions[self.i2])
+        reactive_atoms_distance = norm_of(atoms.positions[self.i1] - atoms.positions[self.i2])
 
         orb_direction = self.orb2 - self.orb1
         # vector connecting orb1 to orb2
 
-        spring_force = self.k * (np.linalg.norm(orb_direction) - self.d_eq)
+        spring_force = self.k * (norm_of(orb_direction) - self.d_eq)
         # absolute spring force (float). Positive if spring is overstretched.
 
         # spring_force = np.clip(spring_force, -50, 50)
@@ -444,7 +445,7 @@ class OrbitalSpring:
         # Now applying to neighbors the force derived by torque, scaled to match the spring_force,
         # but only if atomic orbitals are more than two Angstroms apart. This improves convergence.
 
-        if np.linalg.norm(orb_direction) > 2:
+        if norm_of(orb_direction) > 2:
             torque1 = np.cross(self.orb1 - atoms.positions[self.i1], force_direction1)
             for i in self.neighbors_of_1:
                 forces[i] += norm(np.cross(torque1, atoms.positions[i] - atoms.positions[self.i1])) * spring_force
@@ -514,7 +515,7 @@ def ase_popt(docker, coords, atomnos, constrained_indexes=None, targets=None, sa
 
     for i, c in enumerate(constrained_indexes):
         i1, i2 = c
-        tgt_dist = np.linalg.norm(coords[i1]-coords[i2]) if targets is None else targets[i]
+        tgt_dist = norm_of(coords[i1]-coords[i2]) if targets is None else targets[i]
         constraints.append(Spring(i1, i2, tgt_dist))
 
     if safe:
@@ -597,7 +598,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
             active_pivot = p
             break
     
-    dist = np.linalg.norm(active_pivot.pivot)
+    dist = norm_of(active_pivot.pivot)
 
     atoms = Atoms(mol.atomnos, positions=mol.atomcoords[conf])
 
@@ -619,7 +620,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
 
         atoms.positions = mol.atomcoords[0]
 
-        orb_memo = {index:np.linalg.norm(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict[0].items()}
+        orb_memo = {index:norm_of(atom.center[0]-atom.coord) for index, atom in mol.reactive_atoms_classes_dict[0].items()}
 
         orb1, orb2 = active_pivot.start, active_pivot.end
 
@@ -674,7 +675,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
                 break
         # print(active_pivot)
 
-        dist = np.linalg.norm(active_pivot.pivot)
+        dist = norm_of(active_pivot.pivot)
         # print(f'{iteration}. {mol.name} conf {conf}: pivot is {round(dist, 3)} (target {round(threshold, 3)})')
 
         if dist - threshold < 0.1:

@@ -20,8 +20,10 @@ from copy import deepcopy
 
 import numpy as np
 
+from tscode.fast_algebra import norm, norm_of
 from tscode.parameters import orb_dim_dict
-from tscode.utils import neighbors, norm, pt, rot_mat_from_pointer, vec_angle
+from tscode.utils import neighbors, pt, rot_mat_from_pointer, vec_angle
+
 
 class Single:
     
@@ -71,7 +73,7 @@ class Single:
                 orb_dim = orb_dim_dict.get(key)
 
                 if orb_dim is None:
-                    orb_dim = np.linalg.norm(self.coord - self.other)
+                    orb_dim = norm_of(self.coord - self.other)
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using the bonding distance ({round(orb_dim, 3)} A).')
 
             self.center = orb_dim * self.orb_vecs + self.coord

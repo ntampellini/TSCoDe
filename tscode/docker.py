@@ -24,10 +24,12 @@ import numpy as np
 
 from tscode.docker_options import Options, OptionSetter, keywords_list
 from tscode.errors import InputError
+from tscode.fast_algebra import norm_of
 from tscode.hypermolecule_class import Hypermolecule, Pivot
 from tscode.operators import operate
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS
 from tscode.utils import ase_view, cartesian_product
+
 
 class Docker:
     '''
@@ -323,7 +325,7 @@ class Docker:
                 symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict[c].values()]
                 if 'H' in symbols:
                     if ('O' in symbols) or ('S' in symbols):
-                        if max([np.linalg.norm(p.pivot)/self.options.shrink_multiplier for p in mol.pivots[c]]) < 4.5:
+                        if max([norm_of(p.pivot)/self.options.shrink_multiplier for p in mol.pivots[c]]) < 4.5:
                             class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict[c].values()]
                             if 'Single Bond' in class_types and 'Ketone' in class_types:
                             # if we have a bridging acid, remove the longest of the two pivots,
@@ -350,7 +352,7 @@ class Docker:
                             break
 
             if mol.sp3_sigmastar:
-                pivots_lengths = [np.linalg.norm(pivot.pivot) for pivot in mol.pivots[c]]
+                pivots_lengths = [norm_of(pivot.pivot) for pivot in mol.pivots[c]]
                 shortest_length = min(pivots_lengths)
                 mask = np.array([(i - shortest_length) < 1e-5 for i in pivots_lengths])
                 mol.pivots[c] = mol.pivots[c][mask]
@@ -444,7 +446,7 @@ class Docker:
                     for mol in self.objects:
                         for c, _ in enumerate(mol.atomcoords):
                             for index, atom in mol.reactive_atoms_classes_dict[c].items():
-                                orb_dim = np.linalg.norm(atom.center[0]-atom.coord)
+                                orb_dim = norm_of(atom.center[0]-atom.coord)
                                 atom.init(mol, index, update=True, orb_dim=orb_dim + 0.2)
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
                     # be generated a tad too close to each other for how the cyclical embed works          

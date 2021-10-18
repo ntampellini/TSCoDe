@@ -16,13 +16,15 @@ GNU General Public License for more details.
 
 '''
 from copy import deepcopy
-from re import A
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from tscode.ase_manipulations import ase_bend
+from tscode.clustered_csearch import most_diverse_conformers
 from tscode.errors import TriangleError, ZeroCandidatesError
+from tscode.fast_algebra import align_vec_pair
+from tscode.python_functions import compenetration_check
 from tscode.utils import (cartesian_product, loadbar, norm, polygonize,
                           rot_mat_from_pointer, rotation_matrix_from_vectors,
                           vec_angle)
@@ -219,7 +221,7 @@ def cyclical_embed(docker):
             if np.all(mol_direction == 0.):
                 mol_direction = pivots[i].meanpoint
 
-            mols[i].rotation = R.align_vectors((end-start, directions[i]), (pivots[i].pivot, mol_direction))[0].as_matrix()
+            mols[i].rotation = align_vec_pair((end-start, directions[i]), (pivots[i].pivot, mol_direction))
             mols[i].position = np.mean(triangle_vectors[i], axis=0) - mols[i].rotation @ pivots[i].meanpoint
 
         ############### set up pairings between reactive atoms
@@ -319,8 +321,8 @@ def cyclical_embed(docker):
     if not docker.options.let:
         for mol in docker.objects:
             if len(mol.atomcoords) > 10:
-                mol.atomcoords = mol.atomcoords[0:10]
-                docker.log(f'Using only the first 10 conformers of molecule {mol.name} (override with LET keyword)')
+                mol.atomcoords = most_diverse_conformers(10, mol.atomcoords)
+                docker.log(f'Using only the most diverse 10 conformers of molecule {mol.name} (override with LET keyword)')
         # Do not keep more than 10 conformations, unless LET keyword is provided
 
     conf_number = [len(mol.atomcoords) for mol in docker.objects]
@@ -531,8 +533,8 @@ def cyclical_embed(docker):
                             # center (mean of atomic positions) and ending in pivot_means[i], so to avoid
                             # numeric errors in the next function.
                                 
-                            alignment_rotation = R.align_vectors((end-start, directions[i]),
-                                                                (pivots[i].pivot, mol_direction))[0].as_matrix()
+                            alignment_rotation = align_vec_pair((end-start, directions[i]),
+                                                                (pivots[i].pivot, mol_direction))
                             # this rotation superimposes the molecular orbitals active in this run (pivots[i].pivot
                             # goes to end-start) and also aligns the molecules so that they face each other
                             # (mol_direction goes to directions[i])
@@ -559,10 +561,12 @@ def cyclical_embed(docker):
                             # overall position is given by superimposing mean of active pivot (connecting orbitals)
                             # to mean of vec_pair (defining the target position - the side of a triangle for three molecules)
 
-                        poses.append(get_embed(docker.objects, conf_ids))
+                        embedded_structure = get_embed(docker.objects, conf_ids)
+                        if compenetration_check(embedded_structure, ids=docker.ids, thresh=docker.options.clash_thresh):
 
-                        constrained_indexes.append(ids)
-                        # Save indexes to be constrained later in the optimization step
+                            poses.append(embedded_structure)
+                            constrained_indexes.append(ids)
+                            # Save indexes to be constrained later in the optimization step
 
     loadbar(1, 1, prefix=f'Embedding structures ')
 
