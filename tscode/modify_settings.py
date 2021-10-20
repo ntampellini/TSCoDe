@@ -16,7 +16,7 @@ GNU General Public License for more details.
 
 '''
 
-from settings import CALCULATOR, FF_CALC, FF_OPT_BOOL, MEM_GB, PROCS
+from tscode.settings import CALCULATOR, FF_CALC, FF_OPT_BOOL, MEM_GB, PROCS
 
 
 def run_setup():
