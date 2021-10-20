@@ -10,7 +10,7 @@ with open('CHANGELOG.md', 'r') as f:
 
 setup(
     name='tscode',
-    version='0.0.6',
+    version='0.0.7',
     description='Computational chemistry general purpose transition state builder',
     keywords=['computational chemistry', 'ASE', 'transition state', 'xtb'],
 
