@@ -19,13 +19,13 @@ GNU General Public License for more details.
 # IF YOU MANUALLY EDIT THIS FILE, BE SURE NOT TO
 # CHANGE IDENTATION/WHITESPACES/NEWLINES!
 
-FF_OPT_BOOL = False
+FF_OPT_BOOL = True
 # Whether to run Force Field optimization with
 # prior to the final one. Set to False if no
 # Openbabel/XTB programs and python bindings
 # are installed.
 
-FF_CALC = 'None'
+FF_CALC = 'XTB'
 # Calculator to perform Force Field optimizations.
 # Possibilites are:
 # 'OB' : Openbabel UFF and MMFF methods
@@ -41,7 +41,7 @@ DEFAULT_FF_LEVELS = {
 }
 # Default levels used to run calculations, overridden by FFLEVEL keyword
 
-CALCULATOR = 'MOPAC'
+CALCULATOR = 'XTB'
 # Calculator used to run geometry optimization.
 # Possibilites are:
 # 'MOPAC' : Semiempirical MOPAC2016 (PM7, PM6-DH3, ...)

@@ -14,13 +14,13 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-Version 0.0.7 - Public Beta
-
 https://github.com/ntampellini/TSCoDe
 
 Nicolo' Tampellini - nicolo.tampellini@yale.edu
 
 '''
+
+__version__ = '0.0.8'
 
 if __name__ == '__main__':
 

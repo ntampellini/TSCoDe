@@ -24,6 +24,7 @@ from tscode.ase_manipulations import ase_bend
 from tscode.clustered_csearch import most_diverse_conformers
 from tscode.errors import TriangleError, ZeroCandidatesError
 from tscode.fast_algebra import align_vec_pair
+from tscode.optimization_methods import optimize
 from tscode.python_functions import compenetration_check
 from tscode.utils import (cartesian_product, loadbar, norm, polygonize,
                           rot_mat_from_pointer, rotation_matrix_from_vectors,
@@ -676,14 +677,31 @@ def dihedral_embed(docker):
     mol = docker.objects[0]
     docker.structures, docker.energies = [], []
 
+
     docker.log(f'\n--> {mol.name} - performing a scan of dihedral angle with indices {mol.reactive_indexes}\n')
 
     for c, coords in enumerate(mol.atomcoords):
 
-        docker.log(f'--> Performing Scans and saddle optimizations (conformer {c+1}/{len(mol.atomcoords)})')
+        docker.log(f'\n--> Pre-optimizing input structure{"s" if len(mol.atomcoords) > 1 else ""} '
+                   f'({docker.options.theory_level} via {docker.options.calculator})')
+
+        docker.log(f'--> Performing relaxed scans (conformer {c+1}/{len(mol.atomcoords)})')
+
+        new_coords, ground_energy, success = optimize(
+                                                    coords,
+                                                    mol.atomnos,
+                                                    docker.options.calculator,
+                                                    method=docker.options.theory_level,
+                                                    procs=docker.options.procs,
+                                                    solvent=docker.options.solvent
+                                                )
+
+        if not success:
+            docker.log(f'Pre-optimization failed - Skipped conformer {c+1}', p=False)
+            continue
 
         structures, energies = ase_torsion_TSs(docker,
-                                                coords,
+                                                new_coords,
                                                 mol.atomnos,
                                                 mol.reactive_indexes,
                                                 threshold_kcal=docker.options.kcal_thresh,
@@ -695,7 +713,7 @@ def dihedral_embed(docker):
 
         for structure, energy in zip(structures, energies):
             docker.structures.append(structure)
-            docker.energies.append(energy)
+            docker.energies.append(energy-ground_energy)
 
     docker.structures = np.array(docker.structures)
     docker.energies = np.array(docker.energies)
@@ -709,7 +727,7 @@ def dihedral_embed(docker):
 
     docker.atomnos = mol.atomnos
     docker.similarity_refining()
-    docker.write_structures('TS_guesses', indexes=docker.objects[0].reactive_indexes)
+    docker.write_structures('TS_guesses', indexes=docker.objects[0].reactive_indexes, relative=False, extra='(barrier height)')
     docker.write_vmd(indexes=docker.objects[0].reactive_indexes)
     docker.normal_termination()
 

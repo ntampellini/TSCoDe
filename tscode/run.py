@@ -94,7 +94,7 @@ class RunEmbedding:
         on generated structures, discarding the ones that look too bad.
         '''
 
-        if not (self.embed == 'monomolecular' or len(self.objects) == 3):
+        if self.embed not in ('cyclical', 'monomolecular'):
             
             self.log('--> Checking structures for compenetrations')
 
@@ -811,7 +811,7 @@ class RunEmbedding:
 
         self.log(f'Wrote VMD {self.vmd_name} file\n')
 
-    def write_structures(self, tag, indexes=None, energies=True, p=True):
+    def write_structures(self, tag, indexes=None, energies=True, relative= True, extra='', p=True):
         '''
         '''
 
@@ -819,7 +819,10 @@ class RunEmbedding:
             indexes = self.constrained_indexes[0]
 
         if energies:
-            rel_e = self.energies - np.min(self.energies)
+            rel_e = self.energies
+
+            if relative:
+                rel_e -= np.min(self.energies)
 
         self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
@@ -827,7 +830,9 @@ class RunEmbedding:
                 title = f'TS candidate {i+1} - {tag}'
 
                 if energies:
-                    title += f' - Rel. E. = {round(rel_e[i], 3)} kcal/mol'
+                    title += f' - Rel. E. = {round(rel_e[i], 3)} kcal/mol '
+                
+                title += extra
 
                 write_xyz(structure, self.atomnos, f, title=title)
 

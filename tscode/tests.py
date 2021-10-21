@@ -23,7 +23,6 @@ def run_tests():
     from subprocess import CalledProcessError
 
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    # sys.path.append(os.getcwd())
 
     from tscode.settings import COMMANDS, FF_OPT_BOOL, FF_CALC, CALCULATOR, PROCS, DEFAULT_LEVELS, DEFAULT_FF_LEVELS
 
@@ -38,7 +37,6 @@ def run_tests():
     from ase.atoms import Atoms
     import numpy as np
 
-    os.chdir(os.path.dirname(os.getcwd()))
     os.chdir('tests')
 
     t_start_run = time.time()
@@ -96,7 +94,7 @@ def run_tests():
                                     procs=PROCS,
                                     read_output=False)
 
-        print(f'{FF_CALC} raw calculator works.')
+        print(f'{FF_CALC} FF raw calculator works.')
 
         ##########################################################################
 
@@ -130,6 +128,7 @@ def run_tests():
                 run_command(f'python -m tscode {f} -n {name}')
 
         except CalledProcessError as error:
+            print('\n\n--> An error occurred:\n')
             print(error.stderr.decode("utf-8"))
             quit()
                     

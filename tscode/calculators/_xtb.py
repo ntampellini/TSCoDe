@@ -21,7 +21,7 @@ from subprocess import DEVNULL, STDOUT, check_call
 import numpy as np
 from cclib.io import ccread
 from tscode.fast_algebra import norm_of
-from tscode.utils import clean_directory, write_xyz
+from tscode.utils import HiddenPrints, clean_directory, suppress_stdout_stderr, write_xyz
 
 
 def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', solvent=None, title='temp', read_output=True, **kwargs):

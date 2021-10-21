@@ -33,3 +33,10 @@
 
 ### 0.0.7 (20 Oct 2021)
 - Import bugfix
+
+## 0.0.8 (21 Oct 2021)
+- Removed unnecessary for loop in dihedral embed NEB optimizations
+- Added pre-optimization before dihedral embed
+- Customized text can be inserted in write_structures function
+- Dihedral embed structures energies are now relative to equilibrim geometry (direct barrier height)
+- Moved "test" folder inside "tscode" (fixes bug)

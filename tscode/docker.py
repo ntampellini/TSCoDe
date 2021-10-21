@@ -22,6 +22,7 @@ from itertools import groupby
 
 import numpy as np
 
+from tscode.__main__ import __version__
 from tscode.docker_options import Options, OptionSetter, keywords_list
 from tscode.errors import InputError
 from tscode.fast_algebra import norm_of
@@ -65,7 +66,7 @@ class Docker:
         s ='\n*************************************************************\n'
         s += '*      TSCoDe: Transition State Conformational Docker       *\n'
         s += '*************************************************************\n'
-        s += '*                Version 0.0.4 - Public Beta                *\n'
+        s += "*{0:^59}*\n".format("Version %s - Public Beta" % (__version__))
         s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
         s += '*************************************************************\n'
 

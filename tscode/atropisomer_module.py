@@ -74,8 +74,13 @@ def ase_torsion_TSs(docker,
                 logfile.write(s+'\n')
 
     else:
+
+        if not docker.options.let:
+            raise SystemExit('The specified dihedral angle is made up of non-contiguous atoms. To prevent errors, the\n' +
+                             'run has been stopped. Override this behavior with the LET keyword.')
+
         # if user did not provide four contiguous indexes,
-        # just move the fourth atom and
+        # and did that on purpose, just move the fourth atom and
         # let the rest of the structure relax
         indexes_to_be_moved = [i4]
         # cyclical = True
@@ -122,18 +127,18 @@ def ase_torsion_TSs(docker,
 
             fig = plt.figure()
 
-            x1 = [dihedral(structures[i][indexes]) for i in range(steps)]
+            x1 = [dihedral(structure[indexes]) for structure in structures]
             y1 = [e-min_e for e in energies]
 
-            x1, y1 = zip(*sorted(zip(x1, y1), key=lambda x: x[0]))
+            for i, (x_, y_) in enumerate(get_plot_segments(x1, y1, max_step=abs(degrees)+1)):
 
-            plt.plot(x1,
-                    y1,
-                    '-',
-                    color='tab:blue',
-                    label='Preliminary SCAN'+direction,
-                    linewidth=3,
-                    alpha=0.50)
+                plt.plot(x_,
+                        y_,
+                        '-',
+                        color='tab:blue',
+                        label=('Preliminary SCAN'+direction) if i == 0 else None,
+                        linewidth=3,
+                        alpha=0.50)
 
         peaks_indexes = atropisomer_peaks(energies, min_thr=min_e+threshold_kcal, max_thr=min_e+75)
 
@@ -173,16 +178,16 @@ def ase_torsion_TSs(docker,
                     x2 = [dihedral(structure[indexes]) for structure in sub_structures]
                     y2 = [e-min_e for e in sub_energies]
 
-                    x2, y2 = zip(*sorted(zip(x2, y2), key=lambda x: x[0]))
+                    for i, (x_, y_) in enumerate(get_plot_segments(x2, y2, max_step=abs(degrees/10)+1)):
 
-                    plt.plot(x2, 
-                            y2,
-                            '-o',
-                            color='tab:red',
-                            label='Accurate SCAN' if p == 0 else None,
-                            markersize=1,
-                            linewidth=2,
-                            alpha=0.5)
+                        plt.plot(x_, 
+                                y_,
+                                '-o',
+                                color='tab:red',
+                                label='Accurate SCAN' if (p == 0 and i == 0) else None,
+                                markersize=1,
+                                linewidth=2,
+                                alpha=0.5)
 
                 sub_peaks_indexes = atropisomer_peaks(sub_energies, min_thr=threshold_kcal+min_e, max_thr=min_e+75)
 
@@ -221,23 +226,21 @@ def ase_torsion_TSs(docker,
 
                         elif docker.options.neb:
 
-                            for s, sub_peak in enumerate(sub_peaks_indexes):
+                            loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
+                            # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
+                            print(loadbar_title)
+                        
+                            optimized_geom, energy, success = ase_neb(docker,
+                                                                        sub_structures[sub_peak-2],
+                                                                        sub_structures[(sub_peak+1)%len(sub_structures)],
+                                                                        atomnos,
+                                                                        n_images=5,
+                                                                        title=f'NEB_peak_{p+1}_sub-peak_{s+1}',
+                                                                        logfile=logfile)
 
-                                loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
-                                # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
-                                print(loadbar_title)
-                            
-                                optimized_geom, energy, success = ase_neb(docker,
-                                                                            sub_structures[sub_peak-2],
-                                                                            sub_structures[sub_peak+1],
-                                                                            atomnos,
-                                                                            n_images=5,
-                                                                            title=f'NEB_peak_{p+1}_sub-peak_{s+1}',
-                                                                            logfile=logfile)
-
-                                if success and molecule_check(coords, optimized_geom, atomnos):
-                                    ts_structures.append(optimized_geom)
-                                    energies.append(energy)
+                            if success and molecule_check(coords, optimized_geom, atomnos):
+                                ts_structures.append(optimized_geom)
+                                energies.append(energy)
 
                         else:
                             ts_structures.append(sub_structures[sub_peak])
@@ -398,3 +401,22 @@ def ase_scan(docker,
         logfile.write(f'{title} - completed ({time_to_string(elapsed)})\n')
 
     return align_structures(structures, indexes), energies
+
+def get_plot_segments(x, y, max_step=2):
+    '''
+    Returns a zip object with x, y segments.
+    A single segment has x values with separation
+    smaller than max_step.
+    '''
+    x, y = zip(*sorted(zip(x, y), key=lambda t: t[0]))
+    
+    x_slices, y_slices = [], []
+    for i, n in enumerate(x):
+        if abs(x[i-1]-n) > max_step:
+            x_slices.append([])
+            y_slices.append([])
+
+        x_slices[-1].append(n)
+        y_slices[-1].append(y[i])
+
+    return zip(x_slices, y_slices)
