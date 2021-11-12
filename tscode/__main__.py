@@ -75,7 +75,7 @@ if __name__ == '__main__':
         profiled_wrapper(filename, args.name)
         quit()
 
-    docker = Docker(filename, args.name)
+    docker = Docker(filename, stamp=args.name)
     # initialize docker from input file
 
     RunEmbedding(docker)

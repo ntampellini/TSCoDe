@@ -21,6 +21,7 @@ import time
 import warnings
 from copy import deepcopy
 
+import matplotlib.pyplot as plt
 import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import PropertyNotImplementedError
@@ -317,7 +318,7 @@ def ase_saddle(docker, coords, atomnos, constrained_indexes=None, mols_graphs=No
 
     return new_structure, energy, success
 
-def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None):
+def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None, write_plot=False):
     '''
     docker: tscode docker object
     reagents: coordinates for the atom arrangement to be used as reagents
@@ -385,7 +386,33 @@ def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optim
     ase_dump(f'{title}_MEP.xyz', images, atomnos)
     # Save the converged MEP (minimum energy path) to an .xyz file
 
-    return images[ts_id].get_positions(), images[ts_id].get_total_energy(), True
+    if write_plot:
+
+        plt.figure()
+        plt.plot(
+            range(1,len(images)+1),
+            np.array(energies)-min(energies),
+            color='tab:blue',
+            label='Image energies',
+            linewidth=3,
+        )
+
+        plt.plot(
+            [ts_id+1],
+            [energies[ts_id]-min(energies)],
+            color='gold',
+            label='TS guess',
+            marker='o',
+            markersize=3,
+        )
+
+        plt.legend()
+        plt.title(title)
+        plt.xlabel(f'Image number')
+        plt.ylabel('Rel. E. (kcal/mol)')
+        plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
+
+    return images[ts_id].get_positions(), energies[ts_id], True
 
 class OrbitalSpring:
     '''
@@ -495,7 +522,7 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
 
     return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
 
-def ase_popt(docker, coords, atomnos, constrained_indexes=None, targets=None, safe=False, safe_mask=None, traj=None):
+def ase_popt(docker, coords, atomnos, constrained_indexes=None, steps=500, targets=None, safe=False, safe_mask=None, traj=None):
     '''
     docker: TSCoDe docker object
     coords: 
@@ -513,10 +540,11 @@ def ase_popt(docker, coords, atomnos, constrained_indexes=None, targets=None, sa
     atoms.calc = get_ase_calc(docker)
     constraints = []
 
-    for i, c in enumerate(constrained_indexes):
-        i1, i2 = c
-        tgt_dist = norm_of(coords[i1]-coords[i2]) if targets is None else targets[i]
-        constraints.append(Spring(i1, i2, tgt_dist))
+    if constrained_indexes is not None:
+        for i, c in enumerate(constrained_indexes):
+            i1, i2 = c
+            tgt_dist = norm_of(coords[i1]-coords[i2]) if targets is None else targets[i]
+            constraints.append(Spring(i1, i2, tgt_dist))
 
     if safe:
         constraints.append(PreventScramblingConstraint(graphize(coords, atomnos, safe_mask),
@@ -528,7 +556,7 @@ def ase_popt(docker, coords, atomnos, constrained_indexes=None, targets=None, sa
 
     # t_start_opt = time.time()
     with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
-        opt.run(fmax=0.05, steps=500)
+        opt.run(fmax=0.05, steps=steps)
         iterations = opt.nsteps
 
     new_structure = atoms.get_positions()

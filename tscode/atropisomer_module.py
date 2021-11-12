@@ -114,11 +114,13 @@ def ase_torsion_TSs(docker,
                                         logfile=logfile)
 
         min_e = min(energies)
-        output_structures, output_energies = [], []
+        rel_energies = [e-min_e for e in energies]
+
+        tag = '_relaxed' if optimization else '_rigid'
         
-        for structure, energy in zip(structures, energies):
-            output_structures.append(structure)
-            output_energies.append(energy)
+        with open(title + tag + direction + '_scan.xyz', 'w') as outfile:
+            for s, structure in enumerate(align_structures(np.array(structures), indexes[:-1])):
+                write_xyz(structure, atomnos, outfile, title=f'Scan point {s+1}/{len(structures)} - Rel. E = {round(rel_energies[s], 3)} kcal/mol')
 
         if plot:
             import pickle
@@ -166,13 +168,6 @@ def ase_torsion_TSs(docker,
 
                 if logfile is not None:
                     logfile.write('\n')
-
-                # for sub_structure, sub_energy in zip(sub_structures, sub_energies):
-                #     output_structures.append(sub_structure)
-                #     output_energies.append(sub_energy)
-
-                # This was a tentative to include accurate scan structures into the
-                # final scan file, but yields rough results and i do not like it
 
                 if plot:
                     x2 = [dihedral(structure[indexes]) for structure in sub_structures]
@@ -256,18 +251,6 @@ def ase_torsion_TSs(docker,
             print('No suitable peaks found.\n')
             if logfile is not None:
                 logfile.write('No suitable peaks found.\n\n')
-
-        # output_structures, output_energies = zip(*sorted(zip(output_structures, output_energies), key=lambda x: dihedral(x[0][indexes])))
-        # Sorting structures and energies based on scanned dihedral
-        # angle value, to get a continuous scan in the .xyz file
-
-        rel_energies = [e-min_e for e in output_energies]
-
-        tag = '_relaxed' if optimization else '_rigid'
-
-        with open(title + tag + direction + '_scan.xyz', 'w') as outfile:
-            for s, structure in enumerate(align_structures(np.array(output_structures), indexes[:-1])):
-                write_xyz(structure, atomnos, outfile, title=f'Scan point {s+1}/{len(output_structures)} - Rel. E = {round(rel_energies[s], 3)} kcal/mol')
 
         if plot:
             plt.legend()

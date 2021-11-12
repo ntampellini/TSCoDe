@@ -24,6 +24,7 @@ from subprocess import DEVNULL, STDOUT, check_call
 import numpy as np
 from cclib.io import ccread
 from networkx import connected_components
+from tscode.ase_manipulations import ase_popt
 
 from tscode.clustered_csearch import clustered_csearch, most_diverse_conformers
 from tscode.errors import InputError
@@ -60,6 +61,10 @@ def operate(input_string, docker):
                                     procs=docker.options.procs,
                                     logfunction=docker.log,
                                     let=docker.options.let)
+
+    elif 'neb>' in input_string:
+        neb_operator(filename, docker)
+        docker.normal_termination()
 
     return outname
 
@@ -136,35 +141,22 @@ def csearch_operator(filename, docker):
         raise InputError(f'Requested conformational search on file {filename} that already contains more than one structure.')
                                 
     calc, method, procs = _get_lowest_calc(docker)
-    # conformers, energies = _refine_structures(conformers, data.atomnos, *lowest_calc, loadstring='Optimizing conformer')
 
     opt_coords = optimize(data.atomcoords[0], data.atomnos, calculator=calc, method=method, procs=procs)[0] if docker.options.optimization else data.atomcoords[0]
 
     conformers = clustered_csearch(opt_coords, data.atomnos, logfunction=docker.log)
-    # energies = []
 
     docker.log(f'Selected the most diverse {len(conformers)} conformers ({time_to_string(time.time()-t_start)})')
-
-    # lowest_calc = _get_lowest_calc(docker)
-    # conformers, energies = _refine_structures(conformers, data.atomnos, *lowest_calc, loadstring='Optimizing conformer')
-
-    # energies = np.array(energies) - np.min(energies)
-    # energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
-    # sorting structures based on energy
 
     confname = filename[:-4] + '_confs.xyz'
     with open(confname, 'w') as f:
         for i, conformer in enumerate(conformers):
-            # write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
             write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i}')
 
-    # s = 's' if len(conformers) > 1 else ''
-    # s = f'Completed conformational search and {docker.options.calculator} {docker.options.theory_level} optimization - {len(conformers)} conformer{s}. ({time_to_string(time.time()-t_start)}).'
-        
     # if len(conformers) > 10 and not docker.options.let:
     #     s += f' Will use only the best 10 conformers for TSCoDe embed.'
+    # docker.log(s)
 
-    # docker.log(s+'\n')
     docker.log('\n')
 
     return confname
@@ -175,8 +167,6 @@ def opt_operator(filename, calculator, theory_level, procs=1, logfunction=None, 
 
     if logfunction is not None:
         logfunction(f'--> Performing {calculator} {theory_level} optimization on {filename} before running TSCoDe')
-
-    from cclib.io import ccread
 
     t_start = time.time()
 
@@ -210,6 +200,50 @@ def opt_operator(filename, calculator, theory_level, procs=1, logfunction=None, 
         logfunction(s+'\n')
 
     return optname
+
+def neb_operator(filename, docker):
+    '''
+    '''
+    docker.t_start_run = time.time()
+    data = ccread(filename)
+    assert len(data.atomcoords) == 2, 'NEB calculations need a .xyz input file with two geometries.'
+
+    from tscode.ase_manipulations import ase_neb, ase_popt 
+
+    reagents, products = data.atomcoords
+    title = filename[:-4] + '_NEB'
+
+    docker.log(f'--> Performing a NEB TS optimization. Using start and end points from {filename}\n'
+               f'Theory level is {docker.options.theory_level} via {docker.options.calculator}')
+    _, reag_energy, _ = ase_popt(docker, reagents, data.atomnos, steps=0)
+    _, prod_energy, _ = ase_popt(docker, products, data.atomnos, steps=0)
+
+    ts_coords, ts_energy, success = ase_neb(docker,
+                                            reagents,
+                                            products,
+                                            data.atomnos, 
+                                            title=title,
+                                            logfile=docker.logfile,
+                                            write_plot=True)
+
+    e1 = ts_energy - reag_energy
+    e2 = ts_energy - prod_energy
+
+    if success:
+        success = all((e1 > 0,
+                       e2 > 0))
+
+    docker.log(f'NEB completed, relative energy from start/end points (not barrier heights):\n'
+               f'  > E(TS)-E(start): {"+" if e1>=0 else "-"}{round(e1, 3)} kcal/mol\n'
+               f'  > E(TS)-E(end)  : {"+" if e1>=0 else "-"}{round(e1, 3)} kcal/mol')
+
+    if not success:
+        docker.log(f'\nNEB failed, TS energy is lower than both the start and end points.\n')
+
+    docker.structures = np.array([ts_coords])
+    docker.energies = np.array([ts_energy])
+    docker.atomnos = data.atomnos
+    docker.write_structures('NEB_TS', indexes=list(range(len(ts_coords))), energies=False, extra=' (see log for energy)')
 
 def _refine_structures(structures, atomnos, calculator, method, procs, loadstring=''):
     '''

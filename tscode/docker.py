@@ -26,10 +26,11 @@ from tscode.__main__ import __version__
 from tscode.docker_options import Options, OptionSetter, keywords_list
 from tscode.errors import InputError
 from tscode.fast_algebra import norm_of
-from tscode.hypermolecule_class import Hypermolecule, Pivot
+from tscode.hypermolecule_class import Hypermolecule, Pivot, align_structures
 from tscode.operators import operate
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS
-from tscode.utils import ase_view, cartesian_product
+from tscode.utils import (ase_view, cartesian_product, clean_directory,
+                          time_to_string, write_xyz)
 
 
 class Docker:
@@ -126,7 +127,7 @@ class Docker:
             # (optional) keyword line + 1, 2 or 3 lines for molecules
 
             keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
-            if any(k in keywords_list for k in keywords):
+            if any(k.upper() in keywords_list for k in keywords):
                 self.kw_line, *self.mol_lines = lines
             else:
                 self.mol_lines = lines
@@ -614,3 +615,37 @@ class Docker:
 
     def scramble(self, array, sequence):
         return np.array([array[s] for s in sequence])
+
+    def write_structures(self, tag, indexes=None, energies=True, relative=True, extra='', p=True):
+        '''
+        '''
+
+        if indexes is None:
+            indexes = self.constrained_indexes[0]
+
+        if energies:
+            rel_e = self.energies
+
+            if relative:
+                rel_e -= np.min(self.energies)
+
+        self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
+        with open(self.outname, 'w') as f:        
+            for i, structure in enumerate(align_structures(self.structures, indexes)):
+                title = f'TS candidate {i+1} - {tag}'
+
+                if energies:
+                    title += f' - Rel. E. = {round(rel_e[i], 3)} kcal/mol '
+                
+                title += extra
+
+                write_xyz(structure, self.atomnos, f, title=title)
+
+        if p:
+            self.log(f'Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
+
+    def normal_termination(self):
+        clean_directory()
+        self.log(f'--> TSCoDe normal termination: total time {time_to_string(time.time() - self.t_start_run, verbose=True)}.')
+        self.logfile.close()
+        quit()

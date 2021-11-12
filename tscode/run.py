@@ -811,40 +811,6 @@ class RunEmbedding:
 
         self.log(f'Wrote VMD {self.vmd_name} file\n')
 
-    def write_structures(self, tag, indexes=None, energies=True, relative= True, extra='', p=True):
-        '''
-        '''
-
-        if indexes is None:
-            indexes = self.constrained_indexes[0]
-
-        if energies:
-            rel_e = self.energies
-
-            if relative:
-                rel_e -= np.min(self.energies)
-
-        self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
-        with open(self.outname, 'w') as f:        
-            for i, structure in enumerate(align_structures(self.structures, indexes)):
-                title = f'TS candidate {i+1} - {tag}'
-
-                if energies:
-                    title += f' - Rel. E. = {round(rel_e[i], 3)} kcal/mol '
-                
-                title += extra
-
-                write_xyz(structure, self.atomnos, f, title=title)
-
-        if p:
-            self.log(f'Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
-
-    def normal_termination(self):
-        clean_directory()
-        self.log(f'--> TSCoDe normal termination: total time {time_to_string(time.time() - self.t_start_run, verbose=True)}.')
-        self.logfile.close()
-        quit()
-
     def run(self):
         '''
         Run the TSCoDe program.
