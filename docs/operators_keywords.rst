@@ -1,7 +1,41 @@
-.. _keywords:
+.. op_kw:
+
+Operators and keywords
+======================
+
+Operators
++++++++++
+
+Molecule files can be preceded by *operators*, like
+``opt>molecule.xyz``. They operate on the input file before it is
+fed to TSCoDe embeddings, or modify the behavior of the program to
+use some of its functionalities. Do not to include any space character
+between the operator and the molecule name.
+
+-  ``opt>`` - Performs an optimization of all conformers of a molecule before
+   running TSCoDe. Generates a new ``molecule_opt.xyz`` file with the optimized
+   coordinates.
+
+-  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational
+   search through TSCoDe. Then, an appropriate amount of the most diverse
+   conformers are used to run TSCoDe. Generates a new ``molecule_confs.xyz``
+   file with all optimized conformers.
+
+-  ``confab>`` - *(deprecated)* Performs a simple confab conformational search through
+   Openbabel and optimizes all obtained conformers. Then, a maximum of
+   10 best conformers are used to run TSCoDe (overriden with ``LET`` keyword).
+   Generates a new ``molecule_confab.xyz`` file with all optimized
+   conformers. (max 7-8 rotable bonds ideally)
+
+- ``neb`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
+  if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
+  The implementation is a climbing image nudged elastic band (CI-NEB) TS search with 6 images.  
+  The operator should be used on a file that contains two structures, the start and end points
+  for the search. A graph with the energy of each image is written, along with the MEP guess 
+  and the converged MEP.
 
 Keywords
-========
+++++++++
 
 Keywords are divided by at least one blank space. Some of them are
 self-sufficient (*i.e.* ``NCI``), while some others require an
@@ -90,9 +124,9 @@ one is accepted, like in ``DIST``.
    band (CI-NEB) TS search after the partial optimization step,
    inferring reagents and products for each generated TS pose. For dihedral
    embeds, that is atropisomer rotations, scan points around the energy
-   maxima are used. For all other embeds, these are guessed by obtaining
+   maxima are used (reliable). For all other embeds, these are guessed by obtaining
    reagents and products by bonding/distancing reactive atom pairs and
-   making use of different constrained optimizations. For trimolecular
+   making use of different constrained optimizations (experimental). For trimolecular
    transition states with more than one reactive pairing (``a``, ``b``
    or ``c``, not ``x``, ``y`` and ``z``), only the first, non-NCI imposed
    pairing (a) is approached - *i.e.* the C-C reactive distance in the

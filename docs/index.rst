@@ -7,12 +7,5 @@ TSCoDe - Transition State Conformational Docker
    introduction
    installation
    usage
-   keywords
+   operators_keywords
    license
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

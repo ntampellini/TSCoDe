@@ -75,8 +75,6 @@ def confab_operator(filename, calculator, theory_level, procs=1, logfunction=Non
     if logfunction is not None:
         logfunction(f'--> Performing conformational search and optimization on {filename}')
 
-    t_start = time.time()
-
     data = ccread(filename)
 
     if len(data.atomcoords) > 1:
@@ -101,29 +99,15 @@ def confab_operator(filename, calculator, theory_level, procs=1, logfunction=Non
 
     data = ccread(confname)
     conformers = data.atomcoords
-    energies = []
-
-    # lowest_calc = _get_lowest_calc()
-    # conformers, energies = _refine_structures(conformers, data.atomnos, *lowest_calc, loadstring='Optimizing conformer')
-
-    # energies = np.array(energies) - np.min(energies)
-    # energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
-    # sorting structures based on energy
+        
+    if len(conformers) > 10 and not let:
+        conformers = conformers[0:10]
+        logfunction(f'Will use only the best 10 conformers for TSCoDe embed.\n')
 
     os.remove(confname)
     with open(confname, 'w') as f:
         for i, conformer in enumerate(conformers):
-            # write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
             write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i}')
-
-    # if logfunction is not None:
-    #     s = 's' if len(conformers) > 1 else ''
-    #     s = f'Completed confab conformational search and {calculator} {theory_level} optimization - {len(conformers)} conformer{s}. ({time_to_string(time.time()-t_start)}).'
-        
-    #     if len(conformers) > 10 and not let:
-    #         s += f' Will use only the best 10 conformers for TSCoDe embed.'
-
-    #     logfunction(s+'\n')
 
     return confname
 

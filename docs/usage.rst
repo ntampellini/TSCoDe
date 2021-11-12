@@ -1,4 +1,4 @@
-.. _usage:
+.. _usg:
 
 Usage
 =====
@@ -14,6 +14,8 @@ stamp will be used to name the output files.
 
 Examples of ``myinput.txt``
 ---------------------------
+
+For detailed descriptions of the operators and keywords present in the inputs, see :ref:`op_kw`.
 
 Trimolecular input
 ++++++++++++++++++
@@ -121,30 +123,6 @@ has two flags, for example the hydroxyl oxygen atom of a peracid, like
 If a ``NEB`` calculation is to be performed on a trimolecular transition
 state, the reactive distance "scanned" is the first imposed (``a``). See
 ``NEB`` keyword in the keyword section.
-
-Operators
-+++++++++
-
-Molecule files can be preceded by *operators*, like
-``opt>molecule.xyz``. They operate on the input file before it is
-fed to TSCoDe. It is important not to include any space character
-between the operator and the molecule name.
-
--  ``opt>`` - Performs an optimization of the structure(s) before
-   using it/them in TSCoDe. Generates a new ``molecule_opt.xyz`` file
-   with the optimized coordinates.
-
--  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational search through
-   TSCoDe. Then, a maximum of 10 best
-   conformers are used to run TSCoDe (overriden with ``LET`` keyword).
-   Generates a new ``molecule_confs.xyz`` file with all optimized
-   conformers.
-
--  ``confab>`` - Performs a simple confab conformational search through
-   Openbabel and optimizes all obtained conformers. Then, a maximum of 10 best
-   conformers are used to run TSCoDe (overriden with ``LET`` keyword).
-   Generates a new ``molecule_confab.xyz`` file with all optimized
-   conformers. (max 7-8 rotable bonds ideally)
 
 Good practice and suggested options (work in progress)
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
