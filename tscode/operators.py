@@ -202,7 +202,7 @@ def neb_operator(filename, docker):
     _, reag_energy, _ = ase_popt(docker, reagents, data.atomnos, steps=0)
     _, prod_energy, _ = ase_popt(docker, products, data.atomnos, steps=0)
 
-    ts_coords, ts_energy, success = ase_neb(docker,
+    ts_coords, ts_energy, _ = ase_neb(docker,
                                             reagents,
                                             products,
                                             data.atomnos, 
@@ -213,15 +213,11 @@ def neb_operator(filename, docker):
     e1 = ts_energy - reag_energy
     e2 = ts_energy - prod_energy
 
-    if success:
-        success = all((e1 > 0,
-                       e2 > 0))
-
     docker.log(f'NEB completed, relative energy from start/end points (not barrier heights):\n'
                f'  > E(TS)-E(start): {"+" if e1>=0 else "-"}{round(e1, 3)} kcal/mol\n'
-               f'  > E(TS)-E(end)  : {"+" if e1>=0 else "-"}{round(e1, 3)} kcal/mol')
+               f'  > E(TS)-E(end)  : {"+" if e2>=0 else "-"}{round(e2, 3)} kcal/mol')
 
-    if not success:
+    if not (e1 > 0 and e2 > 0):
         docker.log(f'\nNEB failed, TS energy is lower than both the start and end points.\n')
 
     docker.structures = np.array([ts_coords])
