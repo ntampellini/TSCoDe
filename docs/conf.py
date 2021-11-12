@@ -22,11 +22,12 @@ copyright = '2021, Nicolò Tampellini'
 author = 'Nicolò Tampellini'
 
 # The full version, including alpha/beta/rc tags
-import os 
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
-os.chdir(os.path.dirname(os.getcwd()))
-from tscode.__main__ import __version__
-release = __version__
+# import os 
+# os.chdir(os.path.dirname(os.path.realpath(__file__)))
+# os.chdir(os.path.dirname(os.getcwd()))
+# from tscode.__main__ import __version__
+# release = __version__
+release='latest'
 
 # -- General configuration ---------------------------------------------------
 
