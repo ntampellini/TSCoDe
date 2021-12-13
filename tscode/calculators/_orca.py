@@ -17,7 +17,7 @@ GNU General Public License for more details.
 '''
 from subprocess import DEVNULL, STDOUT, check_call
 
-from cclib.io import ccread
+from tscode.utils import read_xyz
 from tscode.settings import COMMANDS
 from tscode.solvents import get_solvent_line
 from tscode.utils import clean_directory, pt
@@ -75,7 +75,7 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, s
     if read_output:
 
         try:
-            opt_coords = ccread(f'{title}.xyz').atomcoords[0]
+            opt_coords = read_xyz(f'{title}.xyz').atomcoords[0]
             energy = read_orca_property(f'{title}_property.txt')
 
             clean_directory()

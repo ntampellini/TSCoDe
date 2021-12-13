@@ -19,12 +19,12 @@ import os
 from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
+from tscode.algebra import dihedral, norm, norm_of, vec_angle
 from tscode.errors import MopacReadError
-from tscode.fast_algebra import norm, norm_of
+from tscode.pt import pt
 from tscode.python_functions import scramble
 from tscode.settings import COMMANDS
 from tscode.solvents import get_solvent_line
-from tscode.utils import dihedral, pt, vec_angle
 
 
 def read_mop_out(filename):

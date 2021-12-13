@@ -80,7 +80,7 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
     if read_output:
 
         try:
-            data = ccread(f'{title}.out')
+            data = read_xyz(f'{title}.out')
             opt_coords = data.atomcoords[0]
             energy = data.scfenergies[-1] * 23.060548867 # eV to kcal/mol
 

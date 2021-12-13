@@ -71,7 +71,7 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
         conv.WriteFile(mol,outname)
         conv.CloseOutFile()
 
-        opt_coords = ccread(outname).atomcoords[0]
+        opt_coords = read_xyz(outname).atomcoords[0]
 
         if check:
             success = scramble_check(opt_coords, atomnos, constrained_indexes, graphs)

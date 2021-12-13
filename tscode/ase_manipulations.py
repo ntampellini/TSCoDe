@@ -34,12 +34,12 @@ from ase.optimize import BFGS, LBFGS
 from rmsd import kabsch
 from sella import Sella
 
-from tscode.fast_algebra import norm, norm_of
-from tscode.hypermolecule_class import graphize
+from tscode.algebra import norm, norm_of
+from tscode.graph_manipulations import findPaths, graphize, neighbors
 from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
-from tscode.utils import (HiddenPrints, clean_directory, findPaths,
-                          get_double_bonds_indexes, molecule_check, neighbors,
+from tscode.utils import (HiddenPrints, clean_directory,
+                          get_double_bonds_indexes, molecule_check,
                           scramble_check, time_to_string, write_xyz)
 
 
@@ -116,22 +116,22 @@ class HalfSpring:
     def __repr__(self):
         return f'Spring - ids:{self.i1}/{self.i2} - d_max:{self.d_max}, k:{self.k}'
 
-def get_ase_calc(docker):
+def get_ase_calc(embedder):
     '''
     Attach the correct ASE calculator
     to the ASE Atoms object.
-    docker: either a TSCoDe docker object or
+    embedder: either a TSCoDe embedder object or
         a 4-element strings tuple containing
         (calculator, method, procs, solvent)
     '''
-    if isinstance(docker, tuple):
-        calculator, method, procs, solvent = docker
+    if isinstance(embedder, tuple):
+        calculator, method, procs, solvent = embedder
 
     else:
-        calculator = docker.options.calculator
-        method = docker.options.theory_level
-        procs = docker.options.procs
-        solvent = docker.options.solvent
+        calculator = embedder.options.calculator
+        method = embedder.options.theory_level
+        procs = embedder.options.procs
+        solvent = embedder.options.solvent
 
     if calculator == 'XTB':
         try:
@@ -208,36 +208,36 @@ def get_ase_calc(docker):
 
             return calc
 
-def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, title=0, traj=None):
+def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title=0, traj=None):
     '''
-    docker: TSCoDe docker object
+    embedder: TSCoDe embedder object
     structure: TS candidate coordinates to be adjusted
     atomnos: 1-d array with element numbering for the TS
     constrained_indexes: (n,2)-shaped array of indexes to be distance constrained
     mols_graphs: list of NetworkX graphs, ordered as the single molecules in the TS
-    title: number to be used for referring to this structure in the docker log
+    title: number to be used for referring to this structure in the embedder log
     traj: if set to a string, traj+'.traj' is used as a filename for the refinement trajectory.
     '''
     atoms = Atoms(atomnos, positions=structure)
 
-    atoms.calc = get_ase_calc(docker)
+    atoms.calc = get_ase_calc(embedder)
     
-    springs = [Spring(indexes[0], indexes[1], dist) for indexes, dist in docker.target_distances.items()]
+    springs = [Spring(indexes[0], indexes[1], dist) for indexes, dist in embedder.target_distances.items()]
     # adding springs to adjust the pairings for which we have target distances
 
-    nci_indexes = [indexes for letter, indexes in docker.pairings_table.items() if letter in ('x', 'y', 'z')]
+    nci_indexes = [indexes for letter, indexes in embedder.pairings_table.items() if letter in ('x', 'y', 'z')]
     halfsprings = [HalfSpring(i1, i2, 2.5) for i1, i2 in nci_indexes]
     # HalfSprings get atoms involved in NCIs together if they are more than 2.5A apart,
     # but lets them achieve their natural equilibrium distance when closer
 
     psc = PreventScramblingConstraint(graphize(structure, atomnos),
                                         atoms,
-                                        double_bond_protection=docker.options.double_bond_protection,
-                                        fix_angles=docker.options.fix_angles_in_deformation)
+                                        double_bond_protection=embedder.options.double_bond_protection,
+                                        fix_angles=embedder.options.fix_angles_in_deformation)
 
     atoms.set_constraint(springs + halfsprings + [psc])
 
-    t_start_opt = time.time()
+    t_start_opt = time.perf_counter()
     try:
         with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
 
@@ -259,28 +259,28 @@ def ase_adjust_spacings(docker, structure, atomnos, constrained_indexes, title=0
 
         new_structure = atoms.get_positions()
 
-        success = scramble_check(new_structure, atomnos, constrained_indexes, docker.graphs)
+        success = scramble_check(new_structure, atomnos, constrained_indexes, embedder.graphs)
         exit_str = 'REFINED' if success else 'SCRAMBLED'
 
     except PropertyNotImplementedError:
         exit_str = 'CRASHED'
 
-    docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
+    embedder.log(f'    - {embedder.options.calculator} {embedder.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
 
     if exit_str == 'CRASHED':
         return None, None, False
 
     return new_structure, atoms.get_total_energy(), success
 
-def ase_saddle(docker, coords, atomnos, constrained_indexes=None, mols_graphs=None, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
+def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=None, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
     '''
     Runs a first order saddle optimization through the ASE package
     '''
     atoms = Atoms(atomnos, positions=coords)
 
-    atoms.calc = get_ase_calc(docker)
+    atoms.calc = get_ase_calc(embedder)
     
-    t_start = time.time()
+    t_start = time.perf_counter()
     with HiddenPrints():
         with Sella(atoms,
                    logfile=None,
@@ -291,7 +291,7 @@ def ase_saddle(docker, coords, atomnos, constrained_indexes=None, mols_graphs=No
             iterations = opt.nsteps
 
     if logfile is not None:
-        t_end_berny = time.time()
+        t_end_berny = time.perf_counter()
         elapsed = t_end_berny - t_start
         exit_str = 'converged' if iterations < maxiterations else 'stopped'
         logfile.write(f'{title} - {exit_str} in {iterations} steps ({time_to_string(elapsed)})\n')
@@ -306,21 +306,21 @@ def ase_saddle(docker, coords, atomnos, constrained_indexes=None, mols_graphs=No
     #     freqs = vib.get_frequencies()
 
     #     if logfile is not None:
-    #         elapsed = time.time() - t_end_berny
+    #         elapsed = time.perf_counter() - t_end_berny
     #         logfile.write(f'{title} - frequency calculation completed ({time_to_string(elapsed)})\n')
         
     #     return new_structure, energy, freqs
 
     if mols_graphs is not None:
-        success = scramble_check(new_structure, atomnos, constrained_indexes, mols_graphs, max_newbonds=docker.options.max_newbonds)
+        success = scramble_check(new_structure, atomnos, constrained_indexes, mols_graphs, max_newbonds=embedder.options.max_newbonds)
     else:
-        success = molecule_check(coords, new_structure, atomnos, max_newbonds=docker.options.max_newbonds)
+        success = molecule_check(coords, new_structure, atomnos, max_newbonds=embedder.options.max_newbonds)
 
     return new_structure, energy, success
 
-def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None, write_plot=False):
+def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None, write_plot=False):
     '''
-    docker: tscode docker object
+    embedder: tscode embedder object
     reagents: coordinates for the atom arrangement to be used as reagents
     products: coordinates for the atom arrangement to be used as products
     atomnos: 1-d array of atomic numbers
@@ -347,9 +347,9 @@ def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optim
     
     # Set calculators for all images
     for _, image in enumerate(images):
-        image.calc = get_ase_calc(docker)
+        image.calc = get_ase_calc(embedder)
 
-    t_start = time.time()
+    t_start = time.perf_counter()
 
     # Set the optimizer and optimize
     try:
@@ -370,13 +370,13 @@ def ase_neb(docker, reagents, products, atomnos, n_images=6, title='temp', optim
 
     except PropertyNotImplementedError:
         if logfile is not None:
-            logfile.write(f'    - NEB for {title} CRASHED ({time_to_string(time.time()-t_start)})\n')
+            logfile.write(f'    - NEB for {title} CRASHED ({time_to_string(time.perf_counter()-t_start)})\n')
         return None, None, False
 
     exit_status = 'CONVERGED' if iterations < 499 else 'MAX ITER'
 
     if logfile is not None:
-        logfile.write(f'    - NEB for {title} {exit_status} ({time_to_string(time.time()-t_start)})\n')
+        logfile.write(f'    - NEB for {title} {exit_status} ({time_to_string(time.perf_counter()-t_start)})\n')
 
     energies = [image.get_total_energy() for image in images]
     ts_id = energies.index(max(energies))
@@ -522,22 +522,22 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
 
     return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
 
-def ase_popt(docker, coords, atomnos, constrained_indexes=None, steps=500, targets=None, safe=False, safe_mask=None, traj=None):
+def ase_popt(embedder, coords, atomnos, constrained_indexes=None, steps=500, targets=None, safe=False, safe_mask=None, traj=None):
     '''
-    docker: TSCoDe docker object
+    embedder: TSCoDe embedder object
     coords: 
     atomnos: 
     constrained_indexes:
     safe: if True, adds a potential that prevents atoms from scrambling
     safe_mask: bool array, with False for atoms to be excluded when calculating bonds to preserve
-    title: name to be used for referring to this structure in the docker log
+    title: name to be used for referring to this structure in the embedder log
     traj: if set to a string, traj+'.traj' is used as a filename for the bending trajectory.
           not only the atoms will be printed, but also all the orbitals and the active pivot.
     check: if True, after bending checks that the bent structure did not scramble.
            If it did, returns the initial molecule.
     '''
     atoms = Atoms(atomnos, positions=coords)
-    atoms.calc = get_ase_calc(docker)
+    atoms.calc = get_ase_calc(embedder)
     constraints = []
 
     if constrained_indexes is not None:
@@ -549,12 +549,12 @@ def ase_popt(docker, coords, atomnos, constrained_indexes=None, steps=500, targe
     if safe:
         constraints.append(PreventScramblingConstraint(graphize(coords, atomnos, safe_mask),
                                                         atoms,
-                                                        double_bond_protection=docker.options.double_bond_protection,
-                                                        fix_angles=docker.options.fix_angles_in_deformation))
+                                                        double_bond_protection=embedder.options.double_bond_protection,
+                                                        fix_angles=embedder.options.fix_angles_in_deformation))
 
     atoms.set_constraint(constraints)
 
-    # t_start_opt = time.time()
+    # t_start_opt = time.perf_counter()
     with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
         opt.run(fmax=0.05, steps=steps)
         iterations = opt.nsteps
@@ -564,18 +564,18 @@ def ase_popt(docker, coords, atomnos, constrained_indexes=None, steps=500, targe
 
     # exit_str = 'REFINED' if success else 'MAX ITER'
 
-    # docker.log(f'    - {docker.options.calculator} {docker.options.theory_level} POPT: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.time()-t_start_opt)})', p=False)
+    # embedder.log(f'    - {embedder.options.calculator} {embedder.options.theory_level} POPT: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
 
     return new_structure, atoms.get_total_energy(), success
 
-def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=None, check=True):
+def ase_bend(embedder, original_mol, conf, pivot, threshold, title='temp', traj=None, check=True):
     '''
-    docker: TSCoDe docker object
+    embedder: TSCoDe embedder object
     original_mol: Hypermolecule object to be bent
     conf: index of conformation in original_mol to be used
     pivot: pivot connecting two Hypermolecule orbitals to be approached/distanced
     threshold: target distance for the specified pivot, in Angstroms
-    title: name to be used for referring to this structure in the docker log
+    title: name to be used for referring to this structure in the embedder log
     traj: if set to a string, traj+'.traj' is used as a filename for the bending trajectory.
           not only the atoms will be printed, but also all the orbitals and the active pivot.
     check: if True, after bending checks that the bent structure did not scramble.
@@ -584,8 +584,8 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
 
     identifier = np.sum(original_mol.atomcoords[conf])
 
-    if hasattr(docker, "ase_bent_mols_dict"):
-        cached = docker.ase_bent_mols_dict.get((identifier, tuple(sorted(pivot.index)), round(threshold, 3)))
+    if hasattr(embedder, "ase_bent_mols_dict"):
+        cached = embedder.ase_bent_mols_dict.get((identifier, tuple(sorted(pivot.index)), round(threshold, 3)))
         if cached is not None:
             return cached
 
@@ -630,7 +630,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
 
     atoms = Atoms(mol.atomnos, positions=mol.atomcoords[conf])
 
-    atoms.calc = get_ase_calc(docker)
+    atoms.calc = get_ase_calc(embedder)
     
     if traj is not None:
         traj_obj = Trajectory(traj + f'_conf{conf}.traj',
@@ -642,7 +642,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
 
     unproductive_iterations = 0
     break_reason = 'MAX ITER'
-    t_start = time.time()
+    t_start = time.perf_counter()
 
     for iteration in range(500):
 
@@ -656,8 +656,8 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
 
         c2 = PreventScramblingConstraint(mol.graph,
                                             atoms,
-                                            double_bond_protection=docker.options.double_bond_protection,
-                                            fix_angles=docker.options.fix_angles_in_deformation)
+                                            double_bond_protection=embedder.options.double_bond_protection,
+                                            fix_angles=embedder.options.fix_angles_in_deformation)
 
         atoms.set_constraint([
                                 c1,
@@ -695,7 +695,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
             atom.init(mol, index, update=True, orb_dim=orb_memo[index])
             # orbitals positions are calculated based on the conformer we are working on
 
-        temp_pivots = docker._get_pivots(mol)[0]
+        temp_pivots = embedder._get_pivots(mol)[0]
 
         for p in temp_pivots:
             if p.index == pivot.index:
@@ -712,7 +712,7 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
         # else:
             # print('delta is ', round(dist - threshold, 3))
 
-        docker.log(f'    {title} - conformer {conf} - {break_reason}{" "*(9-len(break_reason))} ({iteration+1}{" "*(3-len(str(iteration+1)))} iterations, {time_to_string(time.time()-t_start)})', p=False)
+        embedder.log(f'    {title} - conformer {conf} - {break_reason}{" "*(9-len(break_reason))} ({iteration+1}{" "*(3-len(str(iteration+1)))} iterations, {time_to_string(time.perf_counter()-t_start)})', p=False)
 
         if check:
             if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[0], mol.atomnos, max_newbonds=1):
@@ -743,11 +743,11 @@ def ase_bend(docker, original_mol, conf, pivot, threshold, title='temp', traj=No
         for index, atom in final_mol.reactive_atoms_classes_dict[conf_].items():
             atom.init(final_mol, index, update=True, orb_dim=orb_memo[index])
 
-    docker._set_pivots(final_mol)
+    embedder._set_pivots(final_mol)
 
     # add result to cache (if we have it) so we avoid recomputing it
-    if hasattr(docker, "ase_bent_mols_dict"):
-        docker.ase_bent_mols_dict[(identifier, tuple(sorted(pivot.index)), round(threshold, 3))] = final_mol
+    if hasattr(embedder, "ase_bent_mols_dict"):
+        embedder.ase_bent_mols_dict[(identifier, tuple(sorted(pivot.index)), round(threshold, 3))] = final_mol
 
     clean_directory()
 

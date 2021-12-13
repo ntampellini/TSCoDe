@@ -24,24 +24,26 @@ def run_tests():
 
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
-    from tscode.settings import COMMANDS, FF_OPT_BOOL, FF_CALC, CALCULATOR, PROCS, DEFAULT_LEVELS, DEFAULT_FF_LEVELS
+    from tscode.settings import (CALCULATOR, COMMANDS, DEFAULT_FF_LEVELS,
+                                 DEFAULT_LEVELS, FF_CALC, FF_OPT_BOOL, PROCS)
 
     if CALCULATOR not in ('MOPAC','ORCA','GAUSSIAN','XTB'):
         raise Exception(f'{CALCULATOR} is not a valid calculator. Use MOPAC, ORCA, GAUSSIAN or XTB.')
 
-    from tscode.optimization_methods import opt_funcs_dict
-    from tscode.utils import HiddenPrints, time_to_string, clean_directory, run_command, loadbar
-    from tscode.ase_manipulations import get_ase_calc
-    from cclib.io import ccread
-    from ase.optimize import LBFGS
-    from ase.atoms import Atoms
     import numpy as np
+    from ase.atoms import Atoms
+    from ase.optimize import LBFGS
+
+    from tscode.ase_manipulations import get_ase_calc
+    from tscode.optimization_methods import opt_funcs_dict
+    from tscode.utils import (HiddenPrints, clean_directory, loadbar, read_xyz,
+                              run_command, time_to_string)
 
     os.chdir('tests')
 
-    t_start_run = time.time()
+    t_start_run = time.perf_counter()
 
-    data = ccread('C2H4.xyz')
+    data = read_xyz('C2H4.xyz')
 
     ##########################################################################
 
@@ -122,7 +124,7 @@ def run_tests():
         name = f.split('\\')[-1].split('/')[-1][:-4] # trying to make it work for either Win, Linux (and Mac?)
         loadbar(i, len(tests), f'Running TSCoDe tests ({name}): ')
         
-        t_start = time.time()
+        t_start = time.perf_counter()
         try:
             with HiddenPrints():
                 run_command(f'python -m tscode {f} -n {name}')
@@ -132,7 +134,7 @@ def run_tests():
             print(error.stderr.decode("utf-8"))
             quit()
                     
-        t_end = time.time()
+        t_end = time.perf_counter()
         times.append(t_end-t_start)
 
     loadbar(len(tests), len(tests), f'Running TSCoDe tests ({name}): ')    
@@ -141,4 +143,4 @@ def run_tests():
     for i, f in enumerate(tests):
         print('    {:25s}{} s'.format(f.split('\\')[-1].split('/')[-1][:-4], round(times[i], 3)))
 
-    print(f'\nTSCoDe tests completed with no errors. ({time_to_string(time.time() - t_start_run)})\n')
+    print(f'\nTSCoDe tests completed with no errors. ({time_to_string(time.perf_counter() - t_start_run)})\n')

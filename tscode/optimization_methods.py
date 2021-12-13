@@ -28,7 +28,7 @@ from tscode.calculators._gaussian import gaussian_opt
 from tscode.calculators._mopac import mopac_opt
 from tscode.calculators._orca import orca_opt
 from tscode.calculators._xtb import xtb_opt
-from tscode.fast_algebra import get_inertia_moments, norm, norm_of
+from tscode.algebra import get_moi_similarity_matrix, norm, norm_of
 from tscode.settings import DEFAULT_LEVELS, FF_CALC
 from tscode.utils import (molecule_check, pt, scramble_check, time_to_string,
                           write_xyz)
@@ -93,14 +93,14 @@ def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None
 
     return coords, energy, False
 
-def hyperNEB(docker, coords, atomnos, ids, constrained_indexes, title='temp'):
+def hyperNEB(embedder, coords, atomnos, ids, constrained_indexes, title='temp'):
     '''
     Turn a geometry close to TS to a proper TS by getting
     reagents and products and running a climbing image NEB calculation through ASE.
     '''
 
-    reagents = get_reagent(docker, coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
-    products = get_product(docker, coords, atomnos, ids, constrained_indexes, method=docker.options.theory_level)
+    reagents = get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method=embedder.options.theory_level)
+    products = get_product(embedder, coords, atomnos, ids, constrained_indexes, method=embedder.options.theory_level)
     # get reagents and products for this reaction
 
     reagents -= np.mean(reagents, axis=0)
@@ -112,19 +112,19 @@ def hyperNEB(docker, coords, atomnos, ids, constrained_indexes, title='temp'):
     products = (aligment_rotation @ products.T).T
     # rotating the two structures to minimize differences
 
-    ts_coords, ts_energy, success = ase_neb(docker, reagents, products, atomnos, title=title)
+    ts_coords, ts_energy, success = ase_neb(embedder, reagents, products, atomnos, title=title)
     # Use these structures plus the TS guess to run a NEB calculation through ASE
 
     return ts_coords, ts_energy, success
 
-def get_product(docker, coords, atomnos, ids, constrained_indexes, method='PM7'):
+def get_product(embedder, coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
     Part of the automatic NEB implementation.
     Returns a structure that presumably is the association reaction product
     ([cyclo]additions reactions in mind)
     '''
 
-    opt_func = opt_funcs_dict[docker.options.calculator]
+    opt_func = opt_funcs_dict[embedder.options.calculator]
 
     bond_factor = 1.2
     # multiple of sum of covalent radii for two atoms.
@@ -213,14 +213,14 @@ def get_product(docker, coords, atomnos, ids, constrained_indexes, method='PM7')
 
     return coords
 
-def get_reagent(docker, coords, atomnos, ids, constrained_indexes, method='PM7'):
+def get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method='PM7'):
     '''
     Part of the automatic NEB implementation.
     Returns a structure that presumably is the association reaction reagent.
     ([cyclo]additions reactions in mind)
     '''
 
-    opt_func = opt_funcs_dict[docker.options.calculator]
+    opt_func = opt_funcs_dict[embedder.options.calculator]
 
     bond_factor = 1.5
     # multiple of sum of covalent radii for two atoms.
@@ -297,20 +297,8 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
     is kept.
     '''
 
-    l = len(structures)
-    mat = np.zeros((l,l), dtype=int)
     masses = np.array([pt[a].mass for a in atomnos])
-    for i in range(l):
-        im_i = get_inertia_moments(structures[i], atomnos, masses)
-        for j in range(i+1,l):
-            im_j = get_inertia_moments(structures[j], atomnos, masses)
-            delta = np.abs(im_i - im_j)
-            if np.all(delta < max_delta):
-                mat[i,j] = 1
-                break
-
-    where = np.where(mat == 1)
-    matches = [(i,j) for i,j in zip(where[0], where[1])]
+    matches = get_moi_similarity_matrix(structures, masses, max_delta=max_delta)
 
     g = nx.Graph(matches)
 
@@ -325,13 +313,13 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
         for i in s:
             rejects.append(i)
 
-    mask = np.array([True for _ in range(l)], dtype=bool)
+    mask = np.ones(structures.shape[0], dtype=bool)
     for i in rejects:
         mask[i] = False
 
     return structures[mask], mask
 
-def opt_iscans(docker, coords, atomnos, title='temp', logfile=None, xyztraj=None):
+def opt_iscans(embedder, coords, atomnos, title='temp', logfile=None, xyztraj=None):
     '''
     Runs one or more independent scans along the constrained indexes
     specified, one at a time, through the ASE package. Each scan starts
@@ -342,13 +330,13 @@ def opt_iscans(docker, coords, atomnos, title='temp', logfile=None, xyztraj=None
 
     overall_success = False
 
-    scan_active_indexes = [indexes for letter, indexes in docker.pairings_table.items() if letter not in ('x', 'y', 'z')]
+    scan_active_indexes = [indexes for letter, indexes in embedder.pairings_table.items() if letter not in ('x', 'y', 'z')]
     for i, indexes in enumerate(scan_active_indexes):
-        new_coords, energy, success = opt_linear_scan(docker,
+        new_coords, energy, success = opt_linear_scan(embedder,
                                                     coords,
                                                     atomnos,
                                                     indexes,
-                                                    docker.constrained_indexes[0],
+                                                    embedder.constrained_indexes[0],
                                                     # safe=True,
                                                     title=title+f' scan {i+1}',
                                                     logfile=logfile,
@@ -362,11 +350,11 @@ def opt_iscans(docker, coords, atomnos, title='temp', logfile=None, xyztraj=None
     else: # Re-try with safe keyword to prevent scrambling
 
         for i, indexes in enumerate(scan_active_indexes):
-            new_coords, energy, success = opt_linear_scan(docker,
+            new_coords, energy, success = opt_linear_scan(embedder,
                                                         coords,
                                                         atomnos,
                                                         indexes,
-                                                        docker.constrained_indexes[0],
+                                                        embedder.constrained_indexes[0],
                                                         safe=True,
                                                         title=title+f' scan {i}',
                                                         logfile=logfile,
@@ -379,12 +367,12 @@ def opt_iscans(docker, coords, atomnos, title='temp', logfile=None, xyztraj=None
 
     return coords, energy, overall_success
 
-def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, step_size=0.02, safe=False, title='temp', logfile=None, xyztraj=None):
+def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes, step_size=0.02, safe=False, title='temp', logfile=None, xyztraj=None):
     '''
     Runs a linear scan along the specified linear coordinate.
     The highest energy structure that passes sanity checks is returned.
 
-    docker
+    embedder
     coords
     atomnos
     scan_indexes
@@ -399,17 +387,17 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
 
     i1, i2 = scan_indexes
     far_thr = 2 * sum([pt[atomnos[i]].covalent_radius for i in scan_indexes])
-    t_start = time.time()
+    t_start = time.perf_counter()
     total_iter = 0
 
     _, energy, _ = optimize(coords,
                             atomnos,
-                            docker.options.calculator,
-                            docker.options.theory_level,
+                            embedder.options.calculator,
+                            embedder.options.theory_level,
                             constrained_indexes=constrained_indexes,
-                            mols_graphs=docker.graphs,
-                            procs=docker.options.procs,
-                            max_newbonds=docker.options.max_newbonds,
+                            mols_graphs=embedder.graphs,
+                            procs=embedder.options.procs,
+                            max_newbonds=embedder.options.max_newbonds,
                             )
 
     direction = coords[i1] - coords[i2]
@@ -433,7 +421,7 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
                            else norm_of(active_coords[a]-active_coords[b])
                            for a, b in constrained_indexes]
 
-                active_coords, energy, success = ase_popt(docker,
+                active_coords, energy, success = ase_popt(embedder,
                                                             active_coords,
                                                             atomnos,
                                                             constrained_indexes,
@@ -446,19 +434,19 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
                 active_coords[i2] += sign * norm(direction) * step_size
                 active_coords, energy, success = optimize(active_coords,
                                                             atomnos,
-                                                            docker.options.calculator,
-                                                            docker.options.theory_level,
+                                                            embedder.options.calculator,
+                                                            embedder.options.theory_level,
                                                             constrained_indexes=constrained_indexes,
-                                                            mols_graphs=docker.graphs,
-                                                            procs=docker.options.procs,
-                                                            max_newbonds=docker.options.max_newbonds,
+                                                            mols_graphs=embedder.graphs,
+                                                            procs=embedder.options.procs,
+                                                            max_newbonds=embedder.options.max_newbonds,
                                                             )
 
             if not success:
                 if logfile is not None and iterations == 0:
                     logfile.write(f'    - {title} CRASHED at first step\n')
 
-                if docker.options.debug:
+                if embedder.options.debug:
                     with open(title+'_SCRAMBLED.xyz', 'a') as f:
                         write_xyz(active_coords, atomnos, f, title=title+(
                             f' d({i1}-{i2}) = {round(dist, 3)} A, Rel. E = {round(energy-energies[0], 3)} kcal/mol'))
@@ -495,18 +483,18 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
 
     final_geom, final_energy, _ = optimize(closest_geom,
                                             atomnos,
-                                            docker.options.calculator,
-                                            docker.options.theory_level,
+                                            embedder.options.calculator,
+                                            embedder.options.theory_level,
                                             constrained_indexes=constrained_indexes,
-                                            mols_graphs=docker.graphs,
-                                            procs=docker.options.procs,
-                                            max_newbonds=docker.options.max_newbonds,
+                                            mols_graphs=embedder.graphs,
+                                            procs=embedder.options.procs,
+                                            max_newbonds=embedder.options.max_newbonds,
                                             check=False,
                                             )
 
-    if docker.options.debug:
+    if embedder.options.debug:
 
-        if docker.options.debug:
+        if embedder.options.debug:
             with open(xyztraj, 'a') as f:
                 write_xyz(active_coords, atomnos, f, title=title+(
                     f' FINAL - d({i1}-{i2}) = {round(norm_of(final_geom[i1]-final_geom[i2]), 3)} A,'
@@ -549,7 +537,7 @@ def opt_linear_scan(docker, coords, atomnos, scan_indexes, constrained_indexes, 
         plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
 
     if logfile is not None:
-        logfile.write(f'    - {title} COMPLETED {total_iter} steps ({time_to_string(time.time()-t_start)})\n')
+        logfile.write(f'    - {title} COMPLETED {total_iter} steps ({time_to_string(time.perf_counter()-t_start)})\n')
 
     return final_geom, final_energy, True
 
@@ -563,18 +551,18 @@ def scan_peak_present(energies) -> bool:
         return True
     return False
 
-def fitness_check(docker, coords) -> bool:
+def fitness_check(embedder, coords) -> bool:
     '''
     Returns True if the strucure respects
     the imposed pairings.
     '''
-    if hasattr(docker, 'pairings_dists'):
-        for letter, pairing in docker.pairings_table.items():
+    if hasattr(embedder, 'pairings_dists'):
+        for letter, pairing in embedder.pairings_table.items():
             
             if letter in ('a', 'b', 'c'):
                 i1, i2 = pairing
                 dist = norm_of(coords[i1]-coords[i2])
-                target = docker.pairings_dists.get(letter)
+                target = embedder.pairings_dists.get(letter)
 
                 if target is not None and abs(target-dist) > 0.05:
                     return False

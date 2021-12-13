@@ -7,10 +7,9 @@ Operators
 +++++++++
 
 Molecule files can be preceded by *operators*, like
-``opt>molecule.xyz``. They operate on the input file before it is
+``opt> molecule.xyz``. They operate on the input file before it is
 fed to TSCoDe embeddings, or modify the behavior of the program to
-use some of its functionalities. Do not to include any space character
-between the operator and the molecule name.
+use some of its functionalities, without running a full embedding.
 
 -  ``opt>`` - Performs an optimization of all conformers of a molecule before
    running TSCoDe. Generates a new ``molecule_opt.xyz`` file with the optimized
@@ -27,12 +26,16 @@ between the operator and the molecule name.
    Generates a new ``molecule_confab.xyz`` file with all optimized
    conformers. (max 7-8 rotable bonds ideally)
 
-- ``neb`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
-  if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
-  The implementation is a climbing image nudged elastic band (CI-NEB) TS search with 6 images.  
-  The operator should be used on a file that contains two structures, the start and end points
-  for the search. A graph with the energy of each image is written, along with the MEP guess 
-  and the converged MEP.
+-  ``neb>`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
+   if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
+   The implementation is a climbing image nudged elastic band (CI-NEB) TS search with 6 moving images.  
+   The operator should be used on a file that contains two structures, the start and end points
+   for the search. A graph with the energy of each image is written, along with the MEP guess 
+   and the converged MEP.
+
+-  ``prune>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
+   during a TSCoDe embedding. That is the ensemble is pruned removing similar structure, optimized
+   at the theory level(s) chosen and again pruned for similarity.
 
 Keywords
 ++++++++
@@ -142,8 +145,9 @@ one is accepted, like in ``DIST``.
    that a TS structure candidate can have to be retained and not to be
    considered scrambled. Default is 0. Syntax: ``NEWBONDS=0``
 
--  **NOEMBED** - Do not embed structures, but use the one in the input
-   as a starting ensemble as if it came out of a TSCoDe embedding phase.
+-  **NOEMBED** - Same as calling ``prune>`` on a multimolecular file. 
+   The program does not embed structures, but uses the input ensemble
+   as a starting point as if it came out of a TSCoDe embedding.
 
 -  **NOOPT** - Skip the optimization steps, directly writing
    structures to file after compenetration and similarity pruning.

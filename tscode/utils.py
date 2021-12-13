@@ -20,17 +20,14 @@ import os
 import sys
 from subprocess import CalledProcessError, run
 
-import networkx as nx
 import numpy as np
-from periodictable import core, covalent_radius, mass
-from scipy.spatial.transform import Rotation as R
+from _tkinter import TclError
+from cclib.io import ccread
 
+from tscode.algebra import norm_of, rot_mat_from_pointer
 from tscode.errors import TriangleError
-from tscode.fast_algebra import norm, norm_of
-
-pt = core.PeriodicTable(table="H=1")
-covalent_radius.init(pt)
-mass.init(pt)
+from tscode.graph_manipulations import graphize
+from tscode.pt import pt
 
 
 class suppress_stdout_stderr(object):
@@ -106,6 +103,11 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
         string += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
     output.write(string)
 
+def read_xyz(filename):
+    mol = ccread(filename)
+    assert mol is not None, f'Reading molecule {filename} failed - check its integrity.'
+    return mol
+
 def time_to_string(total_time: float, verbose=False):
     '''
     Converts totaltime (float) to a timestring
@@ -134,48 +136,6 @@ def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill=
     print(f'\r{prefix} |{bar}| {percent}% {suffix}', end='\r')
     if iteration == total:
         print()
-
-def dihedral(p):
-    '''
-    Returns dihedral angle in degrees from 4 3D vecs
-    Praxeolitic formula: 1 sqrt, 1 cross product
-    
-    '''
-    p0 = p[0]
-    p1 = p[1]
-    p2 = p[2]
-    p3 = p[3]
-
-    b0 = -1.0*(p1 - p0)
-    b1 = p2 - p1
-    b2 = p3 - p2
-
-    # normalize b1 so that it does not influence magnitude of vector
-    # rejections that come next
-    b1 /= norm_of(b1)
-
-    # vector rejections
-    # v = projection of b0 onto plane perpendicular to b1
-    #   = b0 minus component that aligns with b1
-    # w = projection of b2 onto plane perpendicular to b1
-    #   = b2 minus component that aligns with b1
-    v = b0 - np.dot(b0, b1)*b1
-    w = b2 - np.dot(b2, b1)*b1
-
-    # angle between v and w in a plane is the torsion angle
-    # v and w may not be normalized but that's fine since tan is y/x
-    x = np.dot(v, w)
-    y = np.dot(np.cross(b1, v), w)
-    
-    return np.degrees(np.arctan2(y, x))
-
-def vec_angle(v1, v2):
-    v1_u = norm(v1)
-    v2_u = norm(v2)
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))*180/np.pi
-
-def point_angle(p1, p2, p3):
-    return np.arccos(np.clip(norm(p1 - p2) @ norm(p3 - p2), -1.0, 1.0))*180/np.pi
 
 def cartesian_product(*arrays):
     return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
@@ -206,25 +166,6 @@ def rotation_matrix_from_vectors(vec1, vec2):
         return rot_mat_from_pointer(pointer, 180)
         
     return np.eye(3)
-
-def rot_mat_from_pointer(pointer, angle):
-    '''
-    Returns the rotation matrix that rotates a system around the given pointer
-    of angle degrees. The algorithm is based on scipy quaternions.
-    :params pointer: a 3D vector
-    :params angle: an int/float, in degrees
-    :return rotation_matrix: matrix that applied to a point, rotates it along the pointer
-    '''
-    assert pointer.shape[0] == 3
-
-    pointer = norm(pointer)
-    angle *= np.pi/180
-    quat = np.array([np.sin(angle/2)*pointer[0],
-                    np.sin(angle/2)*pointer[1],
-                    np.sin(angle/2)*pointer[2],
-                    np.cos(angle/2)])            # normalized quaternion, scalar last (i j k w)
-    
-    return R.from_quat(quat).as_matrix()
 
 def polygonize(lengths):
     '''
@@ -287,7 +228,7 @@ def ase_view(mol):
     from ase.gui.gui import GUI
     from ase.gui.images import Images
 
-    if mol.hyper:
+    if hasattr(mol, 'reactive_atoms_classes_dict'):
         images = []
 
         for c, coords in enumerate(mol.atomcoords):
@@ -299,7 +240,10 @@ def ase_view(mol):
     else:
         images = [Atoms(mol.atomnos, positions=coords) for coords in mol.atomcoords]
         
-    GUI(images=Images(images), show_bonds=True).run()
+    try:
+        GUI(images=Images(images), show_bonds=True).run()
+    except TclError:
+        print('--> GUI not available from command line interface. Skipping it.')
 
 double_bonds_thresholds_dict = {
     'CC':1.4,
@@ -328,99 +272,6 @@ def get_double_bonds_indexes(coords, atomnos):
                 output.append([numbering[i1], numbering[i2]])
 
     return output
-
-def findPaths(G, u, n, excludeSet = None):
-    '''
-    Recursively find all paths of a NetworkX
-    graph G with length = n, starting from node u
-    '''
-    if excludeSet is None:
-        excludeSet = set([u])
-
-    else:
-        excludeSet.add(u)
-
-    if n == 0:
-        return [[u]]
-
-    paths = [[u]+path for neighbor in G.neighbors(u) if neighbor not in excludeSet for path in findPaths(G,neighbor,n-1,excludeSet)]
-    excludeSet.remove(u)
-
-    return paths
-
-def neighbors(graph, index):
-    neighbors = list([(a, b) for a, b in graph.adjacency()][index][1].keys())
-    neighbors.remove(index)
-    return neighbors
-
-def is_sigmatropic(mol, conf):
-    '''
-    mol: Hypermolecule object
-    conf: conformer index
-
-    A hypermolecule is considered sigmatropic when:
-    - has 2 reactive atoms
-    - they are of sp2 or analogous types
-    - they are connected, or at least one path connecting them
-      is made up of atoms that do not make more than three bonds each
-    - they are less than 3 A apart (cisoid propenal makes it, transoid does not)
-
-    Used to set the mol.sigmatropic attribute, that affects orbital
-    building (p or n lobes) for Ketone and Imine reactive atoms classes.
-    '''
-    sp2_types = (
-                'Ketone',
-                'Imine',
-                'sp2',
-                'sp',
-                'bent carbene'
-                )
-    if len(mol.reactive_indexes) == 2:
-
-        i1, i2 = mol.reactive_indexes
-        if norm_of(mol.atomcoords[conf][i1] - mol.atomcoords[conf][i2]) < 3:
-
-            if all([str(r_atom) in sp2_types for r_atom in mol.reactive_atoms_classes_dict[conf].values()]):
-
-                paths = nx.all_simple_paths(mol.graph, i1, i2)
-
-                for path in paths:
-                    path = path[1:-1]
-
-                    full_sp2 = True
-                    for index in path:
-                        if len(neighbors(mol.graph, index))-2 > 1:
-                            full_sp2 = False
-                            break
-
-                    if full_sp2:
-                        return True
-    return False
-
-def is_vicinal(mol):
-    '''
-    A hypermolecule is considered vicinal when:
-    - has 2 reactive atoms
-    - they are of sp3 or Single Bond type
-    - they are bonded
-
-    Used to set the mol.sp3_sigmastar attribute, that affects orbital
-    building (BH4 or agostic-like behavior) for Sp3 and Single Bond reactive atoms classes.
-    '''
-    vicinal_types = (
-                'sp3',
-                'Single Bond',
-                )
-
-    if len(mol.reactive_indexes) == 2:
-
-        i1, i2 = mol.reactive_indexes
-
-        if all([str(r_atom) in vicinal_types for r_atom in mol.reactive_atoms_classes_dict[0].values()]):
-            if i1 in neighbors(mol.graph, i2):
-                return True
-
-    return False
 
 def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
     '''
@@ -470,34 +321,6 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, m
         return False
 
     return True
-
-def d_min_bond(e1, e2):
-    return 1.2 * (pt[e1].covalent_radius + pt[e2].covalent_radius)
-    # return 0.2 + (pt[e1].covalent_radius + pt[e2].covalent_radius)
-# if this is somewhat prone to bugs, this might help https://cccbdb.nist.gov/calcbondcomp1x.asp
-
-def graphize(coords, atomnos, mask=None):
-    '''
-    :params coords: atomic coordinates as 3D vectors
-    :params atomnos: atomic numbers as a list
-    :params mask: bool array, with False for atoms
-                  to be excluded in the bond evaluation
-    :return connectivity graph
-    '''
-
-    mask = np.array([True for _ in atomnos], dtype=bool) if mask is None else mask
-
-    matrix = np.zeros((len(coords),len(coords)))
-    for i, _ in enumerate(coords):
-        for j in range(i,len(coords)):
-            if mask[i] and mask[j]:
-                if norm_of(coords[i]-coords[j]) < d_min_bond(atomnos[i], atomnos[j]):
-                    matrix[i][j] = 1
-
-    graph = nx.from_numpy_matrix(matrix)
-    nx.set_node_attributes(graph, dict(enumerate(atomnos)), 'atomnos')
-
-    return graph
 
 def rotate_dihedral(coords, dihedral, angle, mask=None, indexes_to_be_moved=None):
     '''

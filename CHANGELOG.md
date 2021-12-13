@@ -40,3 +40,18 @@
 - Customized text can be inserted in write_structures function
 - Dihedral embed structures energies are now relative to equilibrim geometry (direct barrier height)
 - Moved "test" folder inside "tscode" (fixes bug)
+
+## 0.0.9 (2021)
+- Added error message if molecule reading fails
+- Operators now support spacing after the > sign
+- csearch> operator now works for molecules with more than one conformer
+- Improved the speed of the align_vector_pair and rot_mat_from vec functions (numba)
+- Periodic table is now in pt.py, removing any cyclical import issue
+- Graph manipulations are now organized in their own file, allowing shared use (graph_manipulations.py)
+- The old Docker is now called Embedder, leaving the "Docker" name for future docking extension
+- If no embed is recognized after applying operators, run is cleanly terminated (embedder.embed attribute in RunEmbedding.run function, run.py)
+- NOEMBED keyword still works, but structure pruning now can also be performed calling the prune> operator
+- prune>/NOEMBED runs can now accept pairings just like regular embeddings
+- conformational search now discard symmetric rotations involving 6-membered aromatic rings like phenyl, 4-pyridyl, mesityl, ...
+- procs == None bugfix
+- secondary amides are now considered rotable by the csearch algorithm

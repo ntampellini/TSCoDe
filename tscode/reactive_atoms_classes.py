@@ -20,9 +20,10 @@ from copy import deepcopy
 
 import numpy as np
 
-from tscode.fast_algebra import norm, norm_of
+from tscode.algebra import norm, norm_of, rot_mat_from_pointer, vec_angle
+from tscode.graph_manipulations import neighbors
 from tscode.parameters import orb_dim_dict
-from tscode.utils import neighbors, pt, rot_mat_from_pointer, vec_angle
+from tscode.pt import pt
 
 
 class Single:
@@ -275,7 +276,7 @@ class Ether:
 
             self.orb_vecs = orb_dim * np.array([norm(v) for v in self.orb_vecs]) # making both vectors a fixed, defined length
 
-            orb_mat = rot_mat_from_pointer(np.mean(self.orb_vecs, axis=0), 90) @ rot_mat_from_pointer(norm(np.cross(self.orb_vecs[0], self.orb_vecs[1])), 180)
+            orb_mat = rot_mat_from_pointer(np.mean(self.orb_vecs, axis=0), 90) @ rot_mat_from_pointer(np.cross(self.orb_vecs[0], self.orb_vecs[1]), 180)
 
             # self.orb_vecs = np.array([orb_mat @ v for v in self.orb_vecs])
             self.orb_vecs = (orb_mat @ self.orb_vecs.T).T
@@ -561,38 +562,38 @@ class Metal:
 
 # Keys are made of atom symbol and number of bonds that it makes
 atom_type_dict = {
-            'H1' : Single(),
+            'H1' : Single,
 
-            'B3' : Sp2(),
-            'B4' : Sp3(),
+            'B3' : Sp2,
+            'B4' : Sp3,
 
-            'C1' : Single(), # deprotonated terminal alkyne. What if it is a carbylidene? Very rare by the way...
-            'C2' : Sp_or_carbene(), # sp if straight, carbene if bent
-            'C3' : Sp2(), # double ball
-            'C4' : Sp3(), # one ball, on the back of the leaving group. If we can't tell which one it is, we ask user
+            'C1' : Single, # deprotonated terminal alkyne. What if it is a carbylidene? Very rare by the way...
+            'C2' : Sp_or_carbene, # sp if straight, carbene if bent
+            'C3' : Sp2, # double ball
+            'C4' : Sp3, # one ball, on the back of the leaving group. If we can't tell which one it is, we ask user
 
-            'N1' : Single(),
-            'N2' : Imine(), # one ball on free side
-            'N3' : Sp2(), # double ball
-            'N4' : Sp3(), # leaving group
+            'N1' : Single,
+            'N2' : Imine, # one ball on free side
+            'N3' : Sp2, # double ball
+            'N4' : Sp3, # leaving group
 
-            'O1' : Ketone(), # two balls 120° apart. Also for alkoxides, good enough
-            'O2' : Ether(), # or alcohol, two balls about 109,5° apart
+            'O1' : Ketone, # two balls 120° apart. Also for alkoxides, good enough
+            'O2' : Ether, # or alcohol, two balls about 109,5° apart
 
-            'P2' : Imine(), # one ball on free side
-            'P3' : Sp2(), # double ball
-            'P4' : Sp3(), # leaving group
+            'P2' : Imine, # one ball on free side
+            'P3' : Sp2, # double ball
+            'P4' : Sp3, # leaving group
 
-            'S1' : Ketone(),
-            'S2' : Ether(),
-            'S3' : Sp2(), # Not sure if this can be valid, but it's basically treating it as a bent carbonyl, should work
-            #  'S3' : Sulphoxide(), # Should we consider this? Or just ok with Sp2()?
-            # 'S4' : Sulphone(),
+            'S1' : Ketone,
+            'S2' : Ether,
+            'S3' : Sp2, # Not sure if this can be valid, but it's basically treating it as a bent carbonyl, should work
+            #  'S3' : Sulphoxide, # Should we consider this? Or just ok with Sp2()?
+            # 'S4' : Sulphone,
 
-            'F1' : Single(),
-            'Cl1': Single(),
-            'Br1': Single(),
-            'I1' : Single(),
+            'F1' : Single,
+            'Cl1': Single,
+            'Br1': Single,
+            'I1' : Single,
              }
 
 metals = (
@@ -612,4 +613,13 @@ metals = (
 for metal in metals:
     for bonds in range(1,9):
         bonds = str(bonds)
-        atom_type_dict[metal+bonds] = Metal()
+        atom_type_dict[metal+bonds] = Metal
+
+def get_atom_type(graph, index):
+    '''
+    Returns the appropriate class to represent
+    the atom with the given index on the graph
+    '''
+    nb = neighbors(graph, index)
+
+    return atom_type_dict[pt[graph.nodes[index]['atomnos']].symbol + str(len(nb))]

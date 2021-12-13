@@ -87,10 +87,9 @@ keywords_list = [
                                 # TS structure can have to be retained and not to be considered
                                 # scrambled. Default is 1. Syntax: `NEWBONDS=1`
 
-            'NOEMBED',        # Do not embed structures, but use the one in the input
-                                # as a starting ensemble as if it came out of a TSCoDe embedding phase.
-
             'NOOPT',          # Skip the optimization steps, directly writing structures to file.
+
+            'NOEMBED',        # Same as calling prune> on a single file
 
             'ONLYREFINED',    # Discard structures that do not successfully refine bonding distances.
 
@@ -145,7 +144,7 @@ class Options:
     optimization = True
     calculator = CALCULATOR
     theory_level = None        # set later in _calculator_setup()
-    procs = None               # set later in _calculator_setup()
+    procs = 1                  # eventually changed later in _calculator_setup()
     solvent = None
     ff_opt = FF_OPT_BOOL
     ff_calc = FF_CALC
@@ -218,7 +217,7 @@ class Options:
         if not FF_OPT_BOOL:
             d.pop('ff_calc')
 
-        if self.procs == 1 or self.calculator not in ('ORCA', ' GAUSSIAN'):
+        if self.calculator not in ('ORCA', ' GAUSSIAN'):
             d.pop('procs')
 
         padding = 1 + max([len(var) for var in d])
@@ -227,14 +226,16 @@ class Options:
 
 class OptionSetter:
 
-    def __init__(self, keyword_line, docker, *args):
+    def __init__(self, embedder, *args):
+
+        embedder.kw_line = embedder.kw_line if hasattr(embedder, 'kw_line') else ''
 
         self.keywords = [word.split('=')[0].upper() if not '(' in word
                                 else word.split('(')[0].upper()
-                                for word in keyword_line.split()]
+                                for word in embedder.kw_line.split()]
 
-        self.keywords_simple = [k.upper() for k in keyword_line.split()]
-        self.docker = docker
+        self.keywords_simple = [k.upper() for k in embedder.kw_line.split()]
+        self.embedder = embedder
         self.args = args
 
         if not all(k in keywords_list for k in self.keywords):
@@ -242,20 +243,33 @@ class OptionSetter:
                 if k not in keywords_list:
                     raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
-        docker.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple) + '\n')
+        embedder.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple) + '\n')
 
     def noembed(self, options, *args):
-        if len(self.docker.objects) > 1:
-            raise SystemExit((f'NOEMBED keyword takes only one multimolecular file, preferably '
-                               'in .xyz format. ({len(self.docker.objects)} found in input file)'))
+        if len(self.embedder.objects) > 1:
+            raise SystemExit(('NOEMBED keyword can only be used with one multimolecular file per run, '
+                             f'in .xyz format. ({len(self.embedder.objects)} files found in input)'))
 
-        options.noembed = True
-        self.docker.structures = self.docker.objects[0].atomcoords
-        self.docker.atomnos = self.docker.objects[0].atomnos
-        self.docker.constrained_indexes = np.array([[] for _ in self.docker.structures])
-        self.docker.energies = np.array([0 for _ in self.docker.structures])
-        self.docker.exit_status = np.ones(self.docker.structures.shape[0], dtype=bool)
+        self._prune_operator_routine()
 
+    def _prune_operator_routine(self):
+        if len(self.embedder.objects) > 1:
+            raise SystemExit(('The prune> operator can only be used with one multimolecular file per run, '
+                             f'in .xyz format. ({len(self.embedder.objects)} files found in input)'))
+
+        from tscode.embeds import _get_monomolecular_reactive_indexes
+
+        self.embedder.embed = 'prune'
+        self.embedder.structures = self.embedder.objects[0].atomcoords
+        self.embedder.atomnos = self.embedder.objects[0].atomnos
+        self.embedder.constrained_indexes = _get_monomolecular_reactive_indexes(self.embedder)
+        self.embedder.ids = None
+        self.embedder.energies = np.array([0 for _ in self.embedder.structures])
+        self.embedder.exit_status = np.ones(self.embedder.structures.shape[0], dtype=bool)
+
+        if self.embedder.options.pruning_thresh is None:
+            # set this only if user did not already specify a value
+            self.embedder.options.pruning_thresh = 0.5 
 
     def bypass(self, options, *args):
         options.bypass = True
@@ -302,8 +316,8 @@ class OptionSetter:
         orb_string = kw[5:-1].lower().replace(' ','')
         # orb_string looks like 'a=2.345,b=3.456,c=2.22'
 
-        docker = args[0]
-        docker._set_custom_orbs(orb_string)
+        embedder = args[0]
+        embedder._set_custom_orbs(orb_string)
 
     def clashes(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('CLASHES')]
@@ -397,18 +411,18 @@ class OptionSetter:
         if not options.optimization:
             raise SystemExit('TS keyword can only be used if optimization is turned on. (Not compatible with NOOPT).')
 
-        self.docker._setup(p=False)
-        # early call of setup function to get the self.docker.embed variable
+        self.embedder._setup(p=False)
+        # early call of setup function to get the self.embedder.embed variable
 
-        if '?' in self.docker.pairings_table or (
-            self.docker.embed in ('cyclical','chelotropic') and len(self.docker.pairings_table) < len(self.docker.objects)) or (
-            self.docker.embed == 'string' and not self.docker.pairings_table):
+        if '?' in self.embedder.pairings_table or (
+            self.embedder.embed in ('cyclical','chelotropic') and len(self.embedder.pairings_table) < len(self.embedder.objects)) or (
+            self.embedder.embed == 'string' and not self.embedder.pairings_table):
 
             raise SystemExit('TS keyword does not have sufficient pairing information to run. Make sure you specify the\n'
                              'label of each atomic pairing with the correct set of letters - "a", "b" or "c" for reactive atoms\n'
                              'and "x", "y" or "z" for non-covalent interactions holding the TS together.')
 
-        if self.docker.embed == 'dihedral':
+        if self.embedder.embed == 'dihedral':
             raise SystemExit('TS keyword not available with diheral embeds.\n'
                              'The embed itself yields first-order saddle point optimized structures.')
 
@@ -424,4 +438,7 @@ class OptionSetter:
 
         for kw in self.keywords:
             setter_function = getattr(self, kw.lower())
-            setter_function(self.docker.options, self.docker, *self.args)
+            setter_function(self.embedder.options, self.embedder, *self.args)
+
+        if self.embedder.options.operators and 'prune>' in self.embedder.options.operators[0]:
+            self._prune_operator_routine()

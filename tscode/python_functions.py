@@ -18,28 +18,31 @@ GNU General Public License for more details.
 
 import networkx as nx
 import numpy as np
+from numba import njit
 from rmsd import kabsch_rotate
-from scipy.spatial.distance import cdist
+
+from tscode.algebra import all_dists
 
 # These functions are here to facilitate eventual porting to
 # faster precompiled versions of themselves (Cython/C++/Julia/...)
 # if the necessity ever occurs
 
-def compenetration_check(coords, ids=None, thresh=1.3, max_clashes=0) -> bool:
+@njit
+def compenetration_check(coords, ids=None, thresh=1.3, max_clashes=0):
 
     clashes = 0
     # max_clashes clashes is good, max_clashes + 1 is not
 
     if ids is None:
-        return False if np.count_nonzero(
-                                (cdist(coords,coords) < 0.95) & (
-                                 cdist(coords,coords) > 0)
-                                        ) > max_clashes else True
+        return 0 if np.count_nonzero(
+                                     (all_dists(coords,coords) < 0.95) & (
+                                      all_dists(coords,coords) > 0)
+                                    ) > max_clashes else 1
 
     if len(ids) == 2:
         m1 = coords[0:ids[0]]
         m2 = coords[ids[0]:]
-        return False if np.count_nonzero(cdist(m2,m1) < thresh) > max_clashes else True
+        return 0 if np.count_nonzero(all_dists(m2,m1) < thresh) > max_clashes else 1
 
     # if len(ids) == 3:
 
@@ -47,19 +50,19 @@ def compenetration_check(coords, ids=None, thresh=1.3, max_clashes=0) -> bool:
     m2 = coords[ids[0]:ids[0]+ids[1]]
     m3 = coords[ids[0]+ids[1]:]
 
-    clashes += np.count_nonzero(cdist(m2,m1) < thresh)
+    clashes += np.count_nonzero(all_dists(m2,m1) < thresh)
     if clashes > max_clashes:
-        return False
+        return 0
 
-    clashes += np.count_nonzero(cdist(m3,m2) < thresh)
+    clashes += np.count_nonzero(all_dists(m3,m2) < thresh)
     if clashes > max_clashes:
-        return False
+        return 0
 
-    clashes += np.count_nonzero(cdist(m1,m3) < thresh)
+    clashes += np.count_nonzero(all_dists(m1,m3) < thresh)
     if clashes > max_clashes:
-        return False
+        return 0
 
-    return True
+    return 1
 
 def scramble(array, sequence):
     return np.array([array[s] for s in sequence])
@@ -104,7 +107,7 @@ def fast_score(coords, close=1.3, far=3):
     similar conformers. The higher,
     the least the structure is stable.
     '''
-    dist_mat = cdist(coords, coords)
+    dist_mat = all_dists(coords, coords)
     close_contacts = dist_mat[dist_mat < far]
     return np.sum(close_contacts/(close-far) - far/(close-far))
 

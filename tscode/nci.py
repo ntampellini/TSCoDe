@@ -19,9 +19,10 @@ from itertools import combinations
 
 import numpy as np
 
-from tscode.fast_algebra import norm_of
+from tscode.algebra import norm_of
 from tscode.parameters import nci_dict
-from tscode.utils import dihedral, pt
+from tscode.pt import pt
+from tscode.graph_manipulations import is_phenyl
 
 
 def get_nci(coords, atomnos, constrained_indexes, ids):
@@ -49,32 +50,6 @@ def get_nci(coords, atomnos, constrained_indexes, ids):
     nci += nc
 
     return nci, print_list
-
-def _is_phenyl(coords):
-    '''
-    :params coords: six coordinates of C/N atoms
-    :return tuple: bool indicating if the six atoms look like part of a
-                   phenyl/naphtyl/pyridine system, coordinates for the center of that ring
-
-    NOTE: quinones would show as aromatic: it is okay, since they can do π-stacking as well.
-    '''
-    for i, p in enumerate(coords):
-        mask = np.array([True if j != i else False for j in range(6)], dtype=bool)
-        others = coords[mask]
-        if not max(np.linalg.norm(p-others, axis=1)) < 3:
-            return False, None
-    # if any atomic couple is more than 3 A away from each other, this is not a Ph
-
-    threshold_delta = 1 - np.cos(10 * np.pi/180)
-    flat_delta = 1 - np.abs(np.cos(dihedral(coords[[0,1,2,3]]) * np.pi/180))
-
-    if flat_delta < threshold_delta:
-        flat_delta = 1 - np.abs(np.cos(dihedral(coords[[0,1,2,3]]) * np.pi/180))
-        if flat_delta < threshold_delta:
-            # print('phenyl center at', np.mean(coords, axis=0))
-            return True, np.mean(coords, axis=0)
-    
-    return False, None
 
 def _get_nci_atomic_pairs(coords, symbols, constrained_indexes, ids):
     '''
@@ -184,7 +159,7 @@ def _get_aromatic_centers(coords, symbols, ids):
         # only check for phenyls in molecules with more than 5 C/N atoms
 
             masks.append(list(combinations(aromatics_indexes, 6)))
-            # all possible combinations of picking 6 C/N/O atoms from this molecule
+            # all possible combinations of picking 6 C/N atoms from this molecule
 
     aromatic_centers = []
 
@@ -194,8 +169,10 @@ def _get_aromatic_centers(coords, symbols, ids):
 
         for mask in masks:
 
-            phenyl, center = _is_phenyl(coords[mask])
-            if phenyl:
+            if is_phenyl(coords[mask]):
+
+                center = np.mean(coords[mask], axis=0)
+
                 owner = next(i for i,n in enumerate(np.cumsum(ids)) if np.all(mask < n))
                 # index of the molecule that owns that phenyl ring
 

@@ -16,9 +16,6 @@ GNU General Public License for more details.
 
 '''
 
-from tscode.settings import CALCULATOR, FF_CALC, FF_OPT_BOOL, MEM_GB, PROCS
-
-
 def run_setup():
     '''
     Invoked by the command
@@ -71,7 +68,11 @@ def run_setup():
     answer = ask('What Force Field calculator would you like to use?\n- XTB -> xtb\n- Openbabel -> ob\n- Gaussian -> gau\n'
                  '- None -> none\n\nAnswer [xtb]/ob/gau/none: ', accepted=('xtb', 'ob', 'gau', 'none'), default='xtb')
 
-    if answer != 'none':
+    if answer == 'xtb':
+        properties['FF_OPT_BOOL'] = True
+        properties['FF_CALC'] = 'XTB'
+
+    elif answer != 'none':
         properties['FF_OPT_BOOL'] = True
         properties['FF_CALC'] = tag_dict[answer]
 
@@ -82,7 +83,7 @@ def run_setup():
 
     #########################################################################################
 
-    answer = ask('What calculator would like to use?\n- MOPAC -> mop\n- ORCA -> orca\n- Gaussian -> gau\n- XTB -> xtb\n\nAnswer mop/orca/gau/[xtb]: ',
+    answer = ask('What main calculator would you like to use?\n- MOPAC -> mop\n- ORCA -> orca\n- Gaussian -> gau\n- XTB -> xtb\n\nAnswer mop/orca/gau/[xtb]: ',
                 accepted=('mop','orca','gau','xtb'), default='xtb')
 
     properties['CALCULATOR'] = tag_dict[answer]
@@ -183,3 +184,6 @@ def run_setup():
             s += f'\n  MEM   : {MEM_GB} GB'
 
     print(s)
+
+if __name__ == '__main__':
+    run_setup()

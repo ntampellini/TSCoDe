@@ -24,58 +24,65 @@ from subprocess import DEVNULL, STDOUT, check_call
 import numpy as np
 from cclib.io import ccread
 from networkx import connected_components
-from tscode.ase_manipulations import ase_popt
 
 from tscode.clustered_csearch import clustered_csearch, most_diverse_conformers
 from tscode.errors import InputError
-from tscode.hypermolecule_class import graphize
+from tscode.graph_manipulations import graphize
 from tscode.optimization_methods import optimize
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
-from tscode.utils import (loadbar, suppress_stdout_stderr, time_to_string,
-                          write_xyz)
+from tscode.utils import (loadbar, read_xyz, suppress_stdout_stderr,
+                          time_to_string, write_xyz)
 
 
-def operate(input_string, docker):
+def operate(input_string, embedder):
     '''
+    Perform the operations according to the chosen
+    operator and return the outname of the (new) .xyz
+    file to read instead of the input one.
     '''
    
-    filename = input_string.split('>')[-1]
+    filename = embedder._extract_filename(input_string)
 
     if 'confab>' in input_string:
         outname = confab_operator(filename,
-                                    docker.options.calculator,
-                                    docker.options.theory_level,
-                                    procs=docker.options.procs,
-                                    logfunction=docker.log,
-                                    let=docker.options.let)
+                                    embedder.options,
+                                    logfunction=embedder.log)
+
+    elif 'csearch_opt>' in input_string:
+        conf_name = csearch_operator(filename, embedder)
+        outname = opt_operator(conf_name,
+                                embedder.options,
+                                logfunction=embedder.log)
 
     elif 'csearch>' in input_string:
-        outname = csearch_operator(filename, docker)
+        outname = csearch_operator(filename, embedder)
 
 
     elif 'opt>' in input_string:
         outname = opt_operator(filename,
-                                    docker.options.calculator,
-                                    docker.options.theory_level,
-                                    procs=docker.options.procs,
-                                    logfunction=docker.log,
-                                    let=docker.options.let)
+                                embedder.options,
+                                logfunction=embedder.log)
 
     elif 'neb>' in input_string:
-        neb_operator(filename, docker)
-        docker.normal_termination()
+        neb_operator(filename, embedder)
+        embedder.normal_termination()
+
+    elif 'prune>' in input_string:
+        outname = filename
+        # this operator is accounted for in the OptionSetter
+        # class of Options, set when the Embedder calls _set_options
 
     return outname
 
-def confab_operator(filename, calculator, theory_level, procs=1, logfunction=None, let=False):
+def confab_operator(filename, options, logfunction=None):
     '''
     '''
 
     if logfunction is not None:
         logfunction(f'--> Performing conformational search and optimization on {filename}')
 
-    data = ccread(filename)
+    data = read_xyz(filename)
 
     if len(data.atomcoords) > 1:
         raise InputError(f'Requested conformational search on file {filename} that already contains more than one structure.')
@@ -97,10 +104,10 @@ def confab_operator(filename, calculator, theory_level, procs=1, logfunction=Non
         check_call(f'obabel {filename} -O {confname} --confab --rcutoff 0.5 --original'.split(), stdout=DEVNULL, stderr=STDOUT)
         # running Confab through Openbabel
 
-    data = ccread(confname)
+    data = read_xyz(confname)
     conformers = data.atomcoords
         
-    if len(conformers) > 10 and not let:
+    if len(conformers) > 10 and not options.let:
         conformers = conformers[0:10]
         logfunction(f'Will use only the best 10 conformers for TSCoDe embed.\n')
 
@@ -111,50 +118,66 @@ def confab_operator(filename, calculator, theory_level, procs=1, logfunction=Non
 
     return confname
 
-def csearch_operator(filename, docker):
+def csearch_operator(filename, embedder):
     '''
     '''
 
-    docker.log(f'--> Performing optimization and conformational search on {filename}')
+    embedder.log(f'--> Performing conformational search on {filename}')
 
-    t_start = time.time()
+    t_start = time.perf_counter()
 
-    data = ccread(filename)
+    data = read_xyz(filename)
 
     if len(data.atomcoords) > 1:
-        raise InputError(f'Requested conformational search on file {filename} that already contains more than one structure.')
+        embedder.log(f'Requested conformational search on multimolecular file - will do\n' +
+                      'an individual search from each conformer (might be time-consuming).')
                                 
-    calc, method, procs = _get_lowest_calc(docker)
+    calc, method, procs = _get_lowest_calc(embedder)
+    conformers = []
 
-    opt_coords = optimize(data.atomcoords[0], data.atomnos, calculator=calc, method=method, procs=procs)[0] if docker.options.optimization else data.atomcoords[0]
+    for i, coords in enumerate(data.atomcoords):
 
-    conformers = clustered_csearch(opt_coords, data.atomnos, logfunction=docker.log)
+        opt_coords = optimize(coords, data.atomnos, calculator=calc, method=method, procs=procs)[0] if embedder.options.optimization else coords
+        # optimize starting structure before running csearch
 
-    docker.log(f'Selected the most diverse {len(conformers)} conformers ({time_to_string(time.time()-t_start)})')
+        conf_batch = clustered_csearch(opt_coords, data.atomnos, title=f'{filename}, conformer {i+1}', logfunction=embedder.log)
+        # generate the most diverse conformers starting from optimized geometry
+
+        conformers.append(conf_batch)
+
+    conformers = np.array(conformers)
+    batch_size = conformers.shape[1]
+
+    conformers = conformers.reshape(-1, data.atomnos.shape[0], 3)
+    # merging structures from each run in a single array
+
+    embedder.log(f'\nSelected the most diverse {batch_size} out of {conformers.shape[0]} conformers for {filename} ({time_to_string(time.perf_counter()-t_start)})')
+    
+    conformers = most_diverse_conformers(batch_size, conformers, data.atomnos)
 
     confname = filename[:-4] + '_confs.xyz'
     with open(confname, 'w') as f:
         for i, conformer in enumerate(conformers):
             write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i}')
 
-    # if len(conformers) > 10 and not docker.options.let:
+    # if len(conformers) > 10 and not embedder.options.let:
     #     s += f' Will use only the best 10 conformers for TSCoDe embed.'
-    # docker.log(s)
+    # embedder.log(s)
 
-    docker.log('\n')
+    embedder.log('\n')
 
     return confname
 
-def opt_operator(filename, calculator, theory_level, procs=1, logfunction=None, let=False):
+def opt_operator(filename, options, logfunction=None):
     '''
     '''
 
     if logfunction is not None:
-        logfunction(f'--> Performing {calculator} {theory_level} optimization on {filename} before running TSCoDe')
+        logfunction(f'--> Performing {options.calculator} {options.theory_level} optimization on {filename}')
 
-    t_start = time.time()
+    t_start = time.perf_counter()
 
-    data = ccread(filename)
+    data = read_xyz(filename)
                                 
     conformers = data.atomcoords
     energies = []
@@ -162,34 +185,38 @@ def opt_operator(filename, calculator, theory_level, procs=1, logfunction=None, 
     lowest_calc = _get_lowest_calc()
     conformers, energies = _refine_structures(conformers, data.atomnos, *lowest_calc, loadstring='Optimizing conformer')
 
-    loadbar(len(conformers), len(conformers), f'Optimizing conformer {len(conformers)}/{len(conformers)} ')
-    # optimize the generated conformers
-
-    energies = np.array(energies) - np.min(energies)
     energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
+    energies = np.array(energies) - np.min(energies)
+    conformers = np.array(conformers)
     # sorting structures based on energy
+
+    mask = energies < 10
+    # getting the structures to reject (Rel Energy > 10 kcal/mol)
+
+    if logfunction is not None:
+        s = 's' if len(conformers) > 1 else ''
+        s = f'Completed optimization on {len(conformers)} conformer{s}. ({time_to_string(time.perf_counter()-t_start)}).\n'
+
+        if max(energies) > 10:
+            s += f'Discarded {len(conformers)-np.count_nonzero(mask)}/{len(conformers)} unstable conformers (Rel. E. > 10 kcal/mol)\n'
+
+    conformers, energies = conformers[mask], energies[mask]
+    # applying the mask that rejects high energy confs
 
     optname = filename[:-4] + '_opt.xyz'
     with open(optname, 'w') as f:
         for i, conformer in enumerate(conformers):
             write_xyz(conformer, data.atomnos, f, title=f'Optimized conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
 
-    if logfunction is not None:
-        s = 's' if len(conformers) > 1 else ''
-        s = f'Completed optimization on {len(conformers)} conformer{s}. ({time_to_string(time.time()-t_start)}).'
-
-        if len(conformers) > 10 and not let:
-            s += f' Will use only the best 10 conformers for TSCoDe embed.'
-
         logfunction(s+'\n')
 
     return optname
 
-def neb_operator(filename, docker):
+def neb_operator(filename, embedder):
     '''
     '''
-    docker.t_start_run = time.time()
-    data = ccread(filename)
+    embedder.t_start_run = time.perf_counter()
+    data = read_xyz(filename)
     assert len(data.atomcoords) == 2, 'NEB calculations need a .xyz input file with two geometries.'
 
     from tscode.ase_manipulations import ase_neb, ase_popt 
@@ -197,33 +224,33 @@ def neb_operator(filename, docker):
     reagents, products = data.atomcoords
     title = filename[:-4] + '_NEB'
 
-    docker.log(f'--> Performing a NEB TS optimization. Using start and end points from {filename}\n'
-               f'Theory level is {docker.options.theory_level} via {docker.options.calculator}')
-    _, reag_energy, _ = ase_popt(docker, reagents, data.atomnos, steps=0)
-    _, prod_energy, _ = ase_popt(docker, products, data.atomnos, steps=0)
+    embedder.log(f'--> Performing a NEB TS optimization. Using start and end points from {filename}\n'
+               f'Theory level is {embedder.options.theory_level} via {embedder.options.calculator}')
+    _, reag_energy, _ = ase_popt(embedder, reagents, data.atomnos, steps=0)
+    _, prod_energy, _ = ase_popt(embedder, products, data.atomnos, steps=0)
 
-    ts_coords, ts_energy, _ = ase_neb(docker,
+    ts_coords, ts_energy, _ = ase_neb(embedder,
                                             reagents,
                                             products,
                                             data.atomnos, 
                                             title=title,
-                                            logfile=docker.logfile,
+                                            logfile=embedder.logfile,
                                             write_plot=True)
 
     e1 = ts_energy - reag_energy
     e2 = ts_energy - prod_energy
 
-    docker.log(f'NEB completed, relative energy from start/end points (not barrier heights):\n'
+    embedder.log(f'NEB completed, relative energy from start/end points (not barrier heights):\n'
                f'  > E(TS)-E(start): {"+" if e1>=0 else "-"}{round(e1, 3)} kcal/mol\n'
                f'  > E(TS)-E(end)  : {"+" if e2>=0 else "-"}{round(e2, 3)} kcal/mol')
 
     if not (e1 > 0 and e2 > 0):
-        docker.log(f'\nNEB failed, TS energy is lower than both the start and end points.\n')
+        embedder.log(f'\nNEB failed, TS energy is lower than both the start and end points.\n')
 
-    docker.structures = np.array([ts_coords])
-    docker.energies = np.array([ts_energy])
-    docker.atomnos = data.atomnos
-    docker.write_structures('NEB_TS', indexes=list(range(len(ts_coords))), energies=False, extra=' (see log for energy)')
+    embedder.structures = np.array([ts_coords])
+    embedder.energies = np.array([ts_energy])
+    embedder.atomnos = data.atomnos
+    embedder.write_structures('NEB_TS', indexes=list(range(len(ts_coords))), energies=False, extra=' (see log for energy)')
 
 def _refine_structures(structures, atomnos, calculator, method, procs, loadstring=''):
     '''
@@ -247,17 +274,17 @@ def _refine_structures(structures, atomnos, calculator, method, procs, loadstrin
 
     return structures, energies
 
-def _get_lowest_calc(docker=None):
+def _get_lowest_calc(embedder=None):
     '''
     Returns the values for calculator,
     method and processors for the lowest
-    theory level available from docker or settings.
+    theory level available from embedder or settings.
     '''
-    if docker is None:
+    if embedder is None:
         if FF_OPT_BOOL:
             return (FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], None)
         return (CALCULATOR, DEFAULT_LEVELS[CALCULATOR], PROCS)
 
-    if docker.options.ff_opt:
-        return (docker.options.ff_calc, docker.options.ff_level, None)
-    return (docker.options.calculator, docker.options.theory_level, docker.options.procs)
+    if embedder.options.ff_opt:
+        return (embedder.options.ff_calc, embedder.options.ff_level, None)
+    return (embedder.options.calculator, embedder.options.theory_level, embedder.options.procs)

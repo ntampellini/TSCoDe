@@ -19,9 +19,8 @@ import os
 from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
-from cclib.io import ccread
-from tscode.fast_algebra import norm_of
-from tscode.utils import HiddenPrints, clean_directory, suppress_stdout_stderr, write_xyz
+from tscode.algebra import norm_of
+from tscode.utils import (clean_directory, read_xyz, write_xyz)
 
 
 def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', solvent=None, title='temp', read_output=True, **kwargs):
@@ -61,8 +60,14 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', solven
         f.write(s)
     
     flags = '--opt'
+    
     if method in ('GFN-FF', 'GFNFF'):
+        flags += ' tight'
+        # tighter convergence for GFN-FF works better
+
         flags += ' --gfnff'
+        # declaring the use of FF instead of semiempirical
+
 
     if solvent is not None:
 
@@ -86,7 +91,7 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', solven
 
         try:
             outname = 'xtbopt.xyz'
-            opt_coords = ccread(outname).atomcoords[0]
+            opt_coords = read_xyz(outname).atomcoords[0]
             energy = read_xtb_energy(outname)
 
             clean_directory()

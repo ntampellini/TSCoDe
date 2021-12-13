@@ -25,13 +25,14 @@ from ase.optimize import LBFGS
 from networkx.algorithms.components.connected import connected_components
 from networkx.algorithms.shortest_paths.generic import shortest_path
 
+from tscode.algebra import dihedral
 from tscode.ase_manipulations import ase_neb, ase_saddle, get_ase_calc
 from tscode.hypermolecule_class import align_structures, graphize
-from tscode.utils import (clean_directory, dihedral, loadbar, molecule_check,
-                   time_to_string, write_xyz)
+from tscode.utils import (clean_directory, loadbar, molecule_check,
+                          time_to_string, write_xyz)
 
 
-def ase_torsion_TSs(docker,
+def ase_torsion_TSs(embedder,
                     coords,
                     atomnos,
                     indexes,
@@ -75,7 +76,7 @@ def ase_torsion_TSs(docker,
 
     else:
 
-        if not docker.options.let:
+        if not embedder.options.let:
             raise SystemExit('The specified dihedral angle is made up of non-contiguous atoms. To prevent errors, the\n' +
                              'run has been stopped. Override this behavior with the LET keyword.')
 
@@ -101,7 +102,7 @@ def ase_torsion_TSs(docker,
         if logfile is not None:
             logfile.write('\n')
 
-        structures, energies = ase_scan(docker,
+        structures, energies = ase_scan(embedder,
                                         coords,
                                         atomnos,
                                         indexes=indexes,
@@ -154,7 +155,7 @@ def ase_torsion_TSs(docker,
 
             for p, peak in enumerate(peaks_indexes):
 
-                sub_structures, sub_energies = ase_scan(docker,
+                sub_structures, sub_energies = ase_scan(embedder,
                                                         structures[peak-1],
                                                         atomnos,
                                                         indexes=indexes,
@@ -190,7 +191,7 @@ def ase_torsion_TSs(docker,
 
                     s = 's' if len(sub_peaks_indexes) > 1 else ''
                     s = f'Found {len(sub_peaks_indexes)} sub-peak{s}.' + (
-                        f'Performing Saddle opt optimization{s}.' if docker.options.saddle else '')
+                        f'Performing Saddle opt optimization{s}.' if embedder.options.saddle else '')
                     print(s)
                     if logfile is not None:
                         logfile.write(s+'\n')
@@ -202,13 +203,13 @@ def ase_torsion_TSs(docker,
                             y = sub_energies[sub_peak]-min_e
                             plt.plot(x, y, color='gold', marker='o', label='Maxima' if p == 0 else None, markersize=3)
 
-                        if docker.options.saddle:
+                        if embedder.options.saddle:
 
                             loadbar_title = f'  > Saddle opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
                             # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
                             print(loadbar_title)
                         
-                            optimized_geom, energy, _ = ase_saddle(docker,
+                            optimized_geom, energy, _ = ase_saddle(embedder,
                                                                     sub_structures[sub_peak],
                                                                     atomnos,
                                                                     title=f'Saddle opt - peak {p+1}, sub-peak {s+1}',
@@ -219,13 +220,13 @@ def ase_torsion_TSs(docker,
                                 ts_structures.append(optimized_geom)
                                 energies.append(energy)
 
-                        elif docker.options.neb:
+                        elif embedder.options.neb:
 
                             loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
                             # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
                             print(loadbar_title)
                         
-                            optimized_geom, energy, success = ase_neb(docker,
+                            optimized_geom, energy, success = ase_neb(embedder,
                                                                         sub_structures[sub_peak-2],
                                                                         sub_structures[(sub_peak+1)%len(sub_structures)],
                                                                         atomnos,
@@ -281,7 +282,7 @@ def atropisomer_peaks(data, min_thr, max_thr):
 
     return peaks
     
-def ase_scan(docker,
+def ase_scan(embedder,
             coords,
             atomnos,
             indexes,
@@ -304,7 +305,7 @@ def ase_scan(docker,
     atoms = Atoms(atomnos, positions=coords)
     structures, energies = [], []
 
-    atoms.calc = get_ase_calc(docker)
+    atoms.calc = get_ase_calc(embedder)
 
     if indexes_to_be_moved is None:
         indexes_to_be_moved = range(len(atomnos))
