@@ -55,3 +55,7 @@
 - conformational search now discard symmetric rotations involving 6-membered aromatic rings like phenyl, 4-pyridyl, mesityl, ...
 - procs == None bugfix
 - secondary amides are now considered rotable by the csearch algorithm
+
+## 0.0.10 (2021)
+- Refined conformational search - better torsion printout, fixed HB bug, added secondary amides as rotable, made it faster
+- Various small bug fixes and print refinements in dihedral embed and ase_neb functions

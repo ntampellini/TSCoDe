@@ -190,9 +190,18 @@ def ase_torsion_TSs(embedder,
                 if sub_peaks_indexes:
 
                     s = 's' if len(sub_peaks_indexes) > 1 else ''
-                    s = f'Found {len(sub_peaks_indexes)} sub-peak{s}.' + (
-                        f'Performing Saddle opt optimization{s}.' if embedder.options.saddle else '')
-                    print(s)
+                    msg = f'Found {len(sub_peaks_indexes)} sub-peak{s}.'
+                    
+                    if embedder.options.saddle or embedder.options.neb:
+                        if embedder.options.saddle:
+                            tag = 'saddle'
+                        else:
+                            tag = 'NEB TS'
+
+                        msg += f'Performing {tag} optimization{s}.'
+
+                    print(msg)
+
                     if logfile is not None:
                         logfile.write(s+'\n')
 
@@ -222,8 +231,9 @@ def ase_torsion_TSs(embedder,
 
                         elif embedder.options.neb:
 
-                            loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
-                            # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
+                            loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}, {direction}'
+                            drctn = 'clkws' if direction == '_clockwise' else 'ccws'
+                            
                             print(loadbar_title)
                         
                             optimized_geom, energy, success = ase_neb(embedder,
@@ -231,8 +241,8 @@ def ase_torsion_TSs(embedder,
                                                                         sub_structures[(sub_peak+1)%len(sub_structures)],
                                                                         atomnos,
                                                                         n_images=5,
-                                                                        title=f'NEB_peak_{p+1}_sub-peak_{s+1}',
-                                                                        logfile=logfile)
+                                                                        title=f'{title}_NEB_peak_{p+1}_sub-peak_{s+1}_{drctn}_',
+                                                                        logfunction=embedder.log)
 
                             if success and molecule_check(coords, optimized_geom, atomnos):
                                 ts_structures.append(optimized_geom)
@@ -269,15 +279,21 @@ def ase_torsion_TSs(embedder,
 def atropisomer_peaks(data, min_thr, max_thr):
     '''
     data: iterable
-    threshold: peaks must be greater than threshold
-    cap: peaks must be less than cap
+    min_thr: peaks must be values greater than min_thr
+    max_thr: peaks must be values smaller than max_thr
     return: list of peak indexes
     '''
     l = len(data)
-    peaks = [i for i in range(l) if (
+    peaks = [i for i in range(l-1) if (
 
-        data[i-1] < data[i] >= data[(i+1)%l] and
-        max_thr > data[i] > min_thr # discard peaks that are too small or too big
+        data[i-1] < data[i] >= data[i+1] and
+        # peaks have neighbors that are smaller than them
+
+        max_thr > data[i] > min_thr and
+        # discard peaks that are too small or too big
+
+        abs(data[i] - min((data[i-1], data[i+1]))) > 2
+        # discard small peaks (noise) that do not "drop" at least 2 kcal/mol
     )]
 
     return peaks

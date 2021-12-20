@@ -186,7 +186,7 @@ def get_inertia_moments(coords, masses):
     return np.diag(inertia_moment_matrix)
 
 @nb.njit
-def get_moi_similarity_matrix(structures, masses, max_delta=10):
+def get_moi_similarity_matches(structures, masses, max_delta=10):
     ''''''
     l = len(structures)
     mat = np.zeros((l,l), dtype=nb.boolean)

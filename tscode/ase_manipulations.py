@@ -24,7 +24,7 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 from ase import Atoms
-from ase.calculators.calculator import PropertyNotImplementedError
+from ase.calculators.calculator import PropertyNotImplementedError, CalculationFailed
 from ase.calculators.gaussian import Gaussian
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
@@ -50,11 +50,11 @@ class Spring:
     Spring constant is very high to achieve tight convergence,
     but force is dampened so as not to ruin structures.
     '''
-    def __init__(self, i1, i2, d_eq, k=1000, tight=False):
+    def __init__(self, i1, i2, d_eq, k=100, tight=False):
         self.i1, self.i2 = i1, i2
         self.d_eq = d_eq
         self.k = k
-        self.tight = False
+        self.tight = tight
 
     def adjust_positions(self, atoms, newpositions):
         pass
@@ -77,6 +77,7 @@ class Spring:
 
     def tighten(self):
         self.tight = True
+        self.k = 1000
 
     def __repr__(self):
         return f'Spring - ids:{self.i1}/{self.i2} - d_eq:{self.d_eq}, k:{self.k}'
@@ -143,6 +144,7 @@ def get_ase_calc(embedder):
 
         from tscode.solvents import (solvent_synonyms, xtb_solvents,
                                      xtb_supported)
+                                     
         solvent = solvent_synonyms[solvent] if solvent in solvent_synonyms else solvent
         solvent = 'none' if solvent is None else solvent
 
@@ -270,7 +272,9 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
     if exit_str == 'CRASHED':
         return None, None, False
 
-    return new_structure, atoms.get_total_energy(), success
+    energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
+
+    return new_structure, energy, success
 
 def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=None, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
     '''
@@ -318,7 +322,7 @@ def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=
 
     return new_structure, energy, success
 
-def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfile=None, write_plot=False):
+def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfunction=None, write_plot=False, verbose_print=False):
     '''
     embedder: tscode embedder object
     reagents: coordinates for the atom arrangement to be used as reagents
@@ -344,6 +348,9 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
     neb.interpolate()
 
     ase_dump(f'{title}_MEP_guess.xyz', images, atomnos)
+
+    if verbose_print and logfunction is not None:
+        logfunction(f'\n\n--> Saved interpolated MEP guess to {title}_MEP_guess.xyz\n')
     
     # Set calculators for all images
     for _, image in enumerate(images):
@@ -359,7 +366,7 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
             # ignore runtime warnings from the NEB module:
             # if something went wrong, we will deal with it later
 
-            with optimizer(neb, maxstep=0.1, logfile=None) as opt:
+            with optimizer(neb, maxstep=0.1, logfile=None if not verbose_print else '-') as opt:
 
                 opt.run(fmax=0.05, steps=20)
                 # some free relaxation before starting to climb
@@ -368,17 +375,18 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
                 opt.run(fmax=0.05, steps=500)
                 iterations = opt.nsteps
 
-    except PropertyNotImplementedError:
-        if logfile is not None:
-            logfile.write(f'    - NEB for {title} CRASHED ({time_to_string(time.perf_counter()-t_start)})\n')
+    except (PropertyNotImplementedError, CalculationFailed):
+        if logfunction is not None:
+            logfunction(f'    - NEB for {title} CRASHED ({time_to_string(time.perf_counter()-t_start)})\n')
         return None, None, False
 
     exit_status = 'CONVERGED' if iterations < 499 else 'MAX ITER'
 
-    if logfile is not None:
-        logfile.write(f'    - NEB for {title} {exit_status} ({time_to_string(time.perf_counter()-t_start)})\n')
+    if logfunction is not None:
+        logfunction(f'    - NEB for {title} {exit_status} ({time_to_string(time.perf_counter()-t_start)})\n')
 
-    energies = [image.get_total_energy() for image in images]
+    energies = [image.get_total_energy() * 23.06054194532933 for image in images]
+    # eV to kcal/mol
     ts_id = energies.index(max(energies))
     # print(f'TS structure is number {ts_id}, energy is {max(energies)}')
 
@@ -522,7 +530,9 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
 
     return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
 
-def ase_popt(embedder, coords, atomnos, constrained_indexes=None, steps=500, targets=None, safe=False, safe_mask=None, traj=None):
+def ase_popt(embedder, coords, atomnos, constrained_indexes=None,
+             steps=500, targets=None, safe=False, safe_mask=None,
+             traj=None, logfunction=None, title='temp'):
     '''
     embedder: TSCoDe embedder object
     coords: 
@@ -530,11 +540,8 @@ def ase_popt(embedder, coords, atomnos, constrained_indexes=None, steps=500, tar
     constrained_indexes:
     safe: if True, adds a potential that prevents atoms from scrambling
     safe_mask: bool array, with False for atoms to be excluded when calculating bonds to preserve
-    title: name to be used for referring to this structure in the embedder log
-    traj: if set to a string, traj+'.traj' is used as a filename for the bending trajectory.
+    traj: if set to a string, traj is used as a filename for the bending trajectory.
           not only the atoms will be printed, but also all the orbitals and the active pivot.
-    check: if True, after bending checks that the bent structure did not scramble.
-           If it did, returns the initial molecule.
     '''
     atoms = Atoms(atomnos, positions=coords)
     atoms.calc = get_ase_calc(embedder)
@@ -554,19 +561,21 @@ def ase_popt(embedder, coords, atomnos, constrained_indexes=None, steps=500, tar
 
     atoms.set_constraint(constraints)
 
-    # t_start_opt = time.perf_counter()
-    with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=traj) as opt:
+    t_start_opt = time.perf_counter()
+    with LBFGS(atoms, maxstep=0.1, logfile=None, trajectory=traj) as opt:
         opt.run(fmax=0.05, steps=steps)
         iterations = opt.nsteps
 
     new_structure = atoms.get_positions()
     success = (iterations < 499)
 
-    # exit_str = 'REFINED' if success else 'MAX ITER'
+    if logfunction is not None:
+        exit_str = 'REFINED' if success else 'MAX ITER'
+        logfunction(f'    - {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})')
 
-    # embedder.log(f'    - {embedder.options.calculator} {embedder.options.theory_level} POPT: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
+    energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
 
-    return new_structure, atoms.get_total_energy(), success
+    return new_structure, energy, success
 
 def ase_bend(embedder, original_mol, conf, pivot, threshold, title='temp', traj=None, check=True):
     '''
@@ -712,14 +721,14 @@ def ase_bend(embedder, original_mol, conf, pivot, threshold, title='temp', traj=
         # else:
             # print('delta is ', round(dist - threshold, 3))
 
-        embedder.log(f'    {title} - conformer {conf} - {break_reason}{" "*(9-len(break_reason))} ({iteration+1}{" "*(3-len(str(iteration+1)))} iterations, {time_to_string(time.perf_counter()-t_start)})', p=False)
+    embedder.log(f'    {title} - conformer {conf} - {break_reason}{" "*(9-len(break_reason))} ({iteration+1}{" "*(3-len(str(iteration+1)))} iterations, {time_to_string(time.perf_counter()-t_start)})', p=False)
 
-        if check:
-            if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[0], mol.atomnos, max_newbonds=1):
-                mol.atomcoords[0] = original_mol.atomcoords[conf]
-            # keep the bent structures only if no scrambling occurred between atoms
+    if check:
+        if not molecule_check(original_mol.atomcoords[conf], mol.atomcoords[0], mol.atomnos, max_newbonds=1):
+            mol.atomcoords[0] = original_mol.atomcoords[conf]
+        # keep the bent structures only if no scrambling occurred between atoms
 
-        final_mol.atomcoords[conf] = mol.atomcoords[0]
+    final_mol.atomcoords[conf] = mol.atomcoords[0]
 
     # Now align the ensembles on the new reactive atoms positions
 

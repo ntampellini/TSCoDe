@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
     filename = os.path.realpath(args.inputfile)
 
-    from tscode.docker import Docker
+    from tscode.embedder import Embedder
     from tscode.run import RunEmbedding
 
     if args.profile:
@@ -75,8 +75,8 @@ if __name__ == '__main__':
         profiled_wrapper(filename, args.name)
         quit()
 
-    docker = Docker(filename, stamp=args.name)
-    # initialize docker from input file
+    embedder = Embedder(filename, stamp=args.name)
+    # initialize embedder from input file
 
-    RunEmbedding(docker)
+    RunEmbedding(embedder)
     # run the program

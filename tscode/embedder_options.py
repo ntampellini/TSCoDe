@@ -49,7 +49,7 @@ keywords_list = [
             'FFOPT',          #Manually turn on ``FF=ON`` or off ``FF=OFF`` the force
                                 # field optimization step, overriding the value in ``settings.py``.
 
-            'FFCALC'          # Manually overrides the force field calculator in "settings.py"
+            'FFCALC',          # Manually overrides the force field calculator in "settings.py"
 
             'FFLEVEL',        # Manually set the theory level to be used.
                                 # . Syntax: `FFLEVEL=UFF
@@ -259,7 +259,6 @@ class OptionSetter:
 
         from tscode.embeds import _get_monomolecular_reactive_indexes
 
-        self.embedder.embed = 'prune'
         self.embedder.structures = self.embedder.objects[0].atomcoords
         self.embedder.atomnos = self.embedder.objects[0].atomnos
         self.embedder.constrained_indexes = _get_monomolecular_reactive_indexes(self.embedder)
@@ -394,7 +393,7 @@ class OptionSetter:
 
     def ffcalc(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('FFCALC')]
-        options.calculator = kw.split('=')[1]
+        options.ff_calc = kw.split('=')[1]
 
     def mtd(self, options, *args):
         if options.calculator != 'XTB':

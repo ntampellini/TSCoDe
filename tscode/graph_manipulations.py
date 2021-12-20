@@ -86,16 +86,17 @@ def get_sp_n(index, graph):
     }
     return d[graph.nodes[index]['atomnos']][len(neighbors(graph, index))]
 
-def is_amide_n(index, graph, mode=0):
+def is_amide_n(index, graph, mode=-1):
     '''
     Returns true if the nitrogen atom at the given
     index is a nitrogen and is part of an amide.
     Carbamates and ureas are considered amides.
 
     mode:
-    0 - any amide
-    1 - primary amide
-    2 - secondary amide
+    -1 - any amide
+    0 - primary amide (CONH2)
+    1 - secondary amide (CONHR)
+    2 - tertiary amide (CONR2)
     '''
     if graph.nodes[index]['atomnos'] == 7:
         # index must be a nitrogen atom
@@ -103,8 +104,8 @@ def is_amide_n(index, graph, mode=0):
         nb = neighbors(graph, index)
         nb_atomnos = [graph.nodes[j]['atomnos'] for j in nb]
 
-        if mode: # == 1 or 2
-            if not nb_atomnos.count(1) == (1,0)[mode-1]:
+        if mode != -1:
+            if nb_atomnos.count(1) != (2,1,0)[mode]:
                 # primary amides need to have 1H, secondary amides none
                 return False
 

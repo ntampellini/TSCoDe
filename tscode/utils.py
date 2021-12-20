@@ -252,7 +252,7 @@ double_bonds_thresholds_dict = {
 
 def get_double_bonds_indexes(coords, atomnos):
     '''
-    Returns a list containing 2-elements lists
+    Returns a list containing 2-elements tuples
     of indexes involved in any double bond
     '''
     mask = (atomnos != 1)
@@ -269,9 +269,34 @@ def get_double_bonds_indexes(coords, atomnos):
             
             threshold = double_bonds_thresholds_dict.get(tag)
             if threshold is not None and dist < threshold:
-                output.append([numbering[i1], numbering[i2]])
+                output.append((numbering[i1], numbering[i2]))
 
     return output
+
+def get_scan_peak_index(energies, max_thr=50, min_thr=0.1):
+    '''
+    Returns the index of the energies iterable that
+    corresponds to the most prominent peak.
+    '''
+    l = len(energies)
+    peaks = [i for i in range(l) if (
+
+        energies[i-1] < energies[i] >= energies[(i+1)%l] and
+        max_thr > energies[i] > min_thr
+        # discard peaks that are too small or too big
+    )]
+
+    if not peaks:
+        return energies.index(max(energies))
+    # if no peaks are present, return the highest
+
+    if len(peaks) == 1:
+        return peaks[0]
+    # if one is present, return that
+
+    peaks_nrg = [energies[i] for i in peaks]
+    return peaks_nrg.index(max(peaks_nrg))
+    # if more than one, return the highest
 
 def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
     '''

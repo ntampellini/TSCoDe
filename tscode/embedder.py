@@ -182,12 +182,13 @@ class Embedder:
 
     def _set_reactive_atoms_cumnums(self):
 
-        for i, mol in enumerate(self.objects):
-            for c, _ in enumerate(mol.atomcoords):
-                for r_atom in mol.reactive_atoms_classes_dict[c].values():
-                    r_atom.cumnum = r_atom.index
-                    if i > 0:
-                        r_atom.cumnum += sum(self.ids[:i])
+        if self.embed in ('cyclical', 'chelotropic', 'string'):
+            for i, mol in enumerate(self.objects):
+                for c, _ in enumerate(mol.atomcoords):
+                    for r_atom in mol.reactive_atoms_classes_dict[c].values():
+                        r_atom.cumnum = r_atom.index
+                        if i > 0:
+                            r_atom.cumnum += sum(self.ids[:i])
 
     def _read_pairings(self):
         '''
@@ -421,8 +422,8 @@ class Embedder:
         Setting embed type and calculating the number of conformation combinations based on embed type
         '''
 
-        if self.embed is not None:
-            # do not assign if we had already (prune>)
+        if 'prune>' in self.options.operators or self.options.noembed:
+            self.embed == 'prune'
 
             # If the run is a prune>/NOEMBED one, the self.embed
             # attribute is set in advance by the self._set_options
@@ -627,6 +628,10 @@ class Embedder:
         Replace molecules in self.objects with
         their post-operator ones.
         '''
+
+        self._setup()
+        # early call to get the self.embed attribute
+
         for input_string in self.options.operators:
 
             outname = operate(input_string, self)
@@ -645,6 +650,9 @@ class Embedder:
 
                 self._set_reactive_atoms_cumnums()
                 # updating the orbital cumnums
+
+        self.embed = None
+        # resetting the attribute
 
     def _extract_filename(self, input_string):
         '''

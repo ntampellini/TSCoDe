@@ -105,7 +105,10 @@ class Hypermolecule:
         self.name = filename
         self.debug = debug
 
-        self.reactive_indexes = np.array(reactive_indexes) if reactive_indexes not in (None, ()) else ()
+        if isinstance(reactive_indexes, np.ndarray):
+            self.reactive_indexes = reactive_indexes
+        else:
+            self.reactive_indexes = np.array(reactive_indexes) if isinstance(reactive_indexes, (tuple, list)) else ()
 
         ccread_object = read_xyz(filename)
         if ccread_object is None:

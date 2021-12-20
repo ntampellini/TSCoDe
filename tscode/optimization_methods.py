@@ -28,7 +28,7 @@ from tscode.calculators._gaussian import gaussian_opt
 from tscode.calculators._mopac import mopac_opt
 from tscode.calculators._orca import orca_opt
 from tscode.calculators._xtb import xtb_opt
-from tscode.algebra import get_moi_similarity_matrix, norm, norm_of
+from tscode.algebra import get_moi_similarity_matches, norm, norm_of
 from tscode.settings import DEFAULT_LEVELS, FF_CALC
 from tscode.utils import (molecule_check, pt, scramble_check, time_to_string,
                           write_xyz)
@@ -297,8 +297,10 @@ def prune_enantiomers(structures, atomnos, max_delta=10):
     is kept.
     '''
 
-    masses = np.array([pt[a].mass for a in atomnos])
-    matches = get_moi_similarity_matrix(structures, masses, max_delta=max_delta)
+    heavy_structures = np.array([structure[atomnos != 1] for structure in structures])
+    heavy_masses = np.array([pt[a].mass for a in atomnos if a != 1])
+
+    matches = get_moi_similarity_matches(heavy_structures, heavy_masses, max_delta=max_delta)
 
     g = nx.Graph(matches)
 

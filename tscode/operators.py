@@ -22,7 +22,6 @@ from copy import deepcopy
 from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
-from cclib.io import ccread
 from networkx import connected_components
 
 from tscode.clustered_csearch import clustered_csearch, most_diverse_conformers
@@ -31,8 +30,8 @@ from tscode.graph_manipulations import graphize
 from tscode.optimization_methods import optimize
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
-from tscode.utils import (loadbar, read_xyz, suppress_stdout_stderr,
-                          time_to_string, write_xyz)
+from tscode.utils import (get_scan_peak_index, loadbar, read_xyz,
+                          suppress_stdout_stderr, time_to_string, write_xyz)
 
 
 def operate(input_string, embedder):
@@ -52,7 +51,7 @@ def operate(input_string, embedder):
     elif 'csearch_opt>' in input_string:
         conf_name = csearch_operator(filename, embedder)
         outname = opt_operator(conf_name,
-                                embedder.options,
+                                embedder,
                                 logfunction=embedder.log)
 
     elif 'csearch>' in input_string:
@@ -61,8 +60,12 @@ def operate(input_string, embedder):
 
     elif 'opt>' in input_string:
         outname = opt_operator(filename,
-                                embedder.options,
+                                embedder,
                                 logfunction=embedder.log)
+
+    elif 'scan>' in input_string:
+        scan_operator(filename, embedder)
+        embedder.normal_termination()
 
     elif 'neb>' in input_string:
         neb_operator(filename, embedder)
@@ -151,9 +154,9 @@ def csearch_operator(filename, embedder):
     conformers = conformers.reshape(-1, data.atomnos.shape[0], 3)
     # merging structures from each run in a single array
 
-    embedder.log(f'\nSelected the most diverse {batch_size} out of {conformers.shape[0]} conformers for {filename} ({time_to_string(time.perf_counter()-t_start)})')
-    
-    conformers = most_diverse_conformers(batch_size, conformers, data.atomnos)
+    if embedder.embed is not None:
+        embedder.log(f'\nSelected the most diverse {batch_size} out of {conformers.shape[0]} conformers for {filename} ({time_to_string(time.perf_counter()-t_start)})')
+        conformers = most_diverse_conformers(batch_size, conformers, data.atomnos)
 
     confname = filename[:-4] + '_confs.xyz'
     with open(confname, 'w') as f:
@@ -168,12 +171,12 @@ def csearch_operator(filename, embedder):
 
     return confname
 
-def opt_operator(filename, options, logfunction=None):
+def opt_operator(filename, embedder, logfunction=None):
     '''
     '''
 
     if logfunction is not None:
-        logfunction(f'--> Performing {options.calculator} {options.theory_level} optimization on {filename}')
+        logfunction(f'--> Performing {embedder.options.calculator} {embedder.options.theory_level} optimization on {filename}')
 
     t_start = time.perf_counter()
 
@@ -182,7 +185,7 @@ def opt_operator(filename, options, logfunction=None):
     conformers = data.atomcoords
     energies = []
 
-    lowest_calc = _get_lowest_calc()
+    lowest_calc = _get_lowest_calc(embedder)
     conformers, energies = _refine_structures(conformers, data.atomnos, *lowest_calc, loadstring='Optimizing conformer')
 
     energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
@@ -226,7 +229,11 @@ def neb_operator(filename, embedder):
 
     embedder.log(f'--> Performing a NEB TS optimization. Using start and end points from {filename}\n'
                f'Theory level is {embedder.options.theory_level} via {embedder.options.calculator}')
+
+    print('Getting start point energy...', end='\r')
     _, reag_energy, _ = ase_popt(embedder, reagents, data.atomnos, steps=0)
+
+    print('Getting end point energy...', end='\r')
     _, prod_energy, _ = ase_popt(embedder, products, data.atomnos, steps=0)
 
     ts_coords, ts_energy, _ = ase_neb(embedder,
@@ -234,8 +241,9 @@ def neb_operator(filename, embedder):
                                             products,
                                             data.atomnos, 
                                             title=title,
-                                            logfile=embedder.logfile,
-                                            write_plot=True)
+                                            logfunction=embedder.log,
+                                            write_plot=True,
+                                            verbose_print=True)
 
     e1 = ts_energy - reag_energy
     e2 = ts_energy - prod_energy
@@ -247,10 +255,127 @@ def neb_operator(filename, embedder):
     if not (e1 > 0 and e2 > 0):
         embedder.log(f'\nNEB failed, TS energy is lower than both the start and end points.\n')
 
-    embedder.structures = np.array([ts_coords])
-    embedder.energies = np.array([ts_energy])
-    embedder.atomnos = data.atomnos
-    embedder.write_structures('NEB_TS', indexes=list(range(len(ts_coords))), energies=False, extra=' (see log for energy)')
+    with open('Me_CONMe2_Mal_tetr_int_NEB_NEB_TS.xyz', 'w') as f:
+        write_xyz(ts_coords, data.atomnos, f, title='NEB TS - see log for relative energies')
+
+def scan_operator(filename, embedder):
+    '''
+    '''
+    embedder.t_start_run = time.perf_counter()
+    mol = embedder.objects[0]
+    assert len(mol.atomcoords) == 1, 'The scan> operator works on a single .xyz geometry.'
+    assert len(mol.reactive_indexes) == 2, 'The scan> operator needs two reactive indexes ' + (
+                                          f'({len(mol.reactive_indexes)} were provided)')
+
+    import matplotlib.pyplot as plt
+
+    from tscode.algebra import norm_of
+    from tscode.ase_manipulations import ase_popt
+    from tscode.pt import pt
+
+    i1, i2 = mol.reactive_indexes
+    coords = mol.atomcoords[0]
+    # shorthands for clearer code
+
+    embedder.log(f'--> Performing a distance scan approaching on indexes {i1} ' +
+                 f'and {i2}.\nTheory level is {embedder.options.theory_level} ' +
+                 f'via {embedder.options.calculator}')
+
+    d = norm_of(coords[i1]-coords[i2])
+    # getting the start distance between scan indexes and start energy
+
+    dists, energies, structures = [], [], []
+    # creating a dictionary that will hold results
+    # and the structure output list
+
+    step = -0.05
+    # defining the step magnitude, in Angstroms
+
+    s1, s2 = mol.atomnos[[i1, i2]]
+    smallest_d = 0.8*(pt[s1].covalent_radius+
+                      pt[s2].covalent_radius)
+    max_iterations = round((d-smallest_d) / abs(step))
+    # defining the maximum number of iterations,
+    # so that atoms are never forced closer than
+    # a proportionally small distance between those two atoms.
+
+    for i in range(max_iterations):
+
+        coords, energy, _ = ase_popt(embedder,
+                                     coords,
+                                     mol.atomnos,
+                                     constrained_indexes=np.array([mol.reactive_indexes]),
+                                     targets=(d,),
+                                     title=f'Step {i+1}/{max_iterations} - d={round(d, 2)} A -',
+                                     logfunction=embedder.log,
+                                     traj=f'{mol.title}_scanpoint_{i+1}.traj' if embedder.options.debug else None,
+                                     )
+        # optimizing the structure with a spring constraint
+
+
+        if i == 0:
+            e_0 = energy
+
+        energies.append(energy - e_0)
+        dists.append(d)
+        structures.append(coords)
+        # saving the structure, distance and relative energy
+
+        d += step
+        # modify the target distance and reiterate
+
+    ### Start the plotting sequence
+
+    plt.figure()
+    plt.plot(
+        dists,
+        energies,
+        color='tab:red',
+        label='Scan energy',
+        linewidth=3,
+    )
+
+    # e_max = max(energies)
+    id_max = get_scan_peak_index(energies)
+    e_max = energies[id_max]
+
+    # id_max = energies.index(e_max)
+    d_opt = dists[id_max]
+
+    plt.plot(
+        d_opt,
+        e_max,
+        color='gold',
+        label='Energy maximum (TS guess)',
+        marker='o',
+        markersize=3,
+    )
+
+    title = mol.name + ' distance scan'
+    plt.legend()
+    plt.title(title)
+    plt.xlabel(f'Indexes {i1}-{i2} distance (A)')
+    plt.gca().invert_xaxis()
+    plt.ylabel('Rel. E. (kcal/mol)')
+    plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
+
+    ### Start structure writing 
+
+    with open(f'{mol.name[:-4]}_scan.xyz', 'w') as f:
+        for i, (s, d, e) in enumerate(zip(structures, dists, energies)):
+            write_xyz(s, mol.atomnos, f, title=f'Scan point {i+1}/{len(structures)} ' +
+                      f'- d({i1}-{i2}) = {round(d, 3)} A - Rel. E = {round(e, 3)} kcal/mol')
+    # print all scan structures
+
+    with open(f'{mol.name[:-4]}_scan_max.xyz', 'w') as f:
+        s = structures[id_max]
+        d = dists[id_max]
+        write_xyz(s, mol.atomnos, f, title=f'Scan point {id_max+1}/{len(structures)} ' +
+                    f'- d({i1}-{i2}) = {round(d, 3)} A - Rel. E = {round(e_max, 3)} kcal/mol')
+    # print the maximum on another file for convienience
+
+    embedder.log(f'\n--> Written {len(structures)} structures to {mol.name[:-4]}_scan.xyz')
+    embedder.log(f'\n--> Written energy maximum to {mol.name[:-4]}_scan_max.xyz')
 
 def _refine_structures(structures, atomnos, calculator, method, procs, loadstring=''):
     '''

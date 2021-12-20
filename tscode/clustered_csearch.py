@@ -20,7 +20,6 @@ from copy import deepcopy
 
 import networkx as nx
 import numpy as np
-from networkx.algorithms.components.connected import connected_components
 from sklearn.cluster import KMeans
 
 from tscode.algebra import norm_of
@@ -32,7 +31,8 @@ from tscode.parameters import nci_dict
 from tscode.pt import pt
 from tscode.python_functions import compenetration_check, prune_conformers
 from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC
-from tscode.utils import cartesian_product, rotate_dihedral, time_to_string
+from tscode.utils import (cartesian_product, get_double_bonds_indexes,
+                          rotate_dihedral, time_to_string)
 
 
 class Torsion:
@@ -60,6 +60,7 @@ class Torsion:
 
         if tuple(sorted((self.i2, self.i3))) in hydrogen_bonds:
             self.n_fold = 6
+            # This has to be an intermolecular HB: rotate it
             return True
 
         if _is_free(self.i2, graph) or (
@@ -80,19 +81,24 @@ class Torsion:
 
         if 1 in nums:
             return 6 # H-N, H-O
+        
+        if is_amide_n(self.i2, graph, mode=2) or (
+           is_amide_n(self.i3, graph, mode=2)):
+           # tertiary amides rotations are 2-fold
+           return 2
 
         if (6 in nums) or (7 in nums) or (16 in nums): # if C, N or S atoms
 
-            spn2 = get_sp_n(self.i2, graph)
-            spn3 = get_sp_n(self.i3, graph)
+            sp_n_i2 = get_sp_n(self.i2, graph)
+            sp_n_i3 = get_sp_n(self.i3, graph)
 
-            if 3 in (spn2, spn3): # Csp3-X, Nsp3-X, Ssulfone-X
+            if 3 in (sp_n_i2, sp_n_i3): # Csp3-X, Nsp3-X, Ssulfone-X
                 return 3
 
-            # if 2 in (spn2, spn3):
+            # if 2 in (sp_n_i2, sp_n_i3):
             #     return 2 # Nsp2-O, S-O, P-O, sp2-sp2, sp2-sp, sp2-O, sp2-N
 
-        # raise SystemExit(f'Torsion not defined:\nnum {nums[0]} - {nums[1]}\nnum {spn2} - {spn3}')
+        # raise SystemExit(f'Torsion not defined:\nnum {nums[0]} - {nums[1]}\nnum {sp_n_i2} - {sp_n_i3}')
         return 2 #O-O
 
     def get_angles(self):
@@ -123,7 +129,7 @@ def _is_free(index, graph):
     satisfies all of the following:
     - Is not a sp2 carbonyl carbon atom
     - Is not the oxygen atom of an ester
-    - Is not the nitrogen atom of a primary amide
+    - Is not the nitrogen atom of a secondary amide (CONHR)
 
     '''
     if all((
@@ -324,27 +330,6 @@ def _get_hydrogen_bonds(coords, atomnos, graph):
                     if dist < thresh:
                         output.append((i1, i2))
     return output
-    # the rotation is considered dummy: some other rotation
-    # will account for its freedom (i.e. alkynes, hydrogen bonds)
-
-    for n in nb:
-        G.remove_edge(i, n)
-
-    subgraphs_nodes = [_set for _set in nx.connected_components(G)
-                       if not root in _set]
-
-    if len(subgraphs_nodes) == 1:
-        return True
-    # if i is part of a cycle and root is exocyclic, 
-    # the rotation is considered non-dummy.
-
-    subgraphs = [nx.subgraph(G, s) for s in subgraphs_nodes]
-    for sub in subgraphs[1:]:
-        if not nx.is_isomorphic(subgraphs[0], sub,
-                                node_match=lambda n1, n2: n1['atomnos'] == n2['atomnos']):
-            return True
-
-    return False
 
 def _get_rotation_mask(graph, torsion):
     '''
@@ -361,12 +346,11 @@ def _get_rotation_mask(graph, torsion):
 
     return np.array([i in reachable_indexes for i in graph.nodes])
 
-def _get_torsions(graph, hydrogen_bonds):
+def _get_torsions(graph, hydrogen_bonds, double_bonds):
     '''
     Returns list of Torsion objects
     '''
     allpaths = []
-    # allpaths = [*findPaths(graph, node, 3) for node in graph]
     for node in graph:
         allpaths.extend(findPaths(graph, node, 3))
     # get all possible continuous indexes quadruplets
@@ -374,9 +358,9 @@ def _get_torsions(graph, hydrogen_bonds):
     torsions, bond_torsions = [], []
     for path in allpaths:
         _, i2, i3, _ = path
-        bt = sorted((i2, i3))
+        bt = tuple(sorted((i2, i3)))
 
-        if bt not in bond_torsions:
+        if (bt not in bond_torsions) and (bt not in double_bonds):
             t = Torsion(*path)
 
             if (not t.in_cycle(graph)) and t.is_rotable(graph, hydrogen_bonds):
@@ -456,8 +440,13 @@ def clustered_csearch(coords,
             graph.add_edge(*hb)
     else:
         hydrogen_bonds = ()
+    # get informations on the intra/intermolecular hydrogen
+    # bonds that we should avoid disrupting
 
-    torsions = _get_torsions(graph, hydrogen_bonds)
+    double_bonds = get_double_bonds_indexes(coords, atomnos)
+    # get all double bonds - do not rotate these
+    
+    torsions = _get_torsions(graph, hydrogen_bonds, double_bonds)
     # get all torsions that we should explore
 
     for t in torsions:
@@ -473,20 +462,23 @@ def clustered_csearch(coords,
                                        torsions,
                                        max_size=3 if ff_opt else 8)
 
-    logfunction(f'\n--> Clustered CSearch - mode {mode} ({"stability" if mode == 0 else "diversity"}) - ' +
-                f'{len(torsions)} torsions in {len(grouped_torsions)} group{"s" if len(grouped_torsions) != 1 else ""} - ' +
-                f'{[len(t) for t in grouped_torsions]}')
-    
-    ############################################## DEBUG
+    ############################################## LOG TORSIONS
 
     # with open('n_fold_log.txt', 'w') as f:
     #     for t in torsions:
     #         f.write(f'{t.torsion} - {t.n_fold}-fold\n')
+    logfunction(f'Torsion list: (indexes : n-fold)')
+    for t in torsions:
+        logfunction('  - {:21s} : {}-fold'.format(str(t.torsion), t.n_fold))
 
     _write_torsion_vmd(coords, atomnos, constrained_indexes, grouped_torsions)
 
-    ############################################## DEBUG
+    ############################################## LOG TORSIONS
 
+    logfunction(f'\n--> Clustered CSearch - mode {mode} ({"stability" if mode == 0 else "diversity"}) - ' +
+                f'{len(torsions)} torsions in {len(grouped_torsions)} group{"s" if len(grouped_torsions) != 1 else ""} - ' +
+                f'{[len(t) for t in grouped_torsions]}')
+    
     output_structures = []
     starting_points = [coords]
     for tg, torsions_group in enumerate(grouped_torsions):
@@ -551,9 +543,11 @@ def clustered_csearch(coords,
                 if mode == 0:
                     new_structures, energies = zip(*sorted(zip(new_structures, energies), key=lambda x: x[1]))
                     new_structures = new_structures[0:n]
+                    tag = 'stable'
                 if mode == 1:
                     new_structures = most_diverse_conformers(n, new_structures, atomnos, energies)
-            logfunction(f'  Kept the best {len(new_structures)} starting points for next rotation cluster')
+                    tag = 'diverse'
+            logfunction(f'  Kept the most {tag} {len(new_structures)} starting points for next rotation cluster')
 
         output_structures.extend(new_structures)
         starting_points = new_structures
@@ -573,7 +567,7 @@ def clustered_csearch(coords,
 
     return output_structures
 
-def most_diverse_conformers(n, structures, atomnos, energies=None):
+def most_diverse_conformers(n, structures, atomnos, energies=None, force_enantiomer_pruning=False):
     '''
     Return the n most diverse structures from the set.
     First removes similar structures, then divides them in n subsets and:
@@ -582,22 +576,27 @@ def most_diverse_conformers(n, structures, atomnos, energies=None):
     _ If it is not, picks the most diverse structures.
     '''
 
-    structures, mask = prune_enantiomers(structures, atomnos)
-    if energies is not None:
-        energies = energies[mask]
-    # Remove enantiomers or structures similar under reflections
-        
-    for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1):
-        if 5*k < len(structures):
-            structures, mask = prune_conformers(structures, atomnos, max_rmsd=2, max_delta=2, k=k)
-            if energies is not None:
-                energies = energies[mask]
+    # print('Removing similar structures...', end='\r')
+    # for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1):
+    #     if 5*k < len(structures):
+    #         structures, mask = prune_conformers(structures, atomnos, max_rmsd=2, max_delta=2, k=k)
+    #         if energies is not None:
+    #             energies = energies[mask]
     # Remove similar structures based on RMSD and max deviation
 
+    if len(structures) < 3000 or force_enantiomer_pruning:
+        print(f'Removing enantiomers...{" "*10}', end='\r')
+        structures, mask = prune_enantiomers(structures, atomnos)
+        if energies is not None:
+            energies = energies[mask]
+        # Remove enantiomers or structures similar under reflections
+        # Skip if structures are too many (avoids stumping)
+        
     if len(structures) <= n:
         return structures
     # if we already pruned enough structures to meet the requirement, return them
 
+    print(f'Aligning structures...{" "*10}', end='\r')
     structures = align_structures(structures)
     features = structures.reshape((structures.shape[0], structures.shape[1]*structures.shape[2]))
     # reduce the dimensionality of the rest of the structure array to cluster them with KMeans

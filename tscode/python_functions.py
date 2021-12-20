@@ -111,9 +111,12 @@ def fast_score(coords, close=1.3, far=3):
     close_contacts = dist_mat[dist_mat < far]
     return np.sum(close_contacts/(close-far) - far/(close-far))
 
-def prune_conformers(structures, atomnos, k=1, max_rmsd=0.5, max_delta=None):
+def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None):
     '''
-    Group structures into k subgroups and remove the similar ones.
+    Removes similar structures by repeatedly grouping them into k
+    subgroups and removing similar ones. A cache is present to avoid
+    repeating RMSD computations.
+    
     Similarity occurs for structures with both RMSD < max_rmsd and
     maximum deviation < max_delta.
     '''
@@ -123,64 +126,69 @@ def prune_conformers(structures, atomnos, k=1, max_rmsd=0.5, max_delta=None):
     heavy_atoms = (atomnos != 1)
     heavy_structures = np.array([structure[heavy_atoms] for structure in structures])
 
-    if k != 1:
-
-        r = np.arange(structures.shape[0])
-        sequence = np.random.permutation(r)
-        inv_sequence = np.array([np.where(sequence == i)[0][0] for i in r], dtype=int)
-
-        heavy_structures = scramble(heavy_structures, sequence)
-        # scrambling array before splitting, to improve efficiency when doing
-        # multiple runs of group pruning
-
-    mask_out = []
-    d = len(structures) // k
-
-    for step in range(k):
-        if step == k-1:
-            structures_subset = heavy_structures[d*step:]
-            # energies_subset = energies[d*step:]
-        else:
-            structures_subset = heavy_structures[d*step:d*(step+1)]
-            # energies_subset = energies[d*step:d*(step+1)]
-
-        l = structures_subset.shape[0]
-
-        similarity_mat = np.zeros((l, l))
-
-        for i in range(l):
-            for j in range(i+1,l):
-                rmsd, max_dev = rmsd_and_max(structures_subset[i], structures_subset[j])
-                if rmsd < max_rmsd and max_dev < max_delta:
-                    similarity_mat[i,j] = 1
-                    break
-
-        matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
-
-        g = nx.Graph(matches)
-
-        subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
-        groups = [tuple(graph.nodes) for graph in subgraphs]
-
-        best_of_cluster = [sorted(group, key=lambda i: fast_score(structures[i]))[0] for group in groups]
-        # of each cluster, keep the structure that looks the best
-
-        rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
-        rejects = []
-        for s in rejects_sets:
-            for i in s:
-                rejects.append(i)
-
-        mask = np.array([True for _ in range(l)], dtype=bool)
-        for i in rejects:
-            mask[i] = False
-
-        mask_out.append(mask)
+    cache_set = set()
+    final_mask = np.ones(structures.shape[0], dtype=bool)
     
-    mask = np.concatenate(mask_out)
+    for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1):
+        num_active_str = np.count_nonzero(final_mask)
+        
+        if k == 1 or 5*k < num_active_str:
+        # proceed only of there are at least five structures per group
 
-    if k != 1:
-        mask = scramble(mask, inv_sequence)
-        # undoing the previous shuffling, therefore preserving the input order
+            d = len(structures) // k
 
-    return structures[mask], mask
+            for step in range(k):
+            # operating on each of the k subdivisions of the array
+                if step == k-1:
+                    l = len(range(d*step, num_active_str))
+                else:
+                    l = len(range(d*step, d*(step+1)))
+
+                similarity_mat = np.zeros((l, l))
+
+                for i_rel in range(l):
+                    for j_rel in range(i_rel+1,l):
+
+                        i_abs = i_rel+(d*step)
+                        j_abs = j_rel+(d*step)
+
+                        if (i_abs, j_abs) not in cache_set:
+                        # if we have already performed the comparison,
+                        # structures were not similar and we can skip them
+
+                            rmsd, max_dev = rmsd_and_max(heavy_structures[i_abs],
+                                                         heavy_structures[j_abs])
+
+                            if rmsd < max_rmsd and max_dev < max_delta:
+                                similarity_mat[i_rel,j_rel] = 1
+                                break
+
+                for i_rel, j_rel in zip(*np.where(similarity_mat == False)):
+                    i_abs = i_rel+(d*step)
+                    j_abs = j_rel+(d*step)
+                    cache_set.add((i_abs, j_abs))
+                    # adding indexes of structures that are considered equal,
+                    # so as not to repeat computing their RMSD
+                    # Their index accounts for their position in the initial
+                    # array (absolute index)
+
+                matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
+                g = nx.Graph(matches)
+
+                subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+                groups = [tuple(graph.nodes) for graph in subgraphs]
+
+                best_of_cluster = [sorted(group, key=lambda i: fast_score(structures[i]))[0] for group in groups]
+                # of each cluster, keep the structure that looks the best
+
+                rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+                rejects = []
+                for s in rejects_sets:
+                    for i in s:
+                        rejects.append(i)
+
+                for i in rejects:
+                    abs_index = i + d*step
+                    final_mask[abs_index] = 0
+
+    return structures[final_mask], final_mask
