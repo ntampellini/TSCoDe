@@ -573,7 +573,7 @@ def most_diverse_conformers(n, structures, atomnos, energies=None, force_enantio
     First removes similar structures, then divides them in n subsets and:
     - If the enrgy list is given, chooses the
       one with the lowest energy from each.
-    _ If it is not, picks the most diverse structures.
+    - If it is not, picks the most diverse structures.
     '''
 
     # print('Removing similar structures...', end='\r')

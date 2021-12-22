@@ -231,7 +231,7 @@ def ase_torsion_TSs(embedder,
 
                         elif embedder.options.neb:
 
-                            loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}, {direction}'
+                            loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}, {direction[1:]}'
                             drctn = 'clkws' if direction == '_clockwise' else 'ccws'
                             
                             print(loadbar_title)
@@ -241,7 +241,7 @@ def ase_torsion_TSs(embedder,
                                                                         sub_structures[(sub_peak+1)%len(sub_structures)],
                                                                         atomnos,
                                                                         n_images=5,
-                                                                        title=f'{title}_NEB_peak_{p+1}_sub-peak_{s+1}_{drctn}_',
+                                                                        title=f'{title}_NEB_peak_{p+1}_sub-peak_{s+1}_{drctn}',
                                                                         logfunction=embedder.log)
 
                             if success and molecule_check(coords, optimized_geom, atomnos):

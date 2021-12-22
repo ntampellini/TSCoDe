@@ -24,13 +24,15 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 from ase import Atoms
-from ase.calculators.calculator import PropertyNotImplementedError, CalculationFailed
+from ase.calculators.calculator import (CalculationFailed,
+                                        PropertyNotImplementedError)
 from ase.calculators.gaussian import Gaussian
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
 from ase.constraints import FixInternals
 from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
+from ase.vibrations import Vibrations
 from rmsd import kabsch
 from sella import Sella
 
@@ -303,24 +305,45 @@ def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=
     new_structure = atoms.get_positions()
     energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
 
-    # if freq:
-    #     vib = Vibrations(atoms, name='temp')
-    #     with HiddenPrints():
-    #         vib.run()
-    #     freqs = vib.get_frequencies()
-
-    #     if logfile is not None:
-    #         elapsed = time.perf_counter() - t_end_berny
-    #         logfile.write(f'{title} - frequency calculation completed ({time_to_string(elapsed)})\n')
-        
-    #     return new_structure, energy, freqs
-
     if mols_graphs is not None:
         success = scramble_check(new_structure, atomnos, constrained_indexes, mols_graphs, max_newbonds=embedder.options.max_newbonds)
     else:
         success = molecule_check(coords, new_structure, atomnos, max_newbonds=embedder.options.max_newbonds)
 
     return new_structure, energy, success
+
+def ase_vib(embedder, coords, atomnos, logfunction=None, title='temp'):
+    '''
+    '''
+    atoms = Atoms(atomnos, positions=coords)
+    atoms.calc = get_ase_calc(embedder)
+    vib = Vibrations(atoms, name=title)
+
+    if os.path.isdir(title):
+        os.chdir(title)
+        for f in os.listdir():
+            os.remove(f)
+        os.chdir(os.path.dirname(os.getcwd()))
+    else:
+        os.mkdir(title)
+
+    os.chdir(title)
+
+    t_start = time.perf_counter()
+
+    with HiddenPrints():
+        vib.run()
+
+    # freqs = vib.get_frequencies()
+    freqs = vib.get_energies()* 8065.544 # from eV to cm-1 
+
+    if logfunction is not None:
+        elapsed = time.perf_counter() - t_start
+        logfunction(f'{title} - frequency calculation completed ({time_to_string(elapsed)})')
+    
+    os.chdir(os.path.dirname(os.getcwd()))
+
+    return freqs, np.count_nonzero(freqs.imag > 1e-3)
 
 def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfunction=None, write_plot=False, verbose_print=False):
     '''
