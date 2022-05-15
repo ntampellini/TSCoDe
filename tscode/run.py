@@ -24,13 +24,15 @@ import numpy as np
 from tscode.algebra import norm_of
 from tscode.ase_manipulations import ase_adjust_spacings, ase_saddle
 from tscode.calculators._xtb import xtb_metadyn_augmentation
+from tscode.clustered_csearch import csearch
 from tscode.embeds import (cyclical_embed, dihedral_embed, monomolecular_embed,
                            string_embed)
-from tscode.errors import MopacReadError, ZeroCandidatesError
+from tscode.errors import (MopacReadError, SegmentedGraphError,
+                           ZeroCandidatesError)
 from tscode.hypermolecule_class import align_structures
 from tscode.nci import get_nci
 from tscode.optimization_methods import (fitness_check, hyperNEB, opt_iscans,
-                                         optimize, prune_enantiomers)
+                                         optimize)
 from tscode.parameters import orb_dim_dict
 from tscode.pt import pt
 from tscode.python_functions import (compenetration_check, prune_conformers,
@@ -80,7 +82,7 @@ class RunEmbedding:
             'string' : string_embed,
         }
 
-        if self.embed == 'prune':
+        if self.embed == 'refine':
             self.log('\n')
             return
 
@@ -90,19 +92,24 @@ class RunEmbedding:
 
         self.log(f'Generated {len(self.structures)} transition state candidates ({time_to_string(time.perf_counter()-self.t_start_run)})\n')
 
+        if self.options.debug:
+            self.write_structures('embedded', energies=False)
+
     def compenetration_refining(self):
         '''
         Performing a sanity check for excessive compenetration
         on generated structures, discarding the ones that look too bad.
         '''
 
-        if self.embed not in ('cyclical', 'monomolecular'):
+        if self.embed not in ('string', 'cyclical', 'monomolecular'):
+        # these do not need compenetration refining: the 
+        # algorithm checks for compentrations when embedding
             
             self.log('--> Checking structures for compenetrations')
 
             t_start = time.perf_counter()
             mask = np.zeros(len(self.structures), dtype=bool)
-            num = len(self.structures)
+            # num = len(self.structures)
             for s, structure in enumerate(self.structures):
                 # if num > 100 and num % 100 != 0 and s % (num % 100) == 99:
                 #     loadbar(s, num, prefix=f'Checking structure {s+1}/{num} ')
@@ -119,10 +126,12 @@ class RunEmbedding:
                 self.log('All structures passed the compenetration check')
             self.log()
 
-        self.zero_candidates_check()
+            self.zero_candidates_check()
 
-        self.energies = np.zeros(len(self.structures))
+        self.energies = np.full(len(self.structures), np.inf)
         self.exit_status = np.zeros(len(self.structures), dtype=bool)
+        # initialize embedder values for the active structures
+        # that survived the compenetration check
     
     def fitness_refining(self):
         '''
@@ -169,38 +178,27 @@ class RunEmbedding:
         before = len(self.structures)
         attr = ('constrained_indexes', 'energies', 'exit_status')
 
-        if not self.options.keep_enantiomers:
+        # if not self.options.keep_enantiomers:
 
-            self.structures, mask = prune_enantiomers(self.structures, self.atomnos)
+        #     self.structures, mask = prune_enantiomers(self.structures, self.atomnos)
             
-            self.apply_mask(attr, mask)
+        #     self.apply_mask(attr, mask)
            
-            if False in mask:
-                self.log(f'Discarded {len([b for b in mask if not b])} enantiomeric structures ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
-            self.log()
+        #     if False in mask:
+        #         self.log(f'Discarded {len([b for b in mask if not b])} enantiomeric structures ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
+        #     self.log()
 
         t_start = time.perf_counter()
-        for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
-            if 5*k < len(self.structures):
-                t_start_int = time.perf_counter()
-                self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh, k=k)
 
-                self.apply_mask(attr, mask)
-                t_end_int = time.perf_counter()
-
-                if verbose:
-                    self.log(f'    - similarity pre-processing   (k={k}) - {time_to_string(t_end_int-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
-        
-        t_start_int = time.perf_counter()
-        self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
-
-        if verbose:
-            self.log(f'    - similarity final processing (k=1) - {time_to_string(time.perf_counter()-t_start_int)} - kept {len([b for b in mask if b])}/{len(mask)}')
+        self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.rmsd, verbose=verbose)
 
         self.apply_mask(attr, mask)
 
         if before > len(self.structures):
-            self.log(f'Discarded {int(before - len([b for b in mask if b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
+            self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
+
+        elif verbose:
+            self.log(f'All structures passed the similarity check.{" "*15}')
 
     def force_field_refining(self):
         '''
@@ -226,16 +224,21 @@ class RunEmbedding:
         for i, structure in enumerate(deepcopy(self.structures)):
             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
             try:
-                new_structure, _, self.exit_status[i] = optimize(structure,
-                                                                    self.atomnos,
-                                                                    self.options.ff_calc,
-                                                                    method=self.options.ff_level,
-                                                                    constrained_indexes=self.constrained_indexes[i],
-                                                                    mols_graphs=self.graphs,
-                                                                    check=(self.embed != 'prune'))
+                new_structure, new_energy, self.exit_status[i] = optimize(structure,
+                                                                            self.atomnos,
+                                                                            self.options.ff_calc,
+                                                                            method=self.options.ff_level,
+                                                                            constrained_indexes=self.constrained_indexes[i],
+                                                                            mols_graphs=self.graphs,
+                                                                            check=True)
+
 
                 if self.exit_status[i]:
                     self.structures[i] = new_structure
+                    self.energies[i] = new_energy
+
+                else:
+                    self.energies[i] = np.inf
 
             except Exception as e:
                 raise e
@@ -246,20 +249,49 @@ class RunEmbedding:
         
         ################################################# EXIT STATUS
 
-        self.log(f'Successfully pre-refined {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at {self.options.ff_level} level.')
+        self.log(f'Successfully optimized {len([b for b in self.exit_status if b])}/{len(self.structures)} candidates at {self.options.ff_level} level.')
         
+        ################################################# PRUNING: ENERGY
+
+        # self.energies = self.energies - np.min(self.energies)
+        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+        self.energies = self.scramble(self.energies, sequence)
+        self.structures = self.scramble(self.structures, sequence)
+        self.constrained_indexes = self.scramble(self.constrained_indexes, sequence)
+        # sorting structures based on energy
+
+        if self.options.kcal_thresh is not None:
+    
+            mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
+
+            self.apply_mask(('structures', 'constrained_indexes', 'energies', 'exit_status'), mask)
+
+            if False in mask:
+                self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
+
         ################################################# PRUNING: SIMILARITY (POST FORCE FIELD OPT)
 
         self.zero_candidates_check()
         self.similarity_refining()
 
-        ################################################# CHECKPOINT BEFORE OPTIMIZATION
+        ################################################# CHECKPOINT AFTER FF OPTIMIZATION
+        
+        s = f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file'
+
+        if self.options.optimization and (self.options.ff_level != self.options.theory_level):
+            s += f' before {self.options.calculator} optimization.'
+
+        else:
+            self.outname = f'TSCoDe_poses_{self.stamp}.xyz'
+            # if the FF optimization was the last one, call the outfile accordingly
+
+
+        self.log(s+'\n')
 
         with open(self.outname, 'w') as f:        
             for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
-                exit_str = f'{self.options.ff_level} REFINED' if self.exit_status[i] else 'RAW'
-                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before {self.options.calculator} optimization')
-        self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file before {self.options.calculator} optimization.\n')
+                kind = 'REFINED - ' if self.exit_status[i] else 'NOT REFINED - '
+                write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol ({self.options.ff_level})')
 
     def _set_target_distances(self):
         '''
@@ -313,6 +345,9 @@ class RunEmbedding:
 
         self.log(f'--> Structure optimization ({self.options.theory_level} level via {self.options.calculator})')
 
+        self.energies.fill(0)
+        # Resetting all energies since we changed theory level
+
         if self.options.calculator == 'MOPAC':
             method = f'{self.options.theory_level} GEO-OK CYCLES=500'
 
@@ -323,17 +358,18 @@ class RunEmbedding:
             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
             try:
                 t_start_opt = time.perf_counter()
-                new_structure, self.energies[i], self.exit_status[i] = optimize(structure,
-                                                                                    self.atomnos,
-                                                                                    self.options.calculator,
-                                                                                    method=method,
-                                                                                    constrained_indexes=self.constrained_indexes[i],
-                                                                                    mols_graphs=self.graphs,
-                                                                                    procs=self.options.procs,
-                                                                                    max_newbonds=self.options.max_newbonds,
-                                                                                    check=(self.embed != 'prune'))
+                new_structure, new_energy, self.exit_status[i] = optimize(structure,
+                                                                            self.atomnos,
+                                                                            self.options.calculator,
+                                                                            method=method,
+                                                                            constrained_indexes=self.constrained_indexes[i],
+                                                                            mols_graphs=self.graphs,
+                                                                            procs=self.options.procs,
+                                                                            max_newbonds=self.options.max_newbonds,
+                                                                            check=(self.embed != 'refine'))
 
                 if self.exit_status[i]:
+                    self.energies[i] = new_energy
                     self.structures[i] = new_structure
 
                 exit_str = 'CONVERGED' if self.exit_status[i] else 'SCRAMBLED'
@@ -359,6 +395,24 @@ class RunEmbedding:
         self.log((f'{self.options.calculator} {self.options.theory_level} optimization took '
                   f'{time_to_string(time.perf_counter()-t_start)} (~{time_to_string((time.perf_counter()-t_start)/len(self.structures))} per structure)'))
 
+        ################################################# PRUNING: ENERGY
+
+        # self.energies = self.energies - np.min(self.energies)
+        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+        self.energies = self.scramble(self.energies, sequence)
+        self.structures = self.scramble(self.structures, sequence)
+        self.constrained_indexes = self.scramble(self.constrained_indexes, sequence)
+        # sorting structures based on energy
+
+        if self.options.kcal_thresh is not None:
+    
+            mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
+
+            self.apply_mask(('structures', 'constrained_indexes', 'energies', 'exit_status'), mask)
+
+            if False in mask:
+                self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
+
         ################################################# PRUNING: SIMILARITY (POST SEMIEMPIRICAL OPT)
 
         self.zero_candidates_check()
@@ -366,9 +420,9 @@ class RunEmbedding:
 
         ################################################# REFINING: BONDING DISTANCES
 
-        if self.embed != 'prune':
+        if self.embed != 'refine':
 
-            self.write_structures('TS_guesses_unrefined', energies=False, p=False)
+            self.write_structures('poses_unrefined', energies=False, p=False)
             self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures before distance refinement.\n')
 
             self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level} level)')
@@ -437,7 +491,7 @@ class RunEmbedding:
 
         ################################################# PRUNING: ENERGY
 
-        self.energies = self.energies - np.min(self.energies)
+        # self.energies = self.energies - np.min(self.energies)
         _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
         self.energies = self.scramble(self.energies, sequence)
         self.structures = self.scramble(self.structures, sequence)
@@ -448,23 +502,23 @@ class RunEmbedding:
     
             mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
 
-            self.apply_mask(('structures', 'energies', 'exit_status'), mask)
+            self.apply_mask(('structures', 'constrained_indexes', 'energies', 'exit_status'), mask)
 
             if False in mask:
-                self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy (Threshold set to {self.options.kcal_thresh} kcal/mol)')
+                self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
         
         ################################################# XYZ GUESSES OUTPUT 
 
-        self.outname = f'TSCoDe_TS_guesses_{self.stamp}.xyz'
+        self.outname = f'TSCoDe_poses_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
             for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
 
                 kind = 'REFINED - ' if self.exit_status[i] else 'NOT REFINED - '
 
-                write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol')
+                write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(self.energies[i], 3)} kcal/mol ({self.options.theory_level})')
 
         try:
-            os.remove(f'TSCoDe_TS_guesses_unrefined_{self.stamp}.xyz')
+            os.remove(f'TSCoDe_poses_unrefined_{self.stamp}.xyz')
             # since we have the refined structures, we can get rid of the unrefined ones
         except FileNotFoundError:
             pass
@@ -505,6 +559,91 @@ class RunEmbedding:
         self.exit_status = np.array([True for _ in self.structures], dtype=bool)
 
         self.log(f'Metadynamics augmentation completed - found {len(self.structures)-before} new conformers ({time_to_string(time.perf_counter()-t_start_run)})\n')
+
+    def csearch_augmentation(self, text='', max_structs=1000):
+        '''
+        Runs a conformational search for each structure in self.structure,
+        preserving the current reactive atoms pose and HB interactions.
+        New structures geometries are optimized and added to self. structures.
+        '''
+
+        self.log(f'--> Performing conformational augmentation of TS candidates {text}')
+
+        before = len(self.structures)
+        t_start_run = time.perf_counter()
+        n_out = 100 if len(self.structures)*100 < max_structs else round(max_structs/len(self.structures))
+
+        for s, (structure, constrained_indexes) in enumerate(zip(self.structures, self.constrained_indexes)):
+
+            loadbar(s, before, f'Performing CSearch {s+1}/{before} ')
+            t_start = time.perf_counter()
+
+            if self.options.debug:
+                dump = open(f'Candidate_{s+1}_csearch_log.txt', 'w', buffering=1)
+
+            try:
+                new_structures = csearch(
+                                            structure,
+                                            self.atomnos,
+                                            constrained_indexes=constrained_indexes,
+                                            keep_hb=True,
+                                            mode=2,
+                                            n_out=n_out,
+                                            logfunction=lambda s: dump.write(s+'\n') if self.options.debug else None,
+                                            title=f'Candidate_{s+1}',
+                                            interactive_print=False,
+                                            write_torsions=self.options.debug
+                                        )
+
+            # if CSearch cannot be performed, just go on
+            except SegmentedGraphError:
+                new_structures = []
+
+            if self.options.debug:
+                dump.close()
+
+            self.structures = np.concatenate((self.structures, new_structures))
+            self.energies = np.concatenate((self.energies, [np.inf for _ in new_structures]))
+            self.constrained_indexes = np.concatenate((self.constrained_indexes, [constrained_indexes for _ in new_structures]))
+        
+        self.log(f'   - Candidate {s+1} - {len(new_structures)} new conformers ({time_to_string(time.perf_counter()-t_start)})', p=False)
+
+        loadbar(before, before, f'Performing CSearch {before}/{before} ')
+        self.exit_status = np.array([True for _ in self.structures], dtype=bool)
+
+        self.log(f'Conformational augmentation completed - generated {len(self.structures)-before} new conformers ({time_to_string(time.perf_counter()-t_start_run)})\n')
+
+    def csearch_augmentation_routine(self):
+        '''
+        '''
+        null_runs = 0
+
+        for i in range(3):
+
+            min_e = np.min(self.energies)
+
+            self.csearch_augmentation(text=f'(step {i+1}/3)',
+                                    #   max_structs=10
+                                     )
+            self.force_field_refining()
+
+            if np.min(self.energies) < min_e:
+                delta = min_e - np.min(self.energies)
+                self.log(f'--> Lower minima found: {round(delta, 2)} kcal/mol below previous best\n')
+
+                if self.options.debug:
+                    with open(f'best_of_aug_run_{i}.xyz', 'w') as f:
+                        e, s = zip(*sorted(zip(self.energies, self.structures), key=lambda x: x[0]))
+                        write_xyz(s[0], self.atomnos, f, title=f'Energy = {round(e[0], 6)}')
+
+                min_e = np.min(self.energies)
+
+            else:
+                self.log(f'--> No new minima found.\n')
+                null_runs += 1
+
+            if null_runs == 2:
+                break
 
     def hyperneb_refining(self):
         '''
@@ -553,7 +692,7 @@ class RunEmbedding:
         if len(self.structures) != 0:
 
             t_start = time.perf_counter()
-            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
+            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.rmsd)
             self.energies = self.energies[mask]
             t_end = time.perf_counter()
             
@@ -618,7 +757,7 @@ class RunEmbedding:
         if len(self.structures) != 0:
 
             t_start = time.perf_counter()
-            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
+            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.rmsd)
             self.apply_mask(('energies', 'exit_status'), mask)
             t_end = time.perf_counter()
             
@@ -684,7 +823,7 @@ class RunEmbedding:
         if len(self.structures) != 0:
 
             t_start = time.perf_counter()
-            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.pruning_thresh)
+            self.structures, mask = prune_conformers(self.structures, self.atomnos, max_rmsd=self.options.rmsd)
             self.apply_mask(('energies', 'exit_status'), mask)
             t_end = time.perf_counter()
             
@@ -787,7 +926,7 @@ class RunEmbedding:
         self.log(f'--> Calculation options used were:')
         for line in str(self.options).split('\n'):
 
-            if self.embed in ('monomolecular', 'string', 'prune') and line.split()[0] in ('rotation_range',
+            if self.embed in ('monomolecular', 'string', 'refine') and line.split()[0] in ('rotation_range',
                                                                                           'rotation_steps',
                                                                                           'rigid',
                                                                                           'suprafacial'):
@@ -798,12 +937,12 @@ class RunEmbedding:
                                                                     'theory_level',
                                                                     'kcal_thresh',
                                                                     'debug',
-                                                                    'pruning_thresh',
+                                                                    'rmsd',
                                                                     'neb',
                                                                     'saddle'):
                 continue
 
-            if self.embed == 'prune' and line.split()[0] in ('shrink', 'shrink_multiplier', 'fix_angles_in_deformation'):
+            if self.embed == 'refine' and line.split()[0] in ('shrink', 'shrink_multiplier', 'fix_angles_in_deformation'):
                 continue
 
             if not self.options.optimization and line.split()[0] in ('calculator',
@@ -817,6 +956,10 @@ class RunEmbedding:
                                                                      'theory_level'):
                 continue
             
+            if self.options.rigid and line.split()[0] in ('double_bond_protection',
+                                                          'fix_angles_in_deformation'):
+                continue
+
             self.log(f'    - {line}')
 
     def write_vmd(self, indexes=None):
@@ -858,9 +1001,16 @@ class RunEmbedding:
             if relative:
                 rel_e -= np.min(self.energies)
 
+        # truncate if there are too many (embed debug first dump)
+        if len(self.structures) > 1000 and not self.options.let:
+            self.log(f'Truncated {tag} output structures to 1000 (from {len(self.structures)}).')
+            output_structures = self.structures[0:1000]
+        else:
+            output_structures = self.structures
+
         self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
-            for i, structure in enumerate(align_structures(self.structures, indexes)):
+            for i, structure in enumerate(align_structures(output_structures, indexes)):
                 title = f'TS candidate {i+1} - {tag}'
 
                 if energies:
@@ -871,7 +1021,7 @@ class RunEmbedding:
                 write_xyz(structure, self.atomnos, f, title=title)
 
         if p:
-            self.log(f'Wrote {len(self.structures)} {tag} TS structures to {self.outname} file.\n')
+            self.log(f'Wrote {len(output_structures)} {tag} TS structures to {self.outname} file.\n')
 
     def run(self):
         '''
@@ -887,9 +1037,18 @@ class RunEmbedding:
             self.log(f'--> Embed type not recognized, exiting.\n')
             self.normal_termination()
 
-        if not self.options.let and hasattr(self, 'candidates'):
-            assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message'
-                                           ' and proceed, add the LET keyword to the input file.')
+        # if not self.options.let and hasattr(self, 'candidates'):
+        #     assert self.candidates < 1e8, ('ATTENTION! This calculation is probably going to be very big. To ignore this message'
+        #                                    ' and proceed, add the LET keyword to the input file.')
+
+        if not self.options.let and (
+               self.embed in ('cyclical', 'chelotropic')) and (
+               max([len(mol.atomcoords) for mol in self.objects]) > 100) and (
+               not self.options.rigid):
+
+            self.options.rigid = True
+
+            self.log(f'--> Large embed: RIGID keyword added for efficiency (override with LET)')
 
         self.write_options()
         self.t_start_run = time.perf_counter()
@@ -909,6 +1068,7 @@ class RunEmbedding:
 
                     if self.options.ff_opt:
                         self.force_field_refining()
+                        self.csearch_augmentation_routine()
 
                     if not (self.options.ff_opt and self.options.theory_level == self.options.ff_level):
                         # If we just optimized at a (FF) level and the final
@@ -917,7 +1077,7 @@ class RunEmbedding:
 
                 else:
                     self.write_structures('unoptimized', energies=False)
-                    # accounting for output in "pruned" runs with NOOPT
+                    # accounting for output in "refine" runs with NOOPT
 
             except ZeroCandidatesError:
                 t_end_run = time.perf_counter()
@@ -935,7 +1095,7 @@ class RunEmbedding:
                 clean_directory()
                 quit()
 
-            ##################### AUGMENTATION - METADYNAMICS
+            ##################### AUGMENTATION - METADYNAMICS / CSEARCH
 
             if self.options.metadynamics:
 
@@ -945,7 +1105,7 @@ class RunEmbedding:
 
             ##################### POST TSCODE - SADDLE, NEB, NCI, VMD
 
-            if self.options.optimization and not self.options.bypass:
+            if (self.options.optimization or self.options.ff_opt) and not self.options.bypass:
                 self.write_vmd()
 
             if self.options.neb:

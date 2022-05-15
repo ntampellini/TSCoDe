@@ -28,10 +28,38 @@ from tscode.algebra import all_dists
 # if the necessity ever occurs
 
 @njit
-def compenetration_check(coords, ids=None, thresh=1.3, max_clashes=0):
+def torsion_comp_check(coords, torsion, mask, thresh=1.5, max_clashes=0) -> bool:
+    '''
+    coords: 3D molecule coordinates
+    mask: 1D boolean array with the mask torsion
+    thresh: threshold value for when two atoms are considered clashing
+    max_clashes: maximum number of clashes to pass a structure
+    returns True if the molecule shows less than max_clashes
+    '''
+    _, i2, i3, _ = torsion
 
-    clashes = 0
-    # max_clashes clashes is good, max_clashes + 1 is not
+
+    antimask = ~mask
+    antimask[i2] = False
+    antimask[i3] = False
+    # making sure the i2-i3 bond is not included in the clashes
+
+    m1 = coords[mask]
+    m2 = coords[antimask]
+    # fragment identification by boolean masking
+
+    return 0 if np.count_nonzero(all_dists(m2,m1) < thresh) > max_clashes else 1
+ 
+@njit
+def compenetration_check(coords, ids=None, thresh=1.5, max_clashes=0) -> bool:
+    '''
+    coords: 3D molecule coordinates
+    ids: 1D array with the number of atoms for each 
+         molecule (contiguous fragments in array)
+    thresh: threshold value for when two atoms are considered clashing
+    max_clashes: maximum number of clashes to pass a structure
+    returns True if the molecule shows less than max_clashes
+    '''
 
     if ids is None:
         return 0 if np.count_nonzero(
@@ -40,15 +68,23 @@ def compenetration_check(coords, ids=None, thresh=1.3, max_clashes=0):
                                     ) > max_clashes else 1
 
     if len(ids) == 2:
+    # Bimolecular
+
         m1 = coords[0:ids[0]]
         m2 = coords[ids[0]:]
+        # fragment identification by length (contiguous)
+
         return 0 if np.count_nonzero(all_dists(m2,m1) < thresh) > max_clashes else 1
 
     # if len(ids) == 3:
 
+    clashes = 0
+    # max_clashes clashes is good, max_clashes + 1 is not
+
     m1 = coords[0:ids[0]]
     m2 = coords[ids[0]:ids[0]+ids[1]]
     m3 = coords[ids[0]+ids[1]:]
+    # fragment identification by length (contiguous)
 
     clashes += np.count_nonzero(all_dists(m2,m1) < thresh)
     if clashes > max_clashes:
@@ -111,7 +147,7 @@ def fast_score(coords, close=1.3, far=3):
     close_contacts = dist_mat[dist_mat < far]
     return np.sum(close_contacts/(close-far) - far/(close-far))
 
-def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None):
+def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None, verbose=False):
     '''
     Removes similar structures by repeatedly grouping them into k
     subgroups and removing similar ones. A cache is present to avoid
@@ -129,15 +165,21 @@ def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None):
     cache_set = set()
     final_mask = np.ones(structures.shape[0], dtype=bool)
     
-    for k in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1):
+    for k in (5e5,  2e5,  1e5,  5e4, 2e4, 1e4,
+              5000, 2000, 1000, 500, 200, 100,
+              50,   20,   10,   5,   2,   1):
+
         num_active_str = np.count_nonzero(final_mask)
         
+        if verbose:      
+            print(f'Working on subgroups with k={k} ({num_active_str} candidates left) {" "*10}', end='\r')
+
         if k == 1 or 5*k < num_active_str:
         # proceed only of there are at least five structures per group
 
             d = len(structures) // k
 
-            for step in range(k):
+            for step in range(int(k)):
             # operating on each of the k subdivisions of the array
                 if step == k-1:
                     l = len(range(d*step, num_active_str))

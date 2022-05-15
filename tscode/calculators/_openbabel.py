@@ -15,15 +15,14 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-from cclib.io import ccread
 from tscode.settings import FF_OPT_BOOL, FF_CALC
-from tscode.utils import scramble_check, write_xyz
+from tscode.utils import scramble_check, write_xyz, read_xyz
 
 if FF_OPT_BOOL and FF_CALC == 'OB':
 
     from openbabel import openbabel as ob
 
-    def openbabel_opt(structure, atomnos, constrained_indexes, graphs=None, check=False, method='UFF', **kwargs):
+    def openbabel_opt(structure, atomnos, constrained_indexes, graphs=None, check=False, method='UFF', nsteps=500, **kwargs):
         '''
         return : MM-optimized structure (UFF/MMFF)
         '''
@@ -61,11 +60,11 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
         forcefield.Setup(mol, constraints)
         forcefield.SetConstraints(constraints)
 
-        # Do a 500 steps conjugate gradient minimization
+        # Do a nsteps conjugate gradient minimization
         # (or less if converges) and save the coordinates to mol.
-        forcefield.ConjugateGradients(500)
+        forcefield.ConjugateGradients(nsteps)
         forcefield.GetCoordinates(mol)
-        energy = forcefield.Energy()
+        energy = forcefield.Energy() * 0.2390057361376673 # kJ/mol to kcal/mol
 
         # Write the mol to a file
         conv.WriteFile(mol,outname)

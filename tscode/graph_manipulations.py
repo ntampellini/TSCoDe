@@ -77,6 +77,11 @@ def get_sp_n(index, graph):
     - sp3 is tetraedral
     This is mainly used to understand if a torsion is to be rotated or not.
     '''
+    element = graph.nodes[index]['atomnos']
+
+    if element not in (6,7,8,15,16):
+        return None
+
     d = {
         6:{2:1, 3:2, 4:3},      # C - 2 neighbors means sp, 3 nb means sp2, 4 nb sp3
         7:{2:2, 3:3, 4:3},      # N - 2 neighbors means sp2, 3 nb means sp3, 4 nb still sp3
@@ -84,7 +89,7 @@ def get_sp_n(index, graph):
         15:{2:2, 3:3, 4:3},     # P - like N
         16:{2:2, 3:3, 4:3},     # S
     }
-    return d[graph.nodes[index]['atomnos']][len(neighbors(graph, index))]
+    return d[element].get(len(neighbors(graph, index)))
 
 def is_amide_n(index, graph, mode=-1):
     '''

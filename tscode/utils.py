@@ -115,19 +115,33 @@ def time_to_string(total_time: float, verbose=False):
     '''
     timestring = ''
 
-    names = ('hours', 'minutes', 'seconds') if verbose else ('h', 'm', 's')
+    names = ('days', 'hours', 'minutes', 'seconds') if verbose else ('d', 'h', 'm', 's')
+
+    if total_time > 24*3600:
+        d = total_time // (24*3600)
+        timestring += f'{int(d)} {names[0]} '
+        total_time %= (24*3600)
 
     if total_time > 3600:
         h = total_time // 3600
-        timestring += f'{int(h)} {names[0]} '
+        timestring += f'{int(h)} {names[1]} '
         total_time %= 3600
+
     if total_time > 60:
         m = total_time // 60
-        timestring += f'{int(m)} {names[1]} '
+        timestring += f'{int(m)} {names[2]} '
         total_time %= 60
-    timestring += f'{round(total_time, 3)} {names[2]}'
+
+    timestring += f'{round(total_time, 3)} {names[3]}'
 
     return timestring
+
+def pretty_num(n):
+    if n < 1e3:
+        return str(n)
+    if n < 1e6:
+        return str(round(n/1e3, 2)) + ' k'
+    return str(round(n/1e6, 2)) + ' M'
 
 def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
     percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
@@ -314,7 +328,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
 def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_newbonds=0) -> bool:
     '''
-    Check if a transition state structure has scrambled during some optimization
+    Check if a multimolecular arrangement has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the
     structure is considered scrambled, and the method returns False.
     '''
@@ -373,3 +387,14 @@ def rotate_dihedral(coords, dihedral, angle, mask=None, indexes_to_be_moved=None
     coords[mask] = (mat @ (coords[mask] - center).T).T + center
 
     return coords
+
+def flatten(array, typefunc=float):
+    out = []
+    def rec(l):
+        for e in l:
+            if type(e) in [list, tuple, np.ndarray]:
+                rec(e)
+            else:
+                out.append(typefunc(e))
+    rec(array)
+    return out

@@ -20,16 +20,19 @@
 
 </p>
 
-TSCoDe is the first systematical conformational embedder for bimolecular and trimolecular chemical reactions. It is able to generate a comprehensive set of both regioisomeric and stereoisomeric poses for molecular arrangements, provided the atoms that will be reacting. It supports both open and cyclical transition states. By feeding the program conformational ensembles, it also generates all conformations combinations. It is thought as a tool to explore TS conformational space in a fast and systematical way, and yield a series of starting points for higher-level calculations.
+TSCoDe is a systematical conformational embedder for small molecules. It helps computational chemists build transition states and binding poses precisely in an automated way. It is thought as a tool to explore complex multimolecular conformational space fast and systematically, and yield a series of starting points for higher-level calculations.
 
-## :toolbox: Required packages and tools
-TSCoDe is written in pure Python. It leverages the numpy library to do the linear algebra required to translate and rotate molecules, the OpenBabel software for performing force field optimization (optional) and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of structure manipulations through one of the supported calculators:
+Since its inclusion of many subroutines and functionality, it also serves as a computational toolbox
+to automate various routine tasks, via either MM, semiempirical or DFT methods.
+
+## :toolbox: Dependencies
+TSCoDe is written in pure Python. It leverages the Numpy and Numba libraries to perform the linear algebra required to translate and rotate molecules and the [ASE](https://github.com/rosswhitfield/ase) environment to perform a set of structure manipulations. It supports various external calculators (at least one required):
+
 -  MOPAC2016
 -  ORCA (>=4.2)
 -  Gaussian (>=9)
 -  XTB (>=6.3)
+-  Openbabel (3.1.0)
 
 ## Documentation
 Documentation on how to install and use the program can be found on [readthedocs](https://tscode.readthedocs.io/en/latest/index.html).
-
-

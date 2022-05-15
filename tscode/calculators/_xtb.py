@@ -16,7 +16,7 @@ GNU General Public License for more details.
 
 '''
 import os
-from subprocess import DEVNULL, STDOUT, check_call
+from subprocess import DEVNULL, STDOUT, CalledProcessError, check_call
 
 import numpy as np
 from tscode.algebra import norm_of
@@ -86,6 +86,10 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, method='GFN2-xTB', solven
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
         quit()
+
+    # sometimes the SCC does not converge
+    except CalledProcessError:
+        return coords, None, False
 
     if read_output:
 

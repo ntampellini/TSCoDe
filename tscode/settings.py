@@ -25,7 +25,7 @@ FF_OPT_BOOL = True
 # Openbabel/XTB programs and python bindings
 # are installed.
 
-FF_CALC = 'XTB'
+FF_CALC = 'OB'
 # Calculator to perform Force Field optimizations.
 # Possibilites are:
 # 'OB' : Openbabel UFF and MMFF methods

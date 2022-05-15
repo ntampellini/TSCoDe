@@ -24,7 +24,7 @@ from subprocess import DEVNULL, STDOUT, check_call
 import numpy as np
 from networkx import connected_components
 
-from tscode.clustered_csearch import clustered_csearch, most_diverse_conformers
+from tscode.clustered_csearch import csearch
 from tscode.errors import InputError
 from tscode.graph_manipulations import graphize
 from tscode.optimization_methods import optimize
@@ -57,21 +57,23 @@ def operate(input_string, embedder):
     elif 'csearch>' in input_string:
         outname = csearch_operator(filename, embedder)
 
-
     elif 'opt>' in input_string:
         outname = opt_operator(filename,
                                 embedder,
                                 logfunction=embedder.log)
 
-    elif 'scan>' in input_string:
-        scan_operator(filename, embedder)
+    elif 'csearch_hb>' in input_string:
+        outname = csearch_operator(filename, embedder, keep_hb=True)
+
+    elif 'approach>' in input_string:
+        approach_operator(filename, embedder)
         embedder.normal_termination()
 
     elif 'neb>' in input_string:
         neb_operator(filename, embedder)
         embedder.normal_termination()
 
-    elif 'prune>' in input_string:
+    elif 'refine>' in input_string:
         outname = filename
         # this operator is accounted for in the OptionSetter
         # class of Options, set when the Embedder calls _set_options
@@ -110,9 +112,9 @@ def confab_operator(filename, options, logfunction=None):
     data = read_xyz(confname)
     conformers = data.atomcoords
         
-    if len(conformers) > 10 and not options.let:
-        conformers = conformers[0:10]
-        logfunction(f'Will use only the best 10 conformers for TSCoDe embed.\n')
+    # if len(conformers) > 10 and not options.let:
+    #     conformers = conformers[0:10]
+    #     logfunction(f'Will use only the best 10 conformers for TSCoDe embed.\n')
 
     os.remove(confname)
     with open(confname, 'w') as f:
@@ -121,13 +123,16 @@ def confab_operator(filename, options, logfunction=None):
 
     return confname
 
-def csearch_operator(filename, embedder):
+def csearch_operator(filename, embedder, keep_hb=False):
     '''
     '''
 
-    embedder.log(f'--> Performing conformational search on {filename}')
+    s = f'--> Performing conformational search on {filename}'
+    if keep_hb:
+        s += ' (preserving current hydrogen bonds)'
+    embedder.log(s)
 
-    t_start = time.perf_counter()
+    # t_start = time.perf_counter()
 
     data = read_xyz(filename)
 
@@ -135,33 +140,46 @@ def csearch_operator(filename, embedder):
         embedder.log(f'Requested conformational search on multimolecular file - will do\n' +
                       'an individual search from each conformer (might be time-consuming).')
                                 
-    calc, method, procs = _get_lowest_calc(embedder)
+    # calc, method, procs = _get_lowest_calc(embedder)
     conformers = []
 
     for i, coords in enumerate(data.atomcoords):
 
-        opt_coords = optimize(coords, data.atomnos, calculator=calc, method=method, procs=procs)[0] if embedder.options.optimization else coords
+        # opt_coords = optimize(coords, data.atomnos, calculator=calc, method=method, procs=procs)[0] if embedder.options.optimization else coords
+        opt_coords = coords
         # optimize starting structure before running csearch
 
-        conf_batch = clustered_csearch(opt_coords, data.atomnos, title=f'{filename}, conformer {i+1}', logfunction=embedder.log)
+        conf_batch = csearch(
+                                opt_coords,
+                                data.atomnos,
+                                keep_hb=keep_hb,
+                                n_out=embedder.options.max_confs,
+                                title=f'{filename}_conf{i}',
+                                logfunction=embedder.log,
+                                write_torsions=embedder.options.debug
+                            )
         # generate the most diverse conformers starting from optimized geometry
 
         conformers.append(conf_batch)
 
     conformers = np.array(conformers)
-    batch_size = conformers.shape[1]
+    # batch_size = conformers.shape[1]
 
     conformers = conformers.reshape(-1, data.atomnos.shape[0], 3)
     # merging structures from each run in a single array
 
-    if embedder.embed is not None:
-        embedder.log(f'\nSelected the most diverse {batch_size} out of {conformers.shape[0]} conformers for {filename} ({time_to_string(time.perf_counter()-t_start)})')
-        conformers = most_diverse_conformers(batch_size, conformers, data.atomnos)
+    # if embedder.embed is not None:
+    #     embedder.log(f'\nSelected the most diverse {batch_size} out of {conformers.shape[0]} conformers for {filename} ({time_to_string(time.perf_counter()-t_start)})')
+    #     conformers = most_diverse_conformers(batch_size, conformers)
+
+    print(f'Writing conformers to file...{" "*10}', end='\r')
 
     confname = filename[:-4] + '_confs.xyz'
     with open(confname, 'w') as f:
         for i, conformer in enumerate(conformers):
             write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i}')
+
+    print(f'{" "*30}', end='\r')
 
     # if len(conformers) > 10 and not embedder.options.let:
     #     s += f' Will use only the best 10 conformers for TSCoDe embed.'
@@ -258,11 +276,13 @@ def neb_operator(filename, embedder):
     with open('Me_CONMe2_Mal_tetr_int_NEB_NEB_TS.xyz', 'w') as f:
         write_xyz(ts_coords, data.atomnos, f, title='NEB TS - see log for relative energies')
 
-def scan_operator(filename, embedder):
+def approach_operator(filename, embedder):
     '''
+    Thought to approach two reactive atoms, looking for the energy maximum
     '''
     embedder.t_start_run = time.perf_counter()
-    mol = embedder.objects[0]
+    mol = read_xyz(filename)
+
     assert len(mol.atomcoords) == 1, 'The scan> operator works on a single .xyz geometry.'
     assert len(mol.reactive_indexes) == 2, 'The scan> operator needs two reactive indexes ' + (
                                           f'({len(mol.reactive_indexes)} were provided)')

@@ -8,4 +8,5 @@ TSCoDe - Transition State Conformational Docker
    installation
    usage
    operators_keywords
+   examples
    license

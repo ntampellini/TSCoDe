@@ -43,3 +43,8 @@ class MopacReadError(Exception):
     '''
     Thrown when reading MOPAC output files fails for some reason.
     '''
+
+class SegmentedGraphError(Exception):
+    '''
+    Thrown by Clustered CSearch when graph has more than one connected component.
+    '''

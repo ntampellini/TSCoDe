@@ -32,7 +32,7 @@ from tscode.graph_manipulations import (graphize, is_sigmatropic, is_vicinal,
                                         neighbors)
 from tscode.pt import pt
 from tscode.reactive_atoms_classes import get_atom_type
-from tscode.utils import read_xyz
+from tscode.utils import read_xyz, flatten
 
 
 def align_structures(structures:np.array, indexes=None):
@@ -290,17 +290,6 @@ class Hypermolecule:
             for _, data in clusters[i].items():
                 self.weights[i].append(data[1])
                 self.hypermolecule.append(data[0])
-
-        def flatten(array):
-            out = []
-            def rec(l):
-                for e in l:
-                    if type(e) in [list, np.ndarray]:
-                        rec(e)
-                    else:
-                        out.append(float(e))
-            rec(array)
-            return out
 
         self.hypermolecule = np.asarray(self.hypermolecule)
         self.weights = np.array(self.weights).flatten()

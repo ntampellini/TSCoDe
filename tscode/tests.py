@@ -99,12 +99,13 @@ def run_tests():
         print(f'{FF_CALC} FF raw calculator works.')
 
         ##########################################################################
+        
+        if FF_CALC != 'OB':
+            atoms.calc = get_ase_calc((FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], PROCS, None))
+            LBFGS(atoms, logfile=None).run()
 
-        atoms.calc = get_ase_calc((FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], PROCS, None))
-        LBFGS(atoms, logfile=None).run()
-
-        clean_directory()
-        print(f'{FF_CALC} ASE calculator works.')
+            clean_directory()
+            print(f'{FF_CALC} ASE calculator works.')
 
     print('\nNo installation faults detected with the current settings. Running tests.')
 
