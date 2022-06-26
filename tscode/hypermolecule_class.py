@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -115,10 +115,6 @@ class Hypermolecule:
             raise CCReadError(f'Cannot read file {filename}')
 
         coordinates = np.array(ccread_object.atomcoords)
-
-        # if coordinates.shape[0] > 5:
-        #     coordinates = coordinates[0:5]
-        # # Do not keep more than 5 conformations
         
         self.atomnos = ccread_object.atomnos
         self.position = np.array([0,0,0], dtype=float)  # used in Embedder class
@@ -297,8 +293,8 @@ class Hypermolecule:
         self.weights = flatten(self.weights)
 
         self.dimensions = (max([coord[0] for coord in self.hypermolecule]) - min([coord[0] for coord in self.hypermolecule]),
-                            max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
-                            max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
+                           max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
+                           max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
 
     def write_hypermolecule(self):
         '''
@@ -315,6 +311,16 @@ class Hypermolecule:
                     f.write('%-5s %-8s %-8s %-8s\n' % (pt[self.atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
                 for orb in orbs:
                     f.write('%-5s %-8s %-8s %-8s\n' % ('X', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
+
+    def get_orbital_length(self, index):
+        '''
+        index: reactive atom index
+        '''
+        if index not in self.reactive_indexes:
+            raise Exception(f'Index provided must be a molecule reactive index ({index}, {self.name})')
+
+        r_atom = self.reactive_atoms_classes_dict[0][index]
+        return norm_of(r_atom.center[0] - r_atom.coord)
 
 class Pivot:
     '''

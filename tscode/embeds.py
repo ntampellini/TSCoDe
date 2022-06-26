@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 
 import numpy as np
@@ -31,10 +32,13 @@ from tscode.utils import (cartesian_product, loadbar, polygonize, pretty_num,
 
 def string_embed(embedder):
     '''
-    return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
-    into embedder.structures. Algorithm used is the "string" algorithm (see docs).
+    return poses: return embedded structures, ready to be refined
+    Algorithm used is the "string" algorithm (see docs).
     '''
     assert len(embedder.objects) == 2
+
+    # if embedder.options.tscode_procs > 1:
+    #     return string_embed_parallel(embedder)
 
     embedder.log(f'\n--> Performing string embed ({pretty_num(embedder.candidates)} candidates)')
 
@@ -83,7 +87,96 @@ def string_embed(embedder):
     if not poses:
         s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
                '    This is probably because the two molecules cannot find a correct interlocking pose.\n' +
-               '    Try expanding the conformational space with the csearch> operator or see he SHRINK keyword.')
+               '    Try expanding the conformational space with the csearch> operator or see the SHRINK keyword.')
+        embedder.log(s, p=False)
+        raise ZeroCandidatesError(s)
+
+    embedder.constrained_indexes = _get_string_constrained_indexes(embedder, len(poses))
+
+    return np.array(poses)
+
+def string_embed_parallel(embedder):
+    '''
+    return poses: return embedded structures, ready to be refined
+    Algorithm used is the "string" algorithm (see docs).
+    '''
+
+    def string_embed_thread(mol1, mol2, c1, c2, r_atoms_centers_indexes, angles, i):
+
+        poses = []
+        for ai1, ai2 in r_atoms_centers_indexes:
+            for angle in angles:
+
+                ra1 = mol1.get_r_atoms(c1)[0]
+                ra2 = mol2.get_r_atoms(c2)[0]
+
+                p1 = ra1.center[ai1]
+                p2 = ra2.center[ai2]
+                ref_vec = ra1.orb_vecs[ai1]
+                mol_vec = ra2.orb_vecs[ai2]
+
+                mol2.rotation = rotation_matrix_from_vectors(mol_vec, -ref_vec)
+
+                if angle != 0:                  
+                    delta_rot = rot_mat_from_pointer(ref_vec, angle)
+                    mol2.rotation = delta_rot @ mol2.rotation
+
+                mol2.position = p1 - mol2.rotation @ p2
+
+                embedded_structure = get_embed((mol1, mol2), (c1, c2))
+
+                if compenetration_check(embedded_structure, ids=embedder.ids, thresh=embedder.options.clash_thresh):
+                    poses.append(embedded_structure)
+
+        print(f'Completed string embedding of conf_indexes {i}')
+
+        return poses
+
+
+
+
+
+    embedder.log(f'\n--> Performing string embed ({pretty_num(embedder.candidates)} candidates, parallel on up to {embedder.options.procs} cores)')
+
+    conf_number = [len(mol.atomcoords) for mol in embedder.objects]
+    conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
+    # (n,2) vectors where the every element is the conformer index for that molecule
+
+    r_atoms_centers_indexes = cartesian_product(*[np.array(range(len(mol.get_centers(0)[0]))) for mol in embedder.objects])
+    # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
+
+    mol1, mol2 = embedder.objects
+
+    poses, processes = [], []
+    with ProcessPoolExecutor(max_workers=embedder.options.tscode_procs) as executor:
+        
+        for i, (c1, c2) in enumerate(conf_indexes):
+
+            # loadbar(i, len(conf_indexes),
+            #         prefix=f'Embedding structures ',
+            #         suffix=f'({len(poses)} found)')
+
+            p = executor.submit(
+                    string_embed_thread,
+                    mol1, mol2,
+                    c1, c2,
+                    r_atoms_centers_indexes,
+                    embedder.systematic_angles,
+                    i
+                )
+            processes.append(p)
+    
+        for p in processes:
+            poses.extend(p.result())
+
+        # loadbar(len(conf_indexes), len(conf_indexes),
+        #         prefix=f'Embedding structures ',
+        #         suffix=f'({len(poses)} found)')
+
+    if not poses:
+        s = ('\n--> Cyclical embed did not find any suitable disposition of molecules.\n' +
+               '    This is probably because the two molecules cannot find a correct interlocking pose.\n' +
+               '    Try expanding the conformational space with the csearch> operator or see the SHRINK keyword.')
         embedder.log(s, p=False)
         raise ZeroCandidatesError(s)
 
@@ -809,7 +902,7 @@ def _get_monomolecular_reactive_indexes(embedder):
             return np.array([list(embedder.pairings_table.values())
                             for _ in embedder.structures])
     # This option gives the possibility to specify pairings in
-    # refine>/REFINE runs, so as to make constrained optimizations
+    # run>/RUN runs, so as to make constrained optimizations
     # accessible.
 
     return np.array([[] for _ in embedder.structures])

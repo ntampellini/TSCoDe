@@ -55,7 +55,7 @@
 - procs == None bugfix
 - secondary amides are now considered rotable by the csearch algorithm
 
-## 0.0.10 (May 14 2022)
+## 0.1.0 (May 14 2022)
 - Refined conformational search - better parameters, torsion printout, fixed HB bugs, added secondary amides as rotable, made it faster and more scalable (random sampling overrides KMeans for n>1k)
 - Various small bug fixes and print refinements in dihedral embed and ase_neb functions
 - Added csearch_hb> operator that allows to keep the current hydrogen bonding situation in conformational sampling
@@ -71,3 +71,20 @@
 - Removed enantiomers pruning for performance reasons
 - RIGID keyword is automatically added for cyclical embeds with >100 conformers (override with LET)
 - The NOEMBED keyword is now called REFINE, and the prune> operator is called refine>
+
+## 0.2.0 (Jun 26 2022)
+- Implemented pka> operator (xtb calculator only)
+- Solved random_csearch bug (when confs < n_out)
+- Refined distance constraining for OB optimizations, guided by the target length. More accurate distances, so more accurate UFF energies for constrained structures.
+- Reincluded symmetrical aryl ring rotations in clustered_csearch (previously considered dummy and skipped)
+- Corrected bug in the approach> operator
+- Now multiple molecules are supported for approach> runs and a cumulative output is provided (distance-energy graph)
+- Random Csearch now always tries to output n_out conformers (1000 max tries), instead of generating n_out confs and discarding compenetrated ones
+- Implemented rsearch> operator
+- Added the -cl (command line) argument, to call TSCoDe without writing an inputfile
+- Added quote from database at the end of each successful run, courtesy of https://type.fit/api/quotes
+- Upgraded startup banner to a benzene-like logo
+- Added error logging to file via the logging module
+- Solved Profiler bug (adapted to new Embedder architecture)
+- Added logging for the exit status on any call to optimize(...) (supporting FF calculations too)
+- Added the tscode_procs option for embedder.options, to run python code in parallel (for now just csearch_aug implemented)

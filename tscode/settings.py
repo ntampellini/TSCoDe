@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@ FF_OPT_BOOL = True
 FF_CALC = 'OB'
 # Calculator to perform Force Field optimizations.
 # Possibilites are:
-# 'OB' : Openbabel UFF and MMFF methods
+# 'OB' : Openbabel UFF and MMFF94 methods
 # 'GAUSSIAN' : FF methods supported by Gaussian (UFF, MMFF)
 # 'XTB' : GFN-FF method
 
@@ -37,11 +37,11 @@ DEFAULT_FF_LEVELS = {
     ### THESE TWO LINES
     'GAUSSIAN':'UFF',
     'XTB':'GFN-FF',
-    'OB':'UFF',
+    'OB':'MMFF94',
 }
 # Default levels used to run calculations, overridden by FFLEVEL keyword
 
-CALCULATOR = 'XTB'
+CALCULATOR = 'MOPAC'
 # Calculator used to run geometry optimization.
 # Possibilites are:
 # 'MOPAC' : Semiempirical MOPAC2016 (PM7, PM6-DH3, ...)

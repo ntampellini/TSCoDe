@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -171,13 +171,13 @@ def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None, verbose=
 
         num_active_str = np.count_nonzero(final_mask)
         
-        if verbose:      
-            print(f'Working on subgroups with k={k} ({num_active_str} candidates left) {" "*10}', end='\r')
-
         if k == 1 or 5*k < num_active_str:
         # proceed only of there are at least five structures per group
 
-            d = len(structures) // k
+            if verbose:      
+                print(f'Working on subgroups with k={k} ({num_active_str} candidates left) {" "*10}', end='\r')
+
+            d = int(len(structures) // k)
 
             for step in range(int(k)):
             # operating on each of the k subdivisions of the array

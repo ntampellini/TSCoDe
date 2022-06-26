@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -269,7 +269,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
     except PropertyNotImplementedError:
         exit_str = 'CRASHED'
 
-    embedder.log(f'    - {embedder.options.calculator} {embedder.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
+    embedder.log(f'    - {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
 
     if exit_str == 'CRASHED':
         return None, None, False

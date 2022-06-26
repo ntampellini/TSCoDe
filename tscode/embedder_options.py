@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -15,8 +15,10 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-from tscode.settings import DEFAULT_FF_LEVELS, FF_OPT_BOOL, FF_CALC, CALCULATOR
 import numpy as np
+
+from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, FF_CALC,
+                             FF_OPT_BOOL, PROCS)
 
 keywords_list = [
             'BYPASS',         # Debug keyword. Used to skip all pruning steps and
@@ -92,9 +94,11 @@ keywords_list = [
 
             'ONLYREFINED',    # Discard structures that do not successfully refine bonding distances.
 
+            'PKA',            # Set reference pKa for a specific compound
+
             'PROCS',          # Set the number of parallel cores to be used by ORCA
 
-            'REFINE',        # Same as calling refine> on a single file
+            'RUN',            # Same as calling run> on a single file
 
             'RIGID',          # Does not apply to "string" embeds. Avoid
                                 # bending structures to better build TSs.
@@ -123,11 +127,13 @@ keywords_list = [
             'SUPRAFAC',       # Only retain suprafacial orbital configurations in cyclical TSs.
                                 # Thought for Diels-Alder and other cycloaddition reactions.
 
-            'RMSD',         # RMSD threshold (Angstroms) for structure pruning. The smaller,
+            'RMSD',           # RMSD threshold (Angstroms) for structure pruning. The smaller,
                                 # the more retained structures. Default is 0.5 A.
                                 # Syntax: `RMSD=n`, where n is a number.
 
             'TS',             # Uses various scans/saddle algorithms to locate the TS
+
+            'TSCODEPROCS',      # Change the number of max python parallel processes (default is 4)
 ]
 
 class Options:
@@ -146,7 +152,8 @@ class Options:
     optimization = True
     calculator = CALCULATOR
     theory_level = None        # set later in _calculator_setup()
-    procs = 1                  # eventually changed later in _calculator_setup()
+    procs = PROCS
+    tscode_procs = 4
     solvent = None
     ff_opt = FF_OPT_BOOL
     ff_calc = FF_CALC
@@ -166,6 +173,7 @@ class Options:
     # keep_enantiomers = False
     double_bond_protection = False
     keep_hb = False
+    csearch_aug = True
 
     fix_angles_in_deformation = False
     # Not possible to set manually through a keyword.
@@ -174,7 +182,7 @@ class Options:
     # less severe deformations, since convergence
     # is faster
 
-    kcal_thresh = 10
+    kcal_thresh = 20
     bypass = False
     debug = False
     let = False
@@ -212,7 +220,7 @@ class Options:
 
         repr_if_not_none = (
             'kcal_thresh',
-            'solvent'
+            'solvent',
         )
 
         for name in repr_if_not_none:
@@ -240,13 +248,14 @@ class OptionSetter:
                                 for word in embedder.kw_line.split()]
 
         self.keywords_simple = [k.upper() for k in embedder.kw_line.split()]
+        self.keywords_simple_case_sensitive = embedder.kw_line.split()
         self.embedder = embedder
         self.args = args
 
         if not all(k in keywords_list for k in self.keywords):
             for k in self.keywords:
                 if k not in keywords_list:
-                    raise SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
+                    SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
         if self.keywords_simple:
             embedder.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple) + '\n')
@@ -258,9 +267,9 @@ class OptionSetter:
 
         options.noembed = True
 
-    def _refine_operator_routine(self):
+    def _run_operator_routine(self):
         if len(self.embedder.objects) > 1:
-            raise SystemExit(('The refine> operator can only be used with one multimolecular file per run, '
+            raise SystemExit(('The run> operator can only be used with one multimolecular file per run, '
                              f'in .xyz format. ({len(self.embedder.objects)} files found in input)'))
 
         from tscode.embeds import _get_monomolecular_reactive_indexes
@@ -275,6 +284,8 @@ class OptionSetter:
         if self.embedder.options.rmsd is None:
             # set this only if user did not already specify a value
             self.embedder.options.rmsd = 0.5 
+
+        self.embedder.objects[0].compute_orbitals()
 
     def bypass(self, options, *args):
         options.bypass = True
@@ -331,7 +342,7 @@ class OptionSetter:
     def clashes(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('CLASHES')]
         clashes_string = kw[8:-1].lower().replace(' ','')
-        # clashes_string looks like 'num=3,dist=1.2'
+        # clashes_string now looks like 'num=3,dist=1.2'
 
         for piece in clashes_string.split(','):
             s = piece.split('=')
@@ -400,6 +411,10 @@ class OptionSetter:
         kw = self.keywords_simple[self.keywords.index('PROCS')]
         options.procs = int(kw.split('=')[1])
 
+    def tscodeprocs(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('TSCODEPROCS')]
+        options.tscode_procs = int(kw.split('=')[1])
+
     def ezprot(self, options, *args):
         options.double_bond_protection = True
 
@@ -447,6 +462,21 @@ class OptionSetter:
         kw = self.keywords_simple[self.keywords.index('SOLVENT')]
         options.solvent = kw.split('=')[1].lower()
 
+    def pka(self, options, *args):
+        kw = self.keywords_simple_case_sensitive[self.keywords.index('PKA')]
+        pka_string, pka = kw.split('=')
+        molname = pka_string[4:-1].replace(' ','')
+
+        if molname in [mol.name for mol in self.embedder.objects]:
+            if any([f'pka>{molname}' in op.replace(' ', '') for op in self.embedder.options.operators]):
+                self.embedder.pka_ref = (molname, float(pka))
+                return
+
+        raise SyntaxError(f'{molname} must be present in the molecule lines, along the pka> operator')
+
+    def nocsearch(self, options, **args):
+        options.csearch_aug = False
+
     def set_options(self):
 
         # self.keywords = sorted(self.keywords, key=lambda x: __keywords__.index(x))
@@ -455,5 +485,5 @@ class OptionSetter:
             setter_function = getattr(self, kw.lower())
             setter_function(self.embedder.options, self.embedder, *self.args)
 
-        if any('refine>' in op for op in self.embedder.options.operators) or self.embedder.options.noembed:
-            self._refine_operator_routine()
+        if any('run>' in op for op in self.embedder.options.operators) or self.embedder.options.noembed:
+            self._run_operator_routine()

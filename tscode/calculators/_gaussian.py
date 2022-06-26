@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -17,13 +17,12 @@ GNU General Public License for more details.
 '''
 from subprocess import DEVNULL, STDOUT, check_call
 
-from cclib.io import ccread
 from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
-from tscode.utils import clean_directory, pt
+from tscode.utils import clean_directory, pt, read_xyz
 
 
-def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=1, solvent=None, title='temp', read_output=True):
+def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=1, solvent=None, title='temp', read_output=True, **kwargs):
     '''
     This function writes a Gaussian .inp file, runs it with the subprocess
     module and reads its output.
@@ -84,7 +83,7 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
             opt_coords = data.atomcoords[0]
             energy = data.scfenergies[-1] * 23.060548867 # eV to kcal/mol
 
-            clean_directory()
+            clean_directory((f'{title}.com',))
 
             return opt_coords, energy, True
 

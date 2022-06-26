@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ from tscode.solvents import get_solvent_line
 from tscode.utils import clean_directory, pt
 
 
-def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, solvent=None, title='temp', read_output=True):
+def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, solvent=None, title='temp', read_output=True, **kwargs):
     '''
     This function writes an ORCA .inp file, runs it with the subprocess
     module and reads its output.
@@ -78,7 +78,7 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, s
             opt_coords = read_xyz(f'{title}.xyz').atomcoords[0]
             energy = read_orca_property(f'{title}_property.txt')
 
-            clean_directory()
+            clean_directory((f'{title}.inp',))
 
             return opt_coords, energy, True
 

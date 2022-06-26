@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -116,7 +116,3 @@ def get_solvent_line(solvent, calculator, theory_level):
         quit()
 
     return new_theory_level[calculator](theory_level, solvent)
-
-if __name__ == '__main__':
-    print(get_solvent_line('aceticacid', 'ORCA', 'PM7'))
-    print(xtb_supported)

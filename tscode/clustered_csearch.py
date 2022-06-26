@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ from tscode.optimization_methods import optimize
 from tscode.python_functions import torsion_comp_check
 from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC
 from tscode.utils import (cartesian_product, flatten, get_double_bonds_indexes,
-                          rotate_dihedral, time_to_string, write_xyz)
+                          loadbar, rotate_dihedral, time_to_string, write_xyz)
 
 
 class Torsion:
@@ -153,10 +153,8 @@ def _is_nondummy(i, root, graph) -> bool:
     Checks that a molecular rotation along the dihedral
     angle (*, root, i, *) is non-dummy, that is the atom
     at index i, in the direction opposite to the one leading
-    to root, has different substituents. i.e. methyl and tBu
-    rotations return False.
-
-    Thought to eliminate methyl/tert-butyl-type rotations.
+    to root, has different substituents. i.e. methyl, CF3 and tBu
+    rotations should return False.
     '''
 
     if graph.nodes[i]['atomnos'] not in (6,7):
@@ -184,20 +182,6 @@ def _is_nondummy(i, root, graph) -> bool:
                        if not root in _set]
 
     if len(subgraphs_nodes) == 1:
-
-        for n in nb:
-            G.add_edge(i, n)
-        # restore i-neighbor bonds removed previously
-
-        subgraph = G.subgraph(list(subgraphs_nodes[0])+[i])
-        cycles = [l for l in nx.cycle_basis(subgraph, root=i) if len(l) != 1]
-        # get all cycles that involve i, if any
-
-        if cycles:
-            # in this case, i is part of a cycle and root is exocyclic
-            # and we will take care of this in a separate function
-            return _is_cyclical_nondummy(G, cycles[0])   
-
         return True
         # if not, the torsion is likely to be rotable
         # (tetramethylguanidyl alanine C(β)-N bond)
@@ -213,105 +197,6 @@ def _is_nondummy(i, root, graph) -> bool:
     # even if it would be meaningful to keep it.
 
     return False
-
-def _is_cyclical_nondummy(
-                            # i, root, graph
-                            G, cycle) -> bool:
-    '''
-    Extension of _is_nondummy for situations where
-    root is exocyclic and i is endocyclic.
-    
-    Thought to reject symmetric phenyl ring rotations
-    and similar.
-    '''
-    # G = deepcopy(graph)
-    # G.remove_edge(i, root)
-
-    # for subgraph_nodes in connected_components(G):
-    #     if root in subgraph_nodes:
-    #         break
-
-    # G.remove_nodes_from(subgraph_nodes)
-    # G.add_edge(i, root)
-    # # getting a graph with root but without atoms
-    # # connected to it, keeping the ring only
-
-    # cycles = [l for l in nx.cycle_basis(G, root=i) if len(l) != 1]
-    # # get all cycles that involve i
-
-    # if len(cycles) > 1:
-    #     return True
-    # # if there is more than one, we have a bi/tricyclic
-    # # compound and since rotation was not discarded
-    # # earlier, we should rotate it.
-
-    # cycle = cycles[0]
-    if len(cycle) == 6:
-    # if we have a six-membered ring
-
-        symbols = [G.nodes[j]['atomnos'] for j in cycle]
-
-        if all([s in (6,7) for s in symbols]):
-        # made out only of carbon or nitrogen atoms
-
-            if all([is_sp_n(j, G, 2) for j in cycle]):
-            # and they are all sp2 (C w/3 neighbors or
-            # N w/ 2 neighbors)
-
-                j0, j1, j2, j3, j4, j5 = cycle
-
-                if _is_isomorphic_fragment(G, index1=j0, forbidden_directions1=(j1,j5),
-                                              index2=j4, forbidden_directions2=(j3,j5)) and (
-
-                   _is_isomorphic_fragment(G, index1=j1, forbidden_directions1=(j0,j2),
-                                              index2=j3, forbidden_directions2=(j2,j4))):
-
-                    return False
-                    # if ortho and meta substituents have identical graphs, the rotation is dummy
-            
-    return True
-    # Anything else is considered non-dummy, and will rotate.
-
-def _is_isomorphic_fragment(graph, index1, forbidden_directions1, 
-                                  index2, forbidden_directions2):
-    '''
-    Returns true of two subgraphs built from the indices 
-    provided are isomorphic, that is have the same bonding
-    and the same atomic numbers (ignores stereochemistry)
-    '''
-    G = deepcopy(graph)
-
-    for f1 in forbidden_directions1:
-        G.remove_edge(index1, f1)
-
-    for f2 in forbidden_directions2:
-        G.remove_edge(index2, f2)
-    # removing edges towards forbidden directions
-
-    fragments = [nx.Graph(G.subgraph(s).edges) for s in nx.connected_components(G)]
-    frag1 = [f for f in fragments if index1 in f][0]
-    frag2 = [f for f in fragments if index2 in f][0]
-    # using new graphs instead of subgraphs since we have to modify them
-
-    atomnos_dict = nx.get_node_attributes(G, 'atomnos')
-    nx.set_node_attributes(frag1, atomnos_dict, 'atomnos')
-    nx.set_node_attributes(frag2, atomnos_dict, 'atomnos')
-    # updating the old atomnos into new fragment graphs
-
-    frag1.add_edge(index1, -1)
-    frag2.add_edge(index2, -1)
-    frag1.nodes[-1]['atomnos'] = -1
-    frag2.nodes[-1]['atomnos'] = -1
-    # adding a new labeled dummy node, to avoid
-    # isomerism issues when comparing subgraphs
-
-    if nx.is_isomorphic(frag1, frag2, node_match=lambda n1, n2: n1['atomnos'] == n2['atomnos']):
-        return True
-    return False
-    # Care should be taken because chiral centers are not taken into account: a rotation 
-    # involving an index where substituents only differ by stereochemistry, and where a 
-    # rotation is not an element of symmetry of the subsystem, the rotation is discarded
-    # even if it would be meaningful to keep it.
 
 def _get_hydrogen_bonds(coords, atomnos, graph, d_min=2.5, d_max=3.3, max_angle=45, fragments=None):
     '''
@@ -493,14 +378,19 @@ def random_csearch(
                     graph,
                     constrained_indexes=None,
                     n_out=100,
+                    max_tries=1000,
+                    rotations=None,
                     title='test',
                     logfunction=print,
                     interactive_print=True,
                     write_torsions=False
                 ):
     '''
-    Random dihedral rotations - quickly generate at most n_out conformers
-    n_out: maximum number of output structures
+    Random dihedral rotations - quickly generate n_out conformers
+
+    n_out: number of output structures
+    max_tries: if n_out conformers are not generated after these number of tries, stop trying
+    rotations: number of dihedrals to rotate per conformer. If none, all will be rotated
     '''
 
     t_start_run = time.perf_counter()
@@ -528,74 +418,75 @@ def random_csearch(
 
     logfunction(f'\n--> Random dihedral CSearch on {title}\n    mode 2 (random) - {len(torsions)} torsions')
     
-    output_structures = []
-    starting_points = [coords]
-
     angles  = cartesian_product(*[t.get_angles() for t in torsions])
     # calculating the angles for rotation based on step values
 
-    ids_to_keep = np.random.choice(angles.shape[0], size=n_out, replace=False)
-    angles = angles[ids_to_keep]
-    # only calculate n_out conformers
+    if rotations is not None:
+        mask = (np.count_nonzero(angles, axis=1) == rotations)
+        angles = angles[mask]
+
+    np.random.shuffle(angles)
+    # shuffle them so we don't bias conformational sampling
 
     new_structures = []
 
-    for angle_set in angles:
+    for a ,angle_set in enumerate(angles):
 
-        new_coords = np.copy(coords)
+        if interactive_print:
+            print(f'Generating conformers... ({round(len(new_structures)/n_out*100)} %) {" "*10}', end='\r')
+
         # get a copy of the molecule position as a starting point
+        new_coords = np.copy(coords)
 
-        rotated_bonds = 0
         # initialize the number of bonds that actually rotate
+        rotated_bonds = 0
 
         for t, torsion in enumerate(torsions):
             angle = angle_set[t]
 
+            # for every angle we have to rotate, calculate the new coordinates
             if angle != 0:
                 mask = _get_rotation_mask(graph, torsion.torsion)
                 temp_coords = rotate_dihedral(new_coords, torsion.torsion, angle, mask=mask)
-                # for every angle we have to rotate, calculate the new coordinates
                 
-                if not torsion_comp_check(temp_coords, torsion=torsion.torsion, mask=mask, thresh=1.5):
                 # if these coordinates are bad and compenetration is present
+                if not torsion_comp_check(temp_coords, torsion=torsion.torsion, mask=mask, thresh=1.5):
 
+                    # back off five degrees
                     for _ in range(angle//5):
                         temp_coords = rotate_dihedral(temp_coords, torsion.torsion, -5, mask=mask)
-                        # back off five degrees
                         
+                        # and reiterate until we have no more compenetrations,
+                        # or until we have undone the previous rotation
                         if torsion_comp_check(temp_coords, torsion=torsion.torsion, mask=mask, thresh=1.5):
                             # print(f'------> DEBUG - backed off {_*5}/{angle} degrees')
                             rotated_bonds += 1                  
                             break
-                        # and reiterate until we have no more compenetrations,
-                        # or until we have undone the previous rotation
 
                 else:
                     rotated_bonds += 1
 
-                new_coords = temp_coords
                 # update the active coordinates with the temp ones
+                new_coords = temp_coords
         
+        # add the rotated molecule to the output list
         if rotated_bonds != 0:
             new_structures.append(new_coords)
-            # add the rotated molecule to the output list
 
+            # after adding a molecule to the output, check if we
+            # have reached the number of desired output structures
+            if len(new_structures) == n_out or a == max_tries:
+                break
+
+    # make an array out of them
     new_structures = np.array(new_structures)
-    # mask = np.zeros(len(new_structures), dtype=bool)
-    # for s, structure in enumerate(new_structures):
-    #     mask[s] = compenetration_check(structure)
 
-    # new_structures = new_structures[mask]
-    # for_comp = np.count_nonzero(~mask)
-    # remove compenetrated structures
-
+    # Get a descriptor for how exhaustive the sampling has been
     exhaustiveness = len(new_structures) / np.prod([t.n_fold for t in torsions])
 
     logfunction(f'  Generated {len(new_structures)} conformers, ({round(100*exhaustiveness, 2)} % of the total conformational space (CSearch time {time_to_string(time.perf_counter()-t_start_run)})')
 
     return new_structures
-
-
 
 def csearch(coords,
             atomnos,

@@ -1,4 +1,4 @@
-.. _examples:
+.. _exs:
 
 Examples
 ========
@@ -8,6 +8,8 @@ with TSCoDe, hoping that some of these examples will be very similar to the task
 trying to automate. Play around!
 
 For detailed descriptions of the operators and keywords present in the inputs, see :ref:`op_kw`.
+
+Work is in progress to expand this section with more examples.
 
 1. Trimolecular input
 +++++++++++++++++++++
@@ -74,7 +76,7 @@ For detailed descriptions of the operators and keywords present in the inputs, s
 
 ::
 
-    KCAL=10 RMSD=0.3
+    RMSD=0.3
     csearch> hemiacetal.xyz 34x
     csearch_hb> peptide.xyz 39x
 
@@ -82,12 +84,8 @@ For detailed descriptions of the operators and keywords present in the inputs, s
     # intermediate (hemiacetal) and the catalyst
     # (peptide).
 
-    # KCAL=10 removes structures that are more than
-    # 10 kcal/mol above the lowest energy one
-    # (default was 15)
-
     # RMSD=0.3 reduces the similarity threshold to
-    # retain more structures
+    # retain more structures (default 0.5 or 1 A)
 
     # csearch> performs a complete conformational
     # search on hemiacetal.xyz (2 diastereomers,
@@ -95,15 +93,15 @@ For detailed descriptions of the operators and keywords present in the inputs, s
     
     # csearch_hb> performs a partial conformational 
     # search on peptide.xyz, retaining the β-turn
-    # hydrogen bond initially present. 6516 confs
+    # hydrogen bond initially present. 19683 confs
     # generated, most diverse 1000 used for the 
-    # embed (overridable with CONFS)
+    # embed (overridable with CONFS=n)
 
     # String algorithm: 5.18 M poses checked
 
     # Conformational augmentation of best poses
-    # improves results further (csearch on
-    # generated poses)
+    # improves results further (performing a csearch
+    # on every generated pose)
 
 .. figure:: /images/peptide_chemdraw.png
    :alt: Input structures

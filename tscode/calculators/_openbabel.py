@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -16,25 +16,77 @@ GNU General Public License for more details.
 
 '''
 from tscode.settings import FF_OPT_BOOL, FF_CALC
-from tscode.utils import scramble_check, write_xyz, read_xyz
+from tscode.utils import clean_directory, scramble_check, write_xyz, read_xyz
+from tscode.algebra import norm, norm_of
 
 if FF_OPT_BOOL and FF_CALC == 'OB':
 
     from openbabel import openbabel as ob
 
-    def openbabel_opt(structure, atomnos, constrained_indexes, graphs=None, check=False, method='UFF', nsteps=500, **kwargs):
+    def openbabel_opt(
+                        structure,
+                        atomnos,
+                        constrained_indexes,
+                        constrained_distances=None,
+                        tight_constraint=True,
+                        graphs=None,
+                        check=False,
+                        method='UFF',
+                        nsteps=1000,
+                        title='temp_ob',
+                        **kwargs,
+                    ):
         '''
-        return : MM-optimized structure (UFF/MMFF)
+        tight_constraint: False uses the native implementation,
+                          True uses a more accurate recursive one 
+        return : MM-optimized structure (UFF/MMFF94)
         '''
 
         assert not check or graphs is not None, 'Either provide molecular graphs or do not check for scrambling.'
+        assert method in ('UFF', 'MMFF94', 'Ghemical', 'GAFF'), 'OpenBabel implements only the UFF, MMFF94, Ghemical and GAFF Force Fields.'
 
-        filename='temp_ob_in.xyz'
+        # If we have any target distance to impose,
+        # the most accurate way to do it is to manually
+        # move the second atom and then freeze both atom
+        # in place during optimization. If we would have
+        # to move the second atom too much we do that in
+        # small steps of 0.2 A, recursively, to avoid having
+        # openbabel come up with weird bonding topologies,
+        # ending in scrambling.
+
+        if constrained_distances is not None and tight_constraint:
+            for target_d, (a, b) in zip(constrained_distances, constrained_indexes):
+                d = norm_of(structure[b] - structure[a])
+                delta = d - target_d
+
+                if abs(delta) > 0.2:
+                    sign = (d > target_d)
+                    recursive_c_d = [d + 0.2 * sign for d in constrained_distances]
+
+                    structure, _, _ = openbabel_opt(
+                                                    structure,
+                                                    atomnos,
+                                                    constrained_indexes,
+                                                    constrained_distances=recursive_c_d,
+                                                    tight_constraint=True, 
+                                                    graphs=graphs,
+                                                    check=check,
+                                                    method=method,
+                                                    nsteps=nsteps,
+                                                    title=title,
+                                                    **kwargs,
+                                                )
+
+                d = norm_of(structure[b] - structure[a])
+                delta = d - target_d
+                structure[b] -= norm(structure[b] - structure[a]) * delta
+
+        filename=f'{title}_in.xyz'
 
         with open(filename, 'w') as f:
             write_xyz(structure, atomnos, f)
-
-        outname = 'temp_ob_out.xyz'
+        # input()
+        outname = f'{title}_out.xyz'
 
         # Standard openbabel molecule load
         conv = ob.OBConversion()
@@ -46,18 +98,31 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
         # Define constraints
         constraints = ob.OBFFConstraints()
 
-        for a, b in constrained_indexes:
+        for i, (a, b) in enumerate(constrained_indexes):
 
-            first_atom = mol.GetAtom(int(a+1))
-            length = first_atom.GetDistance(int(b+1))
+            # Adding a distance constraint does not lead to accurate results,
+            # so the backup solution is to freeze the atoms in place
+            if tight_constraint:
+                constraints.AddAtomConstraint(int(a+1))
+                constraints.AddAtomConstraint(int(b+1))
 
-            constraints.AddDistanceConstraint(int(a+1), int(b+1), length)       # Angstroms
-            # constraints.AddAngleConstraint(1, 2, 3, 120.0)      # Degrees
-            # constraints.AddTorsionConstraint(1, 2, 3, 4, 180.0) # Degrees
+            else:
+                if constrained_distances is None:
+                    first_atom = mol.GetAtom(int(a+1))
+                    length = first_atom.GetDistance(int(b+1))
+                else:
+                    length = constrained_distances[i]
+                
+                constraints.AddDistanceConstraint(int(a+1), int(b+1), length)       # Angstroms
+
+                # constraints.AddAngleConstraint(1, 2, 3, 120.0)      # Degrees
+                # constraints.AddTorsionConstraint(1, 2, 3, 4, 180.0) # Degrees
 
         # Setup the force field with the constraints
         forcefield = ob.OBForceField.FindForceField(method)
         forcefield.Setup(mol, constraints)
+
+        # Set the strictness of the constraint
         forcefield.SetConstraints(constraints)
 
         # Do a nsteps conjugate gradient minimization
@@ -72,6 +137,8 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
 
         opt_coords = read_xyz(outname).atomcoords[0]
 
+        clean_directory((f'{title}_in.xyz', f'{title}_out.xyz'))
+        
         if check:
             success = scramble_check(opt_coords, atomnos, constrained_indexes, graphs)
         else:

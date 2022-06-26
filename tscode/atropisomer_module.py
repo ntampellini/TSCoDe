@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -102,7 +102,7 @@ def ase_torsion_TSs(embedder,
         if logfile is not None:
             logfile.write('\n')
 
-        structures, energies = ase_scan(embedder,
+        structures, energies = ase_dih_scan(embedder,
                                         coords,
                                         atomnos,
                                         indexes=indexes,
@@ -155,7 +155,7 @@ def ase_torsion_TSs(embedder,
 
             for p, peak in enumerate(peaks_indexes):
 
-                sub_structures, sub_energies = ase_scan(embedder,
+                sub_structures, sub_energies = ase_dih_scan(embedder,
                                                         structures[peak-1],
                                                         atomnos,
                                                         indexes=indexes,
@@ -298,7 +298,7 @@ def atropisomer_peaks(data, min_thr, max_thr):
 
     return peaks
     
-def ase_scan(embedder,
+def ase_dih_scan(embedder,
             coords,
             atomnos,
             indexes,
@@ -310,6 +310,7 @@ def ase_scan(embedder,
             title='temp scan',
             logfile=None):
     '''
+    Performs a dihedral scan via the ASE library
     if ad libitum, steps is the minimum number of performed steps
     '''
     assert len(indexes) == 4

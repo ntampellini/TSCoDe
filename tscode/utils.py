@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -68,7 +68,12 @@ class HiddenPrints:
         sys.stdout.close()
         sys.stdout = self._original_stdout
 
-def clean_directory():
+def clean_directory(to_remove=None):
+
+    if to_remove:
+        for name in to_remove:
+            os.remove(name)
+
     for f in os.listdir():
         if f.split('.')[0] == 'temp':
             os.remove(f)
@@ -309,7 +314,7 @@ def get_scan_peak_index(energies, max_thr=50, min_thr=0.1):
     # if one is present, return that
 
     peaks_nrg = [energies[i] for i in peaks]
-    return peaks_nrg.index(max(peaks_nrg))
+    return energies.index(max(peaks_nrg))
     # if more than one, return the highest
 
 def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
@@ -398,3 +403,18 @@ def flatten(array, typefunc=float):
                 out.append(typefunc(e))
     rec(array)
     return out
+
+def auto_newline(string, max_line_len=50, padding=2):
+    string = str(string)
+
+    out = [' '*padding]
+    line_len = 0
+    for word in string.split():
+        out.append(word)
+        line_len += len(word) + 1
+
+        if line_len >= max_line_len:
+            out.append('\n'+' '*padding)
+            line_len = 0
+
+    return ' '.join(out)

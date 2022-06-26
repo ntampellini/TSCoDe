@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2022 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -17,8 +17,8 @@ GNU General Public License for more details.
 '''
 
 import os
+import pickle
 import time
-from copy import deepcopy
 from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
@@ -27,10 +27,12 @@ from networkx import connected_components
 from tscode.clustered_csearch import csearch
 from tscode.errors import InputError
 from tscode.graph_manipulations import graphize
-from tscode.optimization_methods import optimize
+from tscode.hypermolecule_class import align_structures
+from tscode.optimization_methods import _refine_structures
+from tscode.pka import pka_routine
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
-from tscode.utils import (get_scan_peak_index, loadbar, read_xyz,
+from tscode.utils import (get_scan_peak_index, read_xyz,
                           suppress_stdout_stderr, time_to_string, write_xyz)
 
 
@@ -64,19 +66,30 @@ def operate(input_string, embedder):
 
     elif 'csearch_hb>' in input_string:
         outname = csearch_operator(filename, embedder, keep_hb=True)
-
+        
+    elif 'rsearch>' in input_string:
+        outname = csearch_operator(filename, embedder, mode=2)
+  
     elif 'approach>' in input_string:
         approach_operator(filename, embedder)
-        embedder.normal_termination()
+        outname = filename
 
     elif 'neb>' in input_string:
         neb_operator(filename, embedder)
         embedder.normal_termination()
 
-    elif 'refine>' in input_string:
+    elif 'run>' in input_string:
         outname = filename
         # this operator is accounted for in the OptionSetter
         # class of Options, set when the Embedder calls _set_options
+
+    elif 'pka>' in input_string:
+        pka_routine(filename, embedder)
+        outname = filename
+
+    else:
+        op = input_string.split('>')[0]
+        raise Exception(f'Operator {op} not recognized.')
 
     return outname
 
@@ -123,7 +136,7 @@ def confab_operator(filename, options, logfunction=None):
 
     return confname
 
-def csearch_operator(filename, embedder, keep_hb=False):
+def csearch_operator(filename, embedder, keep_hb=False, mode=1):
     '''
     '''
 
@@ -153,6 +166,7 @@ def csearch_operator(filename, embedder, keep_hb=False):
                                 opt_coords,
                                 data.atomnos,
                                 keep_hb=keep_hb,
+                                mode=mode,
                                 n_out=embedder.options.max_confs,
                                 title=f'{filename}_conf{i}',
                                 logfunction=embedder.log,
@@ -193,43 +207,45 @@ def opt_operator(filename, embedder, logfunction=None):
     '''
     '''
 
+    mol = next((mol for mol in embedder.objects if mol.name == filename))
+    # load molecule to be optimized from embedder
+
     if logfunction is not None:
-        logfunction(f'--> Performing {embedder.options.calculator} {embedder.options.theory_level} optimization on {filename}')
+        logfunction(f'--> Performing {embedder.options.calculator} {embedder.options.theory_level} optimization on {filename} ({len(mol.atomcoords)} conformers)')
+                                
+    energies = []
+    lowest_calc = _get_lowest_calc(embedder)
 
     t_start = time.perf_counter()
 
-    data = read_xyz(filename)
-                                
-    conformers = data.atomcoords
-    energies = []
-
-    lowest_calc = _get_lowest_calc(embedder)
-    conformers, energies = _refine_structures(conformers, data.atomnos, *lowest_calc, loadstring='Optimizing conformer')
+    conformers, energies = _refine_structures(mol.atomcoords, mol.atomnos, *lowest_calc, loadstring='Optimizing conformer', logfunction=lambda s:embedder.log(s, p=False))
 
     energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
     energies = np.array(energies) - np.min(energies)
     conformers = np.array(conformers)
     # sorting structures based on energy
 
-    mask = energies < 10
-    # getting the structures to reject (Rel Energy > 10 kcal/mol)
+    mask = energies < 20
+    # getting the structures to reject (Rel Energy > 20 kcal/mol)
 
     if logfunction is not None:
         s = 's' if len(conformers) > 1 else ''
-        s = f'Completed optimization on {len(conformers)} conformer{s}. ({time_to_string(time.perf_counter()-t_start)}).\n'
+        s = f'Completed optimization on {len(conformers)} conformer{s}. ({time_to_string(time.perf_counter()-t_start)}, ~{time_to_string((time.perf_counter()-t_start)/len(conformers))} per structure).\n'
 
-        if max(energies) > 10:
-            s += f'Discarded {len(conformers)-np.count_nonzero(mask)}/{len(conformers)} unstable conformers (Rel. E. > 10 kcal/mol)\n'
+        if max(energies) > 20:
+            s += f'Discarded {len(conformers)-np.count_nonzero(mask)}/{len(conformers)} unstable conformers (Rel. E. > 20 kcal/mol)\n'
 
     conformers, energies = conformers[mask], energies[mask]
     # applying the mask that rejects high energy confs
 
     optname = filename[:-4] + '_opt.xyz'
     with open(optname, 'w') as f:
-        for i, conformer in enumerate(conformers):
-            write_xyz(conformer, data.atomnos, f, title=f'Optimized conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
+        for i, conformer in enumerate(align_structures(conformers)):
+            write_xyz(conformer, mol.atomnos, f, title=f'Optimized conformer {i} - Rel. E. = {round(energies[i], 3)} kcal/mol')
 
-        logfunction(s+'\n')
+    logfunction(s+'\n')
+    logfunction(f'Wrote {len(conformers)} optimized structures to {optname}\n')
+
 
     return optname
 
@@ -276,12 +292,13 @@ def neb_operator(filename, embedder):
     with open('Me_CONMe2_Mal_tetr_int_NEB_NEB_TS.xyz', 'w') as f:
         write_xyz(ts_coords, data.atomnos, f, title='NEB TS - see log for relative energies')
 
-def approach_operator(filename, embedder):
+def approach_operator(filename, embedder, step=-0.05):
     '''
     Thought to approach two reactive atoms, looking for the energy maximum
+    Step is the magnitude of the atomic displacement for each constrained opt step 
     '''
     embedder.t_start_run = time.perf_counter()
-    mol = read_xyz(filename)
+    mol_index, mol = next(((i, mol) for i, mol in enumerate(embedder.objects) if mol.name == filename))
 
     assert len(mol.atomcoords) == 1, 'The scan> operator works on a single .xyz geometry.'
     assert len(mol.reactive_indexes) == 2, 'The scan> operator needs two reactive indexes ' + (
@@ -293,12 +310,14 @@ def approach_operator(filename, embedder):
     from tscode.ase_manipulations import ase_popt
     from tscode.pt import pt
 
+    t_start = time.perf_counter()
+
     i1, i2 = mol.reactive_indexes
     coords = mol.atomcoords[0]
     # shorthands for clearer code
 
-    embedder.log(f'--> Performing a distance scan approaching on indexes {i1} ' +
-                 f'and {i2}.\nTheory level is {embedder.options.theory_level} ' +
+    embedder.log(f'--> {mol.rootname} - Performing a distance scan approaching indexes {i1} ' +
+                 f'and {i2}\n    Theory level is {embedder.options.theory_level} ' +
                  f'via {embedder.options.calculator}')
 
     d = norm_of(coords[i1]-coords[i2])
@@ -308,7 +327,7 @@ def approach_operator(filename, embedder):
     # creating a dictionary that will hold results
     # and the structure output list
 
-    step = -0.05
+    # step = -0.05
     # defining the step magnitude, in Angstroms
 
     s1, s2 = mol.atomnos[[i1, i2]]
@@ -326,6 +345,7 @@ def approach_operator(filename, embedder):
                                      mol.atomnos,
                                      constrained_indexes=np.array([mol.reactive_indexes]),
                                      targets=(d,),
+                                     safe=embedder.fix_angles_in_deformation,
                                      title=f'Step {i+1}/{max_iterations} - d={round(d, 2)} A -',
                                      logfunction=embedder.log,
                                      traj=f'{mol.title}_scanpoint_{i+1}.traj' if embedder.options.debug else None,
@@ -346,7 +366,7 @@ def approach_operator(filename, embedder):
 
     ### Start the plotting sequence
 
-    plt.figure()
+    fig = plt.figure()
     plt.plot(
         dists,
         energies,
@@ -371,53 +391,35 @@ def approach_operator(filename, embedder):
         markersize=3,
     )
 
-    title = mol.name + ' distance scan'
+    title = mol.rootname + ' distance scan'
     plt.legend()
     plt.title(title)
     plt.xlabel(f'Indexes {i1}-{i2} distance (A)')
     plt.gca().invert_xaxis()
     plt.ylabel('Rel. E. (kcal/mol)')
     plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
+    pickle.dump(fig, open(f'{title.replace(" ", "_")}_plt.pickle', 'wb'))
 
     ### Start structure writing 
 
+    # print all scan structures
     with open(f'{mol.name[:-4]}_scan.xyz', 'w') as f:
         for i, (s, d, e) in enumerate(zip(structures, dists, energies)):
             write_xyz(s, mol.atomnos, f, title=f'Scan point {i+1}/{len(structures)} ' +
                       f'- d({i1}-{i2}) = {round(d, 3)} A - Rel. E = {round(e, 3)} kcal/mol')
-    # print all scan structures
 
+    # print the maximum on another file for convienience
     with open(f'{mol.name[:-4]}_scan_max.xyz', 'w') as f:
         s = structures[id_max]
         d = dists[id_max]
         write_xyz(s, mol.atomnos, f, title=f'Scan point {id_max+1}/{len(structures)} ' +
                     f'- d({i1}-{i2}) = {round(d, 3)} A - Rel. E = {round(e_max, 3)} kcal/mol')
-    # print the maximum on another file for convienience
 
-    embedder.log(f'\n--> Written {len(structures)} structures to {mol.name[:-4]}_scan.xyz')
-    embedder.log(f'\n--> Written energy maximum to {mol.name[:-4]}_scan_max.xyz')
+    embedder.log(f'\n--> Written {len(structures)} structures to {mol.name[:-4]}_scan.xyz ({time_to_string(time.perf_counter() - t_start)})')
+    embedder.log(f'\n--> Written energy maximum to {mol.name[:-4]}_scan_max.xyz\n')
 
-def _refine_structures(structures, atomnos, calculator, method, procs, loadstring=''):
-    '''
-    Refine a set of structures.
-    '''
-    energies = []
-    for i, conformer in enumerate(deepcopy(structures)):
-
-        loadbar(i, len(structures), f'{loadstring} {i+1}/{len(structures)} ')
-
-        opt_coords, energy, success = optimize(conformer, atomnos, calculator, method=method, procs=procs)
-
-        if success:
-            structures[i] = opt_coords
-            energies.append(energy)
-        else:
-            energies.append(np.inf)
-
-    loadbar(len(structures), len(structures), f'{loadstring} {len(structures)}/{len(structures)} ')
-    # optimize the generated conformers
-
-    return structures, energies
+    # Log data to the embedder class
+    embedder.objects[mol_index].approach_data = (dists, energies)
 
 def _get_lowest_calc(embedder=None):
     '''
@@ -427,9 +429,9 @@ def _get_lowest_calc(embedder=None):
     '''
     if embedder is None:
         if FF_OPT_BOOL:
-            return (FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], None)
+            return (FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], PROCS)
         return (CALCULATOR, DEFAULT_LEVELS[CALCULATOR], PROCS)
 
     if embedder.options.ff_opt:
-        return (embedder.options.ff_calc, embedder.options.ff_level, None)
+        return (embedder.options.ff_calc, embedder.options.ff_level, embedder.options.procs)
     return (embedder.options.calculator, embedder.options.theory_level, embedder.options.procs)
