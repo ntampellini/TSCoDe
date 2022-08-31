@@ -27,12 +27,12 @@ from numpy.linalg import LinAlgError
 from rmsd import kabsch
 
 from tscode.algebra import norm_of
-from tscode.errors import CCReadError
+from tscode.errors import CCReadError, NoOrbitalError
 from tscode.graph_manipulations import (graphize, is_sigmatropic, is_vicinal,
                                         neighbors)
 from tscode.pt import pt
 from tscode.reactive_atoms_classes import get_atom_type
-from tscode.utils import read_xyz, flatten
+from tscode.utils import flatten, read_xyz
 
 
 def align_structures(structures:np.array, indexes=None):
@@ -317,7 +317,7 @@ class Hypermolecule:
         index: reactive atom index
         '''
         if index not in self.reactive_indexes:
-            raise Exception(f'Index provided must be a molecule reactive index ({index}, {self.name})')
+            raise NoOrbitalError(f'Index provided must be a molecule reactive index ({index}, {self.name})')
 
         r_atom = self.reactive_atoms_classes_dict[0][index]
         return norm_of(r_atom.center[0] - r_atom.coord)

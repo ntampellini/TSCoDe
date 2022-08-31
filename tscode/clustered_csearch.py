@@ -29,7 +29,7 @@ from tscode.graph_manipulations import (findPaths, get_sp_n, is_amide_n,
                                         is_ester_o, is_sp_n, neighbors)
 from tscode.hypermolecule_class import align_structures, graphize
 from tscode.optimization_methods import optimize
-from tscode.python_functions import torsion_comp_check
+from tscode.python_functions import prune_conformers_tfd, torsion_comp_check
 from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC
 from tscode.utils import (cartesian_product, flatten, get_double_bonds_indexes,
                           loadbar, rotate_dihedral, time_to_string, write_xyz)
@@ -292,26 +292,45 @@ def _get_rotation_mask(graph, torsion):
     
     return mask
 
-def _get_torsions(graph, hydrogen_bonds, double_bonds):
+def _get_quadruplets(graph):
     '''
-    Returns list of Torsion objects
+    Returns list of quadruplets that indicate potential torsions
     '''
+
     allpaths = []
     for node in graph:
         allpaths.extend(findPaths(graph, node, 3))
     # get all possible continuous indexes quadruplets
 
-    torsions, bond_torsions = [], []
+    quadruplets, q_ids = [], []
     for path in allpaths:
+        _, i2, i3, _ = path
+        q_id = tuple(sorted((i2, i3)))
+
+        if (q_id not in q_ids):
+
+            quadruplets.append(path)
+            q_ids.append(q_id)
+
+    # Yields non-redundant quadruplets
+    # Rejects (4,3,2,1) if (1,2,3,4) is present
+
+    return np.array(quadruplets)
+
+def _get_torsions(graph, hydrogen_bonds, double_bonds):
+    '''
+    Returns list of Torsion objects
+    '''
+    
+    torsions = []
+    for path in _get_quadruplets(graph):
         _, i2, i3, _ = path
         bt = tuple(sorted((i2, i3)))
 
-        if (bt not in bond_torsions) and (bt not in double_bonds):
+        if bt not in double_bonds:
             t = Torsion(*path)
 
             if (not t.in_cycle(graph)) and t.is_rotable(graph, hydrogen_bonds):
-
-                bond_torsions.append(bt)
                 torsions.append(t)
     # Create non-redundant torsion objects
     # Rejects (4,3,2,1) if (1,2,3,4) is present
@@ -517,7 +536,10 @@ def csearch(coords,
     method = DEFAULT_FF_LEVELS[calc] if method is None else method
     # Set default calculator attributes if user did not specify them
 
-    constrained_indexes = np.array([]) if constrained_indexes is None else constrained_indexes
+    if constrained_indexes is not None and len(constrained_indexes) > 0:
+        logfunction(f'Constraining {len(constrained_indexes)} distance{"s" if len(constrained_indexes) > 1 else ""} - {constrained_indexes}')
+    else:
+        constrained_indexes = np.array([])
 
     graph = graphize(coords, atomnos)
     for i1, i2 in constrained_indexes:
@@ -745,13 +767,7 @@ def clustered_csearch(coords,
                     # add the rotated molecule to the output list
 
         new_structures = np.array(new_structures)
-        # mask = np.zeros(len(new_structures), dtype=bool)
-        # for s, structure in enumerate(new_structures):
-        #     mask[s] = compenetration_check(structure)
-
-        # new_structures = new_structures[mask]
-        # for_comp = np.count_nonzero(~mask)
-        # remove compenetrated structures
+        torsion_array = np.array([t.torsion for t in torsions])
 
         energies = None
         if ff_opt:
@@ -784,8 +800,9 @@ def clustered_csearch(coords,
                     new_structures = new_structures[0:n]
 
                 if mode == 1:
-                    new_structures = most_diverse_conformers(n, new_structures, energies,
-                                                             interactive_print=interactive_print)
+                    new_structures = most_diverse_conformers(n, new_structures, torsion_array,
+                                                                energies=energies,
+                                                                interactive_print=interactive_print)
 
             logfunction(f'  Kept the most {tag} {len(new_structures)} starting points for next rotation cluster')
 
@@ -793,6 +810,7 @@ def clustered_csearch(coords,
         starting_points = new_structures
 
     output_structures = np.array(output_structures)
+    output_structures, _ = prune_conformers_tfd(output_structures, torsion_array)
 
     if len(new_structures) > n_out:
 
@@ -802,7 +820,9 @@ def clustered_csearch(coords,
             output_structures = np.array(output_structures)
 
         if mode == 1:
-            output_structures = most_diverse_conformers(n_out, output_structures, energies,
+            output_structures = most_diverse_conformers(n_out, output_structures,
+                                                        torsion_array=torsion_array,
+                                                        energies=energies,
                                                         interactive_print=interactive_print)
 
     exhaustiveness = len(output_structures) / np.prod([t.n_fold for t in torsions])
@@ -812,10 +832,10 @@ def clustered_csearch(coords,
 
     return output_structures
 
-def most_diverse_conformers(n, structures, energies=None, interactive_print=False):
+def most_diverse_conformers(n, structures, torsion_array, energies=None, interactive_print=False):
     '''
     Return the n most diverse structures from the set.
-    First removes similar structures, then divides them in n subsets and:
+    First removes similar structures based on torsional fingerprints, then divides them in n subsets and:
     - If the enrgy list is given, chooses the
       one with the lowest energy from each.
     - If it is not, picks the most diverse structures.
@@ -830,6 +850,16 @@ def most_diverse_conformers(n, structures, energies=None, interactive_print=Fals
         return structures[indexes]
     # For now, the algorithm scales badly with number of clusters.
     # If there are too many to compute, just choose randomly
+
+    if interactive_print:
+        print(f'Removing similar structures...{" "*10}', end='\r')
+
+    structures, _ = prune_conformers_tfd(structures, torsion_array)
+    # remove structrures with too similar TFPs
+
+    if len(structures) <= n:
+        return structures
+    # if we already pruned enough structures to meet the requirement, return them
 
     if interactive_print:
         print(f'Aligning structures...{" "*10}', end='\r')

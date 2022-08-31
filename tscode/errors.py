@@ -48,3 +48,8 @@ class SegmentedGraphError(Exception):
     '''
     Thrown by Clustered CSearch when graph has more than one connected component.
     '''
+
+class NoOrbitalError(Exception):
+    '''
+    Thrown when trying to access orbital data when they are not present
+    '''

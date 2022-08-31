@@ -15,6 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+from copy import deepcopy
 from itertools import combinations
 
 import networkx as nx
@@ -279,3 +280,23 @@ def is_vicinal(mol):
                 return True
 
     return False
+
+def get_sum_graph(graphs, extra_edges):
+    '''
+    Creates a graph containing all graphs, added in 
+    sequence, and then adds the specified extra edges
+    (with cumulative numbering).
+    '''
+
+    graph, *extra = graphs
+    out = deepcopy(graph)
+
+    for g in extra:
+        n = len(out.nodes())
+        for e1, e2 in g.edges():
+            out.add_edge(e1+n, e2+n)
+
+    for e1, e2 in extra_edges:
+        out.add_edge(e1, e2)
+
+    return graph

@@ -23,9 +23,11 @@ import numpy as np
 from tscode.algebra import (align_vec_pair, norm, rot_mat_from_pointer,
                             vec_angle)
 from tscode.ase_manipulations import ase_bend
+from tscode.clustered_csearch import _get_quadruplets
 from tscode.errors import TriangleError, ZeroCandidatesError
+from tscode.graph_manipulations import get_sum_graph
 from tscode.optimization_methods import optimize
-from tscode.python_functions import compenetration_check
+from tscode.python_functions import compenetration_check, get_torsion_fingerprint, tfd_similarity
 from tscode.utils import (cartesian_product, loadbar, polygonize, pretty_num,
                           rotation_matrix_from_vectors)
 
@@ -39,6 +41,31 @@ def string_embed(embedder):
 
     # if embedder.options.tscode_procs > 1:
     #     return string_embed_parallel(embedder)
+    # Not implemented for now - significatively slower
+
+    def is_new_structure(coords, quadruplets, lru_cache, cache_size=5):
+        '''
+        Checks if the torsion fingerprint of a structure is
+        similar to the ones present in lru_cache. If the
+        structure is new, updates the cache.
+        '''
+
+        # get the structure torsion fingerprint
+        tfp = get_torsion_fingerprint(coords, quadruplets)
+
+        # compare it to the ones in lru_cache
+        for ref_tfp in lru_cache:
+            if tfd_similarity(tfp, ref_tfp):
+                return False
+
+        # if it is different than all of them, add it to cache
+        lru_cache.append(tfp)
+
+        # update cache if that is too big
+        if len(lru_cache) == cache_size + 1:
+            lru_cache = lru_cache[1:]
+
+        return True
 
     embedder.log(f'\n--> Performing string embed ({pretty_num(embedder.candidates)} candidates)')
 
@@ -49,8 +76,16 @@ def string_embed(embedder):
     r_atoms_centers_indexes = cartesian_product(*[np.array(range(len(mol.get_centers(0)[0]))) for mol in embedder.objects])
     # for two mols with 3 and 2 centers: [[0 0][0 1][1 0][1 1][2 0][2 1]]
 
+    # explicit individual molecules
     mol1, mol2 = embedder.objects
 
+    # get quadruplets needed for the tfd similarity check
+    constrained_indexes = [[int(embedder.objects[0].reactive_indexes[0]),
+                            int(embedder.objects[1].reactive_indexes[0] + embedder.ids[0])]]
+
+    quadruplets = _get_quadruplets(get_sum_graph((mol1.graph, mol2.graph), constrained_indexes))
+
+    lru_cache = []
     poses = []
     for i, (c1, c2) in enumerate(conf_indexes):
 
@@ -80,7 +115,8 @@ def string_embed(embedder):
                 embedded_structure = get_embed((mol1, mol2), (c1, c2))
 
                 if compenetration_check(embedded_structure, ids=embedder.ids, thresh=embedder.options.clash_thresh):
-                    poses.append(embedded_structure)
+                    if is_new_structure(embedded_structure, quadruplets, lru_cache):
+                        poses.append(embedded_structure)
 
     loadbar(1, 1, prefix=f'Embedding structures ')
     
@@ -192,7 +228,7 @@ def _get_string_constrained_indexes(embedder, n):
     '''
     # Two molecules, string algorithm, one constraint for all, repeated n times
     return np.array([[[int(embedder.objects[0].reactive_indexes[0]),
-                        int(embedder.objects[1].reactive_indexes[0] + embedder.ids[0])]] for _ in range(n)])
+                       int(embedder.objects[1].reactive_indexes[0] + embedder.ids[0])]] for _ in range(n)])
 
 def cyclical_embed(embedder):
     '''

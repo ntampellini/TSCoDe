@@ -184,9 +184,13 @@ class Embedder:
 
         lines = [line for line in lines if line[0] not in ('#', '\n')]
         
+        def _remove_internal_constraints(string):
+            numbers = [int(re.sub('[^0-9]', '', i)) for i in string]
+            letters = [re.sub('[^a-z]', '', i) for i in string]
+            count = [letters.count(l) for l in letters]
+            return tuple([n for n, c in zip(numbers, count) if c == 1])
+
         try:
-            # assert len(lines) < 5
-            # (optional) keyword line + 1, 2 or 3 lines for molecules
 
             keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
             if any(k.upper() in keywords_list for k in keywords):
@@ -204,12 +208,8 @@ class Embedder:
 
                 filename, *reactive_atoms = line.split()
 
-                # if len(reactive_atoms) > 4:
-                #     s = f'Too many reactive atoms specified for {filename} ({len(reactive_atoms)}).'
-                #     raise SyntaxError(s)
-
                 if reactive_atoms:
-                    reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
+                    reactive_indexes = _remove_internal_constraints(reactive_atoms)
                 else:
                     reactive_indexes = None
 
@@ -243,6 +243,10 @@ class Embedder:
 
         if self.embed in ('cyclical', 'chelotropic', 'string'):
             for i, mol in enumerate(self.objects):
+
+                if not hasattr(mol, 'reactive_atoms_classes_dict'):
+                    mol.compute_orbitals()
+
                 for c, _ in enumerate(mol.atomcoords):
                     for r_atom in mol.reactive_atoms_classes_dict[c].values():
                         r_atom.cumnum = r_atom.index
@@ -350,6 +354,20 @@ class Embedder:
                 second_constraint = list(sorted(unlabeled_list))
                 self.pairings_table['?'] = second_constraint
 
+        # Now record the internal constraints, that is the intramolecular
+        # distances to freeze and later enforce to the imposed spacings
+        self.internal_constraints = []
+        for letter, pair in self.pairings_table.items():
+            for mol_id in self.pairings_dict:
+                if isinstance(self.pairings_dict[mol_id].get(letter), tuple):
+
+                    # They are internal constraints only if we have a distance 
+                    # to impose later on. We are checking this way because the
+                    # set_options function is still to be called at this stage
+                    if f'{letter}=' in self.kw_line:
+                        self.internal_constraints.append([pair])
+        self.internal_constraints = np.concatenate(self.internal_constraints) if self.internal_constraints else []
+
     def _set_custom_orbs(self, orb_string):
         '''
         Update the reactive_atoms classes with the user-specified orbital distances.
@@ -382,8 +400,9 @@ class Embedder:
                     
                     else:
                         for r_i in r_index:
-                            r_atom = mol.reactive_atoms_classes_dict[c][r_i]
-                            r_atom.init(mol, r_i, update=True, orb_dim=dist/2, conf=c)
+                            r_atom = mol.reactive_atoms_classes_dict[c].get(r_i)
+                            if r_atom:
+                                r_atom.init(mol, r_i, update=True, orb_dim=dist/2, conf=c)
 
         # saves the last orb_string executed so that operators can
         # keep the imposed orbital spacings when replacing molecules
@@ -711,7 +730,7 @@ class Embedder:
             operator = input_string.split('>')[0]
 
             # these operators do not need molecule substitution
-            if operator not in ('refine', 'pka', 'approach'):
+            if operator not in ('run', 'pka', 'approach'):
 
                 names = [mol.name for mol in self.objects]
                 filename = self._extract_filename(input_string)
@@ -729,7 +748,7 @@ class Embedder:
                     self._set_custom_orbs(self.orb_string)
 
         # updating the orbital cumnums for 
-        # the all molecules in the run
+        # all the molecules in the run
         self._set_reactive_atoms_cumnums()
 
         # resetting the attribute

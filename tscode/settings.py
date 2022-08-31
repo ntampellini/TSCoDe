@@ -25,7 +25,7 @@ FF_OPT_BOOL = True
 # Openbabel/XTB programs and python bindings
 # are installed.
 
-FF_CALC = 'OB'
+FF_CALC = 'XTB'
 # Calculator to perform Force Field optimizations.
 # Possibilites are:
 # 'OB' : Openbabel UFF and MMFF94 methods
@@ -41,7 +41,7 @@ DEFAULT_FF_LEVELS = {
 }
 # Default levels used to run calculations, overridden by FFLEVEL keyword
 
-CALCULATOR = 'MOPAC'
+CALCULATOR = 'XTB'
 # Calculator used to run geometry optimization.
 # Possibilites are:
 # 'MOPAC' : Semiempirical MOPAC2016 (PM7, PM6-DH3, ...)
@@ -64,7 +64,7 @@ COMMANDS = {
 }
 # Command with which calculators will be called from the command line
 
-PROCS = 1
+PROCS = 8
 # Number of processors (cores) to be used by ORCA and/or Gaussian
 
 MEM_GB = 1

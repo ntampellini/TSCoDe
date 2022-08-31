@@ -88,3 +88,10 @@
 - Solved Profiler bug (adapted to new Embedder architecture)
 - Added logging for the exit status on any call to optimize(...) (supporting FF calculations too)
 - Added the tscode_procs option for embedder.options, to run python code in parallel (for now just csearch_aug implemented)
+
+## 0.3.0 (Aug 31 2022)
+- Fixed run> operator bug (leftover refine> references)
+- Implemented a fast, preliminary torsion fingerprint deviation-based similarity pruning (prune_confs_tfd, faster than prune_confs_rmsd) for similarity_refining
+- Added this TFD pruning in the most_diverse_conformers function (this is fast enough, RMSD-based was not) and at the end of clustered_csearch and csearch_aug as well
+- Refined distance constraining for XTB optimizations as well, guided by the target length. More accurate distances, so more accurate energies for constrained structures. Also less work for the final refinement step.
+- Implemented wider compatibility for internal constraints - intramolecular distances that have to be respected (so that csearch is aware of them) and even enforced to a specfic distance (with DIST)

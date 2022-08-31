@@ -29,7 +29,7 @@ from tscode.calculators._gaussian import gaussian_opt
 from tscode.calculators._mopac import mopac_opt
 from tscode.calculators._orca import orca_opt
 from tscode.calculators._xtb import xtb_opt
-from tscode.python_functions import prune_conformers
+from tscode.python_functions import prune_conformers_rmsd
 from tscode.settings import DEFAULT_LEVELS, FF_CALC
 from tscode.utils import (loadbar, molecule_check, pt, scramble_check,
                           time_to_string, write_xyz)
@@ -65,10 +65,14 @@ def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None
     :return not_scrambled: bool, indicating if the optimization shifted up some bonds (except the constrained ones)
     '''
     if mols_graphs is not None:
-        assert len(coords) == sum([len(graph.nodes) for graph in mols_graphs])
+        l = [len(graph.nodes) for graph in mols_graphs]
+        assert len(coords) == sum(l), f'{len(coords)} coordinates are specified but graphs have {l} = {sum(l)} nodes'
 
     if method is None:
         method = DEFAULT_LEVELS[calculator]
+
+    if constrained_distances is not None:
+        assert len(constrained_distances) == len(constrained_indexes), f'len(cd) = {len(constrained_distances)} != len(ci) = {len(constrained_indexes)}'
 
     constrained_indexes = np.array(()) if constrained_indexes is None else constrained_indexes
 
@@ -587,12 +591,12 @@ def fitness_check(embedder, coords) -> bool:
                     return False
 
             else:
-                if dist < 2.5:
+                if dist > 2.5:
                     return False
                     
     return True
 
-def _refine_structures(structures, atomnos, calculator, method, procs, loadstring='', logfunction=None):
+def _refine_structures(structures, atomnos, calculator, method, procs, solvent=None, loadstring='', logfunction=None):
     '''
     Refine a set of structures - optimize them and remove similar
     ones and high energy ones (>20 kcal/mol above lowest)
@@ -602,7 +606,7 @@ def _refine_structures(structures, atomnos, calculator, method, procs, loadstrin
 
         loadbar(i, len(structures), f'{loadstring} {i+1}/{len(structures)} ')
 
-        opt_coords, energy, success = optimize(conformer, atomnos, calculator, method=method, procs=procs, title=f'Structure_{i+1}', logfunction=logfunction)
+        opt_coords, energy, success = optimize(conformer, atomnos, calculator, method=method, procs=procs, solvent=solvent, title=f'Structure_{i+1}', logfunction=logfunction)
 
         if success:
             structures[i] = opt_coords
@@ -614,7 +618,7 @@ def _refine_structures(structures, atomnos, calculator, method, procs, loadstrin
     energies = np.array(energies)
 
     # remove similar ones
-    structures, mask = prune_conformers(structures, atomnos)
+    structures, mask = prune_conformers_rmsd(structures, atomnos)
     energies = energies[mask]
 
     # remove high energy ones

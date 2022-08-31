@@ -175,7 +175,7 @@ def run_setup():
 
     ff = f'{FF_CALC}/{DEFAULT_FF_LEVELS[FF_CALC]}' if FF_OPT_BOOL else 'Turned off'
     opt = f'{CALCULATOR}/{DEFAULT_LEVELS[CALCULATOR]}'
-    s = f'  FF    : {ff}\n  OPT   : {opt}\n PROCS  :{PROCS}'
+    s = f'  FF    : {ff}\n  OPT   : {opt}\n  PROCS : {PROCS}'
 
     if CALCULATOR == 'GAUSSIAN':
         s += f'\n  MEM   : {MEM_GB} GB'

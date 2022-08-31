@@ -18,10 +18,10 @@ GNU General Public License for more details.
 
 import networkx as nx
 import numpy as np
-from numba import njit
+from numba import njit, float32, prange
 from rmsd import kabsch_rotate
 
-from tscode.algebra import all_dists
+from tscode.algebra import all_dists, dihedral
 
 # These functions are here to facilitate eventual porting to
 # faster precompiled versions of themselves (Cython/C++/Julia/...)
@@ -147,7 +147,7 @@ def fast_score(coords, close=1.3, far=3):
     close_contacts = dist_mat[dist_mat < far]
     return np.sum(close_contacts/(close-far) - far/(close-far))
 
-def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None, verbose=False):
+def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.5, max_delta=None, verbose=False):
     '''
     Removes similar structures by repeatedly grouping them into k
     subgroups and removing similar ones. A cache is present to avoid
@@ -184,7 +184,7 @@ def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None, verbose=
                 if step == k-1:
                     l = len(range(d*step, num_active_str))
                 else:
-                    l = len(range(d*step, d*(step+1)))
+                    l = len(range(d*step, int(d*(step+1))))
 
                 similarity_mat = np.zeros((l, l))
 
@@ -234,3 +234,128 @@ def prune_conformers(structures, atomnos, max_rmsd=0.5, max_delta=None, verbose=
                     final_mask[abs_index] = 0
 
     return structures[final_mask], final_mask
+
+def prune_conformers_tfd(structures, quadruplets, thresh=10, verbose=False):
+    '''
+    Removes similar structures by repeatedly grouping them into k
+    subgroups and removing similar ones. A cache is present to avoid
+    repeating TFD computations.
+    
+    Similarity occurs for structures with a total angle difference
+    greater than thresh degrees
+    '''
+
+    # Get torsion fingerprints for structures
+    tf_mat = _get_tf_mat(structures, quadruplets)
+
+    cache_set = set()
+    final_mask = np.ones(structures.shape[0], dtype=bool)
+    
+    for k in (5e5,  2e5,  1e5,  5e4, 2e4, 1e4,
+              5000, 2000, 1000, 500, 200, 100,
+              50,   20,   10,   5,   2,   1):
+
+        num_active_str = np.count_nonzero(final_mask)
+        
+        if k == 1 or 5*k < num_active_str:
+        # proceed only of there are at least five structures per group
+
+            if verbose:      
+                print(f'Working on subgroups with k={k} ({num_active_str} candidates left) {" "*10}', end='\r')
+
+            d = int(len(structures) // k)
+
+            for step in range(int(k)):
+            # operating on each of the k subdivisions of the array
+                if step == k-1:
+                    l = len(range(d*step, num_active_str))
+                else:
+                    l = len(range(d*step, int(d*(step+1))))
+
+                similarity_mat = np.zeros((l, l))
+
+                for i_rel in range(l):
+                    for j_rel in range(i_rel+1,l):
+
+                        i_abs = i_rel+(d*step)
+                        j_abs = j_rel+(d*step)
+
+                        if (i_abs, j_abs) not in cache_set:
+                        # if we have already performed the comparison,
+                        # structures were not similar and we can skip them
+
+                            if tfd_similarity(tf_mat[i_abs],
+                                              tf_mat[j_abs],
+                                              thresh=thresh):
+
+                                similarity_mat[i_rel,j_rel] = 1
+                                break
+
+                for i_rel, j_rel in zip(*np.where(similarity_mat == False)):
+                    i_abs = i_rel+(d*step)
+                    j_abs = j_rel+(d*step)
+                    cache_set.add((i_abs, j_abs))
+                    # adding indexes of structures that are considered equal,
+                    # so as not to repeat computing their TFD
+                    # Their index accounts for their position in the initial
+                    # array (absolute index)
+
+                matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
+                g = nx.Graph(matches)
+
+                subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+                groups = [tuple(graph.nodes) for graph in subgraphs]
+
+                best_of_cluster = [sorted(group, key=lambda i: fast_score(structures[i]))[0] for group in groups]
+                # of each cluster, keep the structure that looks the best
+
+                rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+                rejects = []
+                for s in rejects_sets:
+                    for i in s:
+                        rejects.append(i)
+
+                for i in rejects:
+                    abs_index = i + d*step
+                    final_mask[abs_index] = 0
+
+    return structures[final_mask], final_mask
+
+@njit(parallel=True)
+def _get_tf_mat(structures, quadruplets):
+    '''
+    '''
+    tf_mat = np.empty(shape=(len(structures), len(quadruplets)), dtype=float32)
+
+    for i in prange(len(structures)):
+        tf_mat[i] = get_torsion_fingerprint(structures[i], quadruplets)
+
+    return tf_mat
+
+@njit
+def tfd_similarity(tfp1, tfp2, thresh=10) -> bool:
+    '''
+    Return True if the two structure are similar under the torsion fingeprint criteria.
+    '''
+
+    # Compute their absolute difference
+    deltas = np.abs(tfp1 - tfp2)
+
+    # Correct for rotations over 180 deg
+    deltas = np.abs(deltas - (deltas > 180) * 360)
+
+    if np.sum(deltas) < thresh:
+        return True
+
+    return False
+
+@njit
+def get_torsion_fingerprint(coords, quadruplets):
+    out = np.zeros(quadruplets.shape[0], dtype=float32)
+    for i, q in enumerate(quadruplets):
+        i1, i2, i3, i4 = q
+        out[i] = dihedral([coords[i1],
+                           coords[i2],
+                           coords[i3],
+                           coords[i4]])
+    return out

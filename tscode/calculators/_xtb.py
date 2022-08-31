@@ -23,8 +23,9 @@ from tscode.algebra import norm, norm_of
 from tscode.utils import clean_directory, read_xyz, write_xyz
 
 
-def xtb_opt(coords, atomnos, constrained_indexes=None, constrained_distances=None, method='GFN2-xTB',
-            solvent=None, charge=0, title='temp', read_output=True, procs=None, **kwargs):
+def xtb_opt(coords, atomnos, constrained_indexes=None,
+            constrained_distances=None, method='GFN2-xTB', solvent=None,
+            charge=0, title='temp', read_output=True, procs=None, **kwargs):
     '''
     This function writes an XTB .inp file, runs it with the subprocess
     module and reads its output.
@@ -32,7 +33,7 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, constrained_distances=Non
     coords: array of shape (n,3) with cartesian coordinates for atoms.
     atomnos: array of atomic numbers for atoms.
     constrained_indexes: array of shape (n,2), with the indexes
-                                 of atomic pairs to be constrained.
+                         of atomic pairs to be constrained.
     method: string, specifiyng the theory level to be used.
     title: string, used as a file name and job title for the mopac input file.
     read_output: Whether to read the output file and return anything.
@@ -41,9 +42,26 @@ def xtb_opt(coords, atomnos, constrained_indexes=None, constrained_distances=Non
 
     if constrained_distances is not None:
         for target_d, (a, b) in zip(constrained_distances, constrained_indexes):
-            delta = target_d - norm_of(coords[b] - coords[a])
-            if delta < 0.5:
-                coords[b] += norm(coords[b] - coords[a]) * delta
+            d = norm_of(coords[b] - coords[a])
+            delta = d - target_d
+
+            if abs(delta) > 0.2:
+                sign = (d > target_d)
+                recursive_c_d = [d + 0.2 * sign for d in constrained_distances]
+
+                coords, _, _ = xtb_opt(
+                                        coords,
+                                        atomnos,
+                                        constrained_indexes,
+                                        constrained_distances=recursive_c_d,
+                                        method=method,
+                                        title=title,
+                                        **kwargs,
+                                    )
+
+            d = norm_of(coords[b] - coords[a])
+            delta = d - target_d
+            coords[b] -= norm(coords[b] - coords[a]) * delta
 
 
     with open(f'{title}.xyz', 'w') as f:

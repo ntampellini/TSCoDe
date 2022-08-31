@@ -229,6 +229,24 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
     springs = [Spring(indexes[0], indexes[1], dist) for indexes, dist in embedder.target_distances.items()]
     # adding springs to adjust the pairings for which we have target distances
 
+    # if there are no springs, it is faster (and equivalent) to just do a classical full opitimization
+    if not springs:
+        from tscode.optimization_methods import optimize
+        return optimize(
+                        structure,
+                        atomnos,
+                        embedder.options.calculator,
+                        method=embedder.options.theory_level,
+                        mols_graphs=embedder.graphs if embedder.embed != 'monomolecular' else None,
+                        procs=embedder.options.procs,
+                        solvent=embedder.options.solvent,
+                        max_newbonds=embedder.options.max_newbonds,
+                        check=(embedder.embed != 'run'),
+
+                        logfunction=lambda s: embedder.log(s, p=False),
+                        title=f'Candidate_{title}'
+                    )
+
     nci_indexes = [indexes for letter, indexes in embedder.pairings_table.items() if letter in ('x', 'y', 'z')]
     halfsprings = [HalfSpring(i1, i2, 2.5) for i1, i2 in nci_indexes]
     # HalfSprings get atoms involved in NCIs together if they are more than 2.5A apart,
@@ -253,7 +271,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
                 spring.tighten()
             atoms.set_constraint(springs)
             # Tightening Springs to improve
-            # spacings accuracy
+            # spacings accuracy, removing PSC
 
             opt.run(fmax=0.05, steps=200)
             # final accurate refinement
@@ -264,8 +282,13 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
         new_structure = atoms.get_positions()
 
         success = scramble_check(new_structure, atomnos, constrained_indexes, embedder.graphs)
-        exit_str = 'REFINED' if success else 'SCRAMBLED'
-
+        if iterations == 200:
+            exit_str = 'MAX ITER'            
+        elif success:
+            exit_str = 'REFINED'
+        else:
+            exit_str = 'SCRAMBLED'
+        
     except PropertyNotImplementedError:
         exit_str = 'CRASHED'
 

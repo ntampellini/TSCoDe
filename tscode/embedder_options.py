@@ -260,9 +260,9 @@ class OptionSetter:
         if self.keywords_simple:
             embedder.log('--> Parsed keywords are:\n    ' + ' '.join(self.keywords_simple) + '\n')
 
-    def refine(self, options, *args):
+    def run(self, options, *args):
         if len(self.embedder.objects) > 1:
-            raise SystemExit(('REFINE keyword can only be used with one multimolecular file per run, '
+            raise SystemExit(('RUN keyword can only be used with one multimolecular file per run, '
                              f'in .xyz format. ({len(self.embedder.objects)} files found in input)'))
 
         options.noembed = True
@@ -273,6 +273,8 @@ class OptionSetter:
                              f'in .xyz format. ({len(self.embedder.objects)} files found in input)'))
 
         from tscode.embeds import _get_monomolecular_reactive_indexes
+        from tscode.graph_manipulations import get_sum_graph
+        from tscode.utils import graphize
 
         self.embedder.structures = self.embedder.objects[0].atomcoords
         self.embedder.atomnos = self.embedder.objects[0].atomnos
@@ -280,6 +282,7 @@ class OptionSetter:
         self.embedder.ids = None
         self.embedder.energies = np.array([0 for _ in self.embedder.structures])
         self.embedder.exit_status = np.ones(self.embedder.structures.shape[0], dtype=bool)
+        self.embedder.embed_graph = get_sum_graph([graphize(self.embedder.structures[0], self.embedder.atomnos)], self.embedder.constrained_indexes[0])
 
         if self.embedder.options.rmsd is None:
             # set this only if user did not already specify a value
@@ -474,7 +477,7 @@ class OptionSetter:
 
         raise SyntaxError(f'{molname} must be present in the molecule lines, along the pka> operator')
 
-    def nocsearch(self, options, **args):
+    def nocsearch(self, options, *args):
         options.csearch_aug = False
 
     def set_options(self):

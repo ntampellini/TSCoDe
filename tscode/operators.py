@@ -165,6 +165,7 @@ def csearch_operator(filename, embedder, keep_hb=False, mode=1):
         conf_batch = csearch(
                                 opt_coords,
                                 data.atomnos,
+                                constrained_indexes=_get_internal_constraints(filename, embedder),
                                 keep_hb=keep_hb,
                                 mode=mode,
                                 n_out=embedder.options.max_confs,
@@ -174,9 +175,9 @@ def csearch_operator(filename, embedder, keep_hb=False, mode=1):
                             )
         # generate the most diverse conformers starting from optimized geometry
 
-        conformers.append(conf_batch)
+        conformers.extend(conf_batch)
 
-    conformers = np.array(conformers)
+    conformers = np.concatenate(conformers)
     # batch_size = conformers.shape[1]
 
     conformers = conformers.reshape(-1, data.atomnos.shape[0], 3)
@@ -211,7 +212,8 @@ def opt_operator(filename, embedder, logfunction=None):
     # load molecule to be optimized from embedder
 
     if logfunction is not None:
-        logfunction(f'--> Performing {embedder.options.calculator} {embedder.options.theory_level} optimization on {filename} ({len(mol.atomcoords)} conformers)')
+        logfunction(f'--> Performing {embedder.options.calculator} {embedder.options.theory_level}' + (
+                    f'{f"/{embedder.options.solvent}" if embedder.options.solvent is not None else ""} optimization on {filename} ({len(mol.atomcoords)} conformers)'))
                                 
     energies = []
     lowest_calc = _get_lowest_calc(embedder)
@@ -345,7 +347,7 @@ def approach_operator(filename, embedder, step=-0.05):
                                      mol.atomnos,
                                      constrained_indexes=np.array([mol.reactive_indexes]),
                                      targets=(d,),
-                                     safe=embedder.fix_angles_in_deformation,
+                                     safe=embedder.fix_angles_in_deformation if hasattr(embedder, 'fix_angles_in_deformation') else False,
                                      title=f'Step {i+1}/{max_iterations} - d={round(d, 2)} A -',
                                      logfunction=embedder.log,
                                      traj=f'{mol.title}_scanpoint_{i+1}.traj' if embedder.options.debug else None,
@@ -435,3 +437,16 @@ def _get_lowest_calc(embedder=None):
     if embedder.options.ff_opt:
         return (embedder.options.ff_calc, embedder.options.ff_level, embedder.options.procs)
     return (embedder.options.calculator, embedder.options.theory_level, embedder.options.procs)
+
+def _get_internal_constraints(filename, embedder):
+    '''
+    '''
+    mol_id = next((i for i, mol in enumerate(embedder.objects) if mol.name == filename))
+    # get embedder,objects index of molecule to get internal constraints of
+
+    out = []
+    for _, tgt in embedder.pairings_dict[mol_id].items():
+        if isinstance(tgt, tuple):
+            out.append(tgt)
+
+    return np.array(out)

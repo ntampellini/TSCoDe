@@ -46,7 +46,7 @@ Here is a list of the currently available operators:
    protonated or deprotonated according to the nature of the specified index (H or not H). A free energy
    calculation of every generated ion is carried (for now, XTB calculator only) and the ionization energy is
    presented for each process. It can be run on multiple molecules to get aggregate results to compare.
-   It is possible to specify a reference pKa to get relative pKa results (see ``PKA`` operator).
+   It is possible to specify a reference pKa to get relative pKa results (see the ``PKA`` keyword).
 
 -  ``refine>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
    during a TSCoDe embedding. This means the ensemble is pruned removing similar structures, optimized
