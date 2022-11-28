@@ -178,7 +178,7 @@ def get_ase_calc(embedder):
             orcablocks += get_solvent_line(solvent, calculator, method)
 
         return ORCA(label='temp',
-                    command=f'{command} temp.inp > temp.out 2>&1',
+                    command=f'{command} temp.inp "--oversubscribe" > temp.out 2>&1',
                     orcasimpleinput=method,
                     orcablocks=orcablocks)
 
@@ -368,7 +368,7 @@ def ase_vib(embedder, coords, atomnos, logfunction=None, title='temp'):
 
     return freqs, np.count_nonzero(freqs.imag > 1e-3)
 
-def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfunction=None, write_plot=False, verbose_print=False):
+def ase_neb(embedder, reagents, products, atomnos, ts_guess=None, n_images=6, title='temp', optimizer=LBFGS, logfunction=None, write_plot=False, verbose_print=False):
     '''
     embedder: tscode embedder object
     reagents: coordinates for the atom arrangement to be used as reagents
@@ -386,12 +386,28 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
     first = Atoms(atomnos, positions=reagents)
     last = Atoms(atomnos, positions=products)
 
-    images =  [first]
-    images += [first.copy() for _ in range(n_images)]
-    images += [last]
+    if ts_guess is None:
+        images =  [first]
+        images += [first.copy() for _ in range(n_images)]
+        images += [last]
 
-    neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
-    neb.interpolate()
+        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
+        neb.interpolate(method='idpp')
+
+    else:
+        ts_guess = Atoms(atomnos, positions=ts_guess)
+
+        images_1 = [first] + [first.copy() for _ in range(round((n_images-3)/2))] + [ts_guess]
+        interp_1 = DyNEB(images_1)
+        interp_1.interpolate(method='idpp')
+
+        images_2 = [ts_guess] + [last.copy() for _ in range(n_images-len(interp_1.images)-1)] + [last]
+        interp_2 = DyNEB(images_2)
+        interp_2.interpolate(method='idpp')
+
+        images = interp_1.images + interp_2.images[1:]
+
+        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
 
     ase_dump(f'{title}_MEP_guess.xyz', images, atomnos)
 
@@ -412,27 +428,38 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
             # ignore runtime warnings from the NEB module:
             # if something went wrong, we will deal with it later
 
-            with optimizer(neb, maxstep=0.1, logfile=None if not verbose_print else '-') as opt:
+            with optimizer(neb, maxstep=0.05, logfile=None if not verbose_print else
+                                                            # 'neb_opt.log'
+                                                            '-'
+                                                            ) as opt:
+
+                if verbose_print and logfunction is not None:
+                    logfunction(f'\n--> Running NEB-CI through ASE ({embedder.options.theory_level} via {embedder.options.calculator})\n')
 
                 opt.run(fmax=0.05, steps=20)
                 # some free relaxation before starting to climb
 
                 neb.climb = True
-                opt.run(fmax=0.05, steps=500)
+                opt.run(fmax=0.01, steps=500)
                 iterations = opt.nsteps
+
+        exit_status = 'CONVERGED' if iterations < 499 else 'MAX ITER'
+        success = True if exit_status == 'converged' else False
 
     except (PropertyNotImplementedError, CalculationFailed):
         if logfunction is not None:
             logfunction(f'    - NEB for {title} CRASHED ({time_to_string(time.perf_counter()-t_start)})\n')
         return None, None, False
 
-    exit_status = 'CONVERGED' if iterations < 499 else 'MAX ITER'
+    except KeyboardInterrupt:
+        exit_status = 'ABORTED BY USER'
+        success = False
 
     if logfunction is not None:
         logfunction(f'    - NEB for {title} {exit_status} ({time_to_string(time.perf_counter()-t_start)})\n')
 
-    energies = [image.get_total_energy() * 23.06054194532933 for image in images]
-    # eV to kcal/mol
+    energies = [image.get_total_energy() * 23.06054194532933 for image in images] # eV to kcal/mol
+    
     ts_id = energies.index(max(energies))
     # print(f'TS structure is number {ts_id}, energy is {max(energies)}')
 
@@ -466,7 +493,7 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
         plt.ylabel('Rel. E. (kcal/mol)')
         plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
 
-    return images[ts_id].get_positions(), energies[ts_id], True
+    return images[ts_id].get_positions(), energies[ts_id], success
 
 class OrbitalSpring:
     '''

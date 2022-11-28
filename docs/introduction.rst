@@ -83,9 +83,9 @@ Extra features
 Over its development, the program has also become a collection of (semi)automated
 computational tools that I personally like and use with good frequency.
 
-The ``approach>`` operator automates finding a good spatial distance for a reactive
-pair of atoms, particularly useful to impose that in later embeds (see the
-:ref:`operators <op_kw>` page).
+The ``scan>`` operator automates finding a good spatial distance for a reactive
+pair of atoms, particularly useful to impose that in later embeds or get starting points
+for transition state searches (see the :ref:`operators <op_kw>` page).
 
 Atropisomers rotation transition states are a routine operation in computational 
 chemistry. Here, a convenient automation of the process is part of the monomolecular

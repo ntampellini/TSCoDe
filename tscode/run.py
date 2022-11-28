@@ -245,7 +245,10 @@ class RunEmbedding:
         if hasattr(self, 'embed_graph') and tfd:
 
             t_start = time.perf_counter()
-            self.structures, mask = prune_conformers_tfd(self.structures, _get_quadruplets(self.embed_graph), verbose=verbose)
+
+            quadruplets = _get_quadruplets(self.embed_graph)
+            if len(quadruplets) > 0:
+                self.structures, mask = prune_conformers_tfd(self.structures, quadruplets, verbose=verbose)
                 
             self.apply_mask(attr, mask)
             
@@ -658,10 +661,11 @@ class RunEmbedding:
         before = len(self.structures)
         t_start_run = time.perf_counter()
         n_out = 100 if len(self.structures)*100 < max_structs else round(max_structs/len(self.structures))
+        n_out = max((1, n_out))
 
         for s, (structure, constrained_indexes) in enumerate(zip(self.structures, self.constrained_indexes)):
 
-            loadbar(s, before, f'Performing CSearch {s+1}/{before} ')
+            loadbar(s, before, f'Performing CSearch {s+1}/{before} ', suffix=f'({len(self.structures)-before} generated)')
             t_start = time.perf_counter()
 
             if self.options.debug:
@@ -695,7 +699,7 @@ class RunEmbedding:
         
             self.log(f'   - Candidate {s+1} - {len(new_structures)} new conformers ({time_to_string(time.perf_counter()-t_start)})', p=False)
 
-        loadbar(before, before, f'Performing CSearch {before}/{before} ')
+        loadbar(before, before, f'Performing CSearch {before}/{before} ', suffix=f'{" "*15}')
         self.exit_status = np.array([True for _ in self.structures], dtype=bool)
 
         self.similarity_refining(rmsd=False)
@@ -775,7 +779,7 @@ class RunEmbedding:
 
                 min_e = np.min(self.energies)
 
-                csearch_func(text=f'(step {i+1}/3)')
+                csearch_func(text=f'(step {i+1}/3)', max_structs=self.options.max_confs)
                 self.force_field_refining()
 
                 if np.min(self.energies) < min_e:
@@ -1339,8 +1343,8 @@ class RunEmbedding:
         if any('pka>' in op for op in self.options.operators):
             self.pka_termination()
 
-        if len('approach>' in op for op in self.options.operators) > 1:
-            self.approach_termination()
+        if len(['scan>' in op for op in self.options.operators]) > 1:
+            self.scan_termination()
 
         self.normal_termination()
 
@@ -1400,7 +1404,7 @@ class RunEmbedding:
                     self.log(f'\n    HA + B -> BH+ + A-    K({solv}, 298.15 K) = {round(np.exp(-dG/(1.9872036e-3 * 298.15)), 3)}')
                     self.log(f'\n                         dG({solv}, 298.15 K) = {round(-dG, 3)} kcal/mol')
 
-    def approach_termination(self):
+    def scan_termination(self):
         '''
         Print the unified data and write the cumulative plot
         for the approach of all the molecules in input
@@ -1412,8 +1416,8 @@ class RunEmbedding:
         fig = plt.figure()
 
         for mol in self.objects:
-            if hasattr(mol, 'approach_data'):
-                plt.plot(*mol.approach_data, label=mol.rootname)
+            if hasattr(mol, 'scan_data'):
+                plt.plot(*mol.scan_data, label=mol.rootname)
 
         plt.legend()
         plt.title('Unified scan energetics')

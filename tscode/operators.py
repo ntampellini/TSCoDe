@@ -28,7 +28,7 @@ from tscode.clustered_csearch import csearch
 from tscode.errors import InputError
 from tscode.graph_manipulations import graphize
 from tscode.hypermolecule_class import align_structures
-from tscode.optimization_methods import _refine_structures
+from tscode.optimization_methods import _refine_structures, optimize
 from tscode.pka import pka_routine
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
@@ -70,8 +70,8 @@ def operate(input_string, embedder):
     elif 'rsearch>' in input_string:
         outname = csearch_operator(filename, embedder, mode=2)
   
-    elif 'approach>' in input_string:
-        approach_operator(filename, embedder)
+    elif 'scan>' in input_string:
+        scan_operator(filename, embedder)
         outname = filename
 
     elif 'neb>' in input_string:
@@ -256,30 +256,76 @@ def neb_operator(filename, embedder):
     '''
     embedder.t_start_run = time.perf_counter()
     data = read_xyz(filename)
-    assert len(data.atomcoords) == 2, 'NEB calculations need a .xyz input file with two geometries.'
+    n_str = len(data.atomcoords)
+    assert (n_str in (2, 3) or n_str % 2 == 1), 'NEB calculations need a .xyz input file with two, three or an odd number of geometries.'
+
+    if n_str == 2:
+        reagents, products = data.atomcoords
+        ts_guess = None
+        embedder.log('--> Two structures as input: using them as start and end points.')
+
+    elif n_str == 3:
+        reagents, ts_guess, products = data.atomcoords
+        embedder.log('--> Three structures as input: using them as start, TS guess and end points.')
+
+    else:
+        reagents, *_, products = data.atomcoords
+        ts_guess = data.atomcoords[n_str//2]
+        embedder.log(f'--> {n_str} structures as input: using first, middle and last as start, TS guess and end points.')
 
     from tscode.ase_manipulations import ase_neb, ase_popt 
 
-    reagents, products = data.atomcoords
     title = filename[:-4] + '_NEB'
 
-    embedder.log(f'--> Performing a NEB TS optimization. Using start and end points from {filename}\n'
-               f'Theory level is {embedder.options.theory_level} via {embedder.options.calculator}')
+    if embedder.options.neb.preopt:
 
-    print('Getting start point energy...', end='\r')
-    _, reag_energy, _ = ase_popt(embedder, reagents, data.atomnos, steps=0)
+        embedder.log(f'--> Performing NEB TS optimization. Preoptimizing structures from {filename}\n'
+                     f'Theory level is {embedder.options.theory_level} via {embedder.options.calculator}')
 
-    print('Getting end point energy...', end='\r')
-    _, prod_energy, _ = ase_popt(embedder, products, data.atomnos, steps=0)
-
-    ts_coords, ts_energy, _ = ase_neb(embedder,
+        reagents, reag_energy, _ = optimize(
                                             reagents,
-                                            products,
-                                            data.atomnos, 
-                                            title=title,
+                                            data.atomnos,
+                                            embedder.options.calculator,
+                                            method=embedder.options.theory_level,
+                                            procs=embedder.options.procs,
+                                            solvent=embedder.options.solvent,
+                                            title=f'reagents',
                                             logfunction=embedder.log,
-                                            write_plot=True,
-                                            verbose_print=True)
+                                            )
+
+        products, prod_energy, _ = optimize(
+                                            products,
+                                            data.atomnos,
+                                            embedder.options.calculator,
+                                            method=embedder.options.theory_level,
+                                            procs=embedder.options.procs,
+                                            solvent=embedder.options.solvent,
+                                            title=f'products',
+                                            logfunction=embedder.log,
+                                            )
+
+    else:
+        embedder.log(f'--> Performing NEB TS optimization. Structures from {filename}\n'
+                     f'Theory level is {embedder.options.theory_level} via {embedder.options.calculator}')
+
+        print('Getting start point energy...', end='\r')
+        _, reag_energy, _ = ase_popt(embedder, reagents, data.atomnos, steps=0)
+
+        print('Getting end point energy...', end='\r')
+        _, prod_energy, _ = ase_popt(embedder, products, data.atomnos, steps=0)
+
+    ts_coords, ts_energy, _ = ase_neb(
+                                        embedder,
+                                        reagents,
+                                        products,
+                                        data.atomnos,
+                                        n_images=embedder.options.neb.images,
+                                        ts_guess= ts_guess,
+                                        title=title,
+                                        logfunction=embedder.log,
+                                        write_plot=True,
+                                        verbose_print=True
+                                    )
 
     e1 = ts_energy - reag_energy
     e2 = ts_energy - prod_energy
@@ -291,13 +337,13 @@ def neb_operator(filename, embedder):
     if not (e1 > 0 and e2 > 0):
         embedder.log(f'\nNEB failed, TS energy is lower than both the start and end points.\n')
 
-    with open('Me_CONMe2_Mal_tetr_int_NEB_NEB_TS.xyz', 'w') as f:
+    with open(f'{title}_TS.xyz', 'w') as f:
         write_xyz(ts_coords, data.atomnos, f, title='NEB TS - see log for relative energies')
 
-def approach_operator(filename, embedder, step=-0.05):
+def scan_operator(filename, embedder):
     '''
-    Thought to approach two reactive atoms, looking for the energy maximum
-    Step is the magnitude of the atomic displacement for each constrained opt step 
+    Thought to approach or separate two reactive atoms, looking for the energy maximum.
+    Scan direction is inferred by the reactive index distance.
     '''
     embedder.t_start_run = time.perf_counter()
     mol_index, mol = next(((i, mol) for i, mol in enumerate(embedder.objects) if mol.name == filename))
@@ -314,31 +360,42 @@ def approach_operator(filename, embedder, step=-0.05):
 
     t_start = time.perf_counter()
 
+    # shorthands for clearer code
     i1, i2 = mol.reactive_indexes
     coords = mol.atomcoords[0]
-    # shorthands for clearer code
 
-    embedder.log(f'--> {mol.rootname} - Performing a distance scan approaching indexes {i1} ' +
-                 f'and {i2}\n    Theory level is {embedder.options.theory_level} ' +
+    # getting the start distance between scan indexes and start energy
+    d = norm_of(coords[i1]-coords[i2])
+
+    # deciding if moving atoms closer or further apart based on distance
+    bonds = list(graphize(coords, mol.atomnos).edges)
+    step = 0.05 if (i1, i2) in bonds else -0.05
+
+    # logging to file and terminal
+    embedder.log(f'--> {mol.rootname} - Performing a distance scan {"approaching" if step < 0 else "separating"} indexes {i1} ' +
+                 f'and {i2} - step size {round(step, 2)} A\n    Theory level is {embedder.options.theory_level} ' +
                  f'via {embedder.options.calculator}')
 
-    d = norm_of(coords[i1]-coords[i2])
-    # getting the start distance between scan indexes and start energy
-
-    dists, energies, structures = [], [], []
     # creating a dictionary that will hold results
     # and the structure output list
+    dists, energies, structures = [], [], []
 
-    # step = -0.05
-    # defining the step magnitude, in Angstroms
-
+    # getting atomic symbols
     s1, s2 = mol.atomnos[[i1, i2]]
-    smallest_d = 0.8*(pt[s1].covalent_radius+
-                      pt[s2].covalent_radius)
-    max_iterations = round((d-smallest_d) / abs(step))
-    # defining the maximum number of iterations,
-    # so that atoms are never forced closer than
-    # a proportionally small distance between those two atoms.
+
+    # defining the maximum number of iterations
+    if step < 0:
+        smallest_d = 0.8*(pt[s1].covalent_radius+
+                        pt[s2].covalent_radius)
+        max_iterations = round((d-smallest_d) / abs(step))
+        # so that atoms are never forced closer than
+        # a proportionally small distance between those two atoms.
+
+    else:
+        max_d = 2*(pt[s1].covalent_radius+
+                   pt[s2].covalent_radius)
+        max_iterations = round((max_d-d) / abs(step))
+        # so that atoms are never spaced too far apart
 
     for i in range(max_iterations):
 
@@ -421,7 +478,7 @@ def approach_operator(filename, embedder, step=-0.05):
     embedder.log(f'\n--> Written energy maximum to {mol.name[:-4]}_scan_max.xyz\n')
 
     # Log data to the embedder class
-    embedder.objects[mol_index].approach_data = (dists, energies)
+    embedder.objects[mol_index].scan_data = (dists, energies)
 
 def _get_lowest_calc(embedder=None):
     '''

@@ -138,34 +138,37 @@ class Embedder:
         Write banner to log file, containing program and run info
         '''
         banner = '''
-             ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-            ╱───────────────────────────────────╲
-           ╱▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒╲
-       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒
-    ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ 
-   ▒░████████╗░██████╗░█████╗░░█████╗░██████╗░███████╗░░░▒
-   ▒░╚══██╔══╝██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝░░░▒ 
-   ▒░░░░██║░░░╚█████╗░██║░░╚═╝██║░░██║██║░░██║█████╗░░░░░▒  
-   ▒░░░░██║░░░░╚═══██╗██║░░██╗██║░░██║██║░░██║██╔══╝░░░░░▒   
-    ▒░░░██║░░░██████╔╝╚█████╔╝╚█████╔╝██████╔╝███████╗░░░▒    
-   ╱ ▒░░╚═╝░░░╚═════╝░░╚════╝░░╚════╝░╚═════╝░╚══════╝░░▒ ╲
-  ╱   ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒   ╲
- ╱    ▒░░╔══════════════════════════════════════════╗░░▒    ╲
- ╲╲    ▒░║  Transition State Conformational Docker  ║░▒    ╱╱   
-  ╲╲   ▒░║        nicolo.tampellini@yale.edu        ║░▒   ╱╱    
-   ╲╲  ▒░║                                          ║░▒  ╱╱         
-    ╲╲ ▒░║     Version    >{0:^25}║░▒ ╱╱                                     
-     ╲╲▒░║      User      >{1:^25}║░▒╱╱                                       
-      ╲▒░║      Host      >{2:^25}║░▒╱                                                     
-       ▒░║      Time      >{3:^25}║░▒                 
-       ▒░╚══════════════════════════════════════════╝░▒                     
-        ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒                             
-          ╲╲ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╱╱
-           ╲╲▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╱╱                                        
+       +   .     ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ .     .    
+    *    .   .. ╱────────────────────────────────────╲   *     .  
+ .     ..   +  ╱▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╲ .   .   +  
+   +       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ . ..   .  
+     .  ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒  .   *  
+       ▒░████████╗░██████╗░█████╗░░█████╗░██████╗░███████╗░░░▒  .  .  
+   +   ▒░╚══██╔══╝██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝░░░▒   ..  
+ ..  . ▒░░░░██║░░░╚█████╗░██║░░╚═╝██║░░██║██║░░██║█████╗░░░░░▒ *    +   
+   .   ▒░░░░██║░░░░╚═══██╗██║░░██╗██║░░██║██║░░██║██╔══╝░░░░░▒   .   .
+.       ▒░░░██║░░░██████╔╝╚█████╔╝╚█████╔╝██████╔╝███████╗░░░▒ ..   +   
+ *  .  ╱ ▒░░╚═╝░░░╚═════╝░░╚════╝░░╚════╝░╚═════╝░╚══════╝░░▒ ╲ .  ..  
+  ..  ╱   ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒   ╲   .   
+.    ╱    ▒░░╔══════════════════════════════════════════╗░░▒    ╲ +    
+    ╱      ▒░║  Transition State Conformational Docker  ║░▒      ╲ ..  
+ +  ╲╲     ▒░║        nicolo.tampellini@yale.edu        ║░▒     ╱╱    .  
+     ╲╲    ▒░║                                          ║░▒    ╱╱  .       
+ ..   ╲╲   ▒░║     Version    >{0:^25}║░▒   ╱╱ .  *                                    
+   .   ╲╲  ▒░║      User      >{1:^25}║░▒  ╱╱   .                                     
+        ╲╲ ▒░║      Host      >{2:^25}║░▒ ╱╱ *   .                                                      
+ ..   *  ╲╲▒░║      Time      >{3:^25}║░▒╱╱   ..            
+    .     ╲▒░║    Processors  >{4:^25}║░▒╱  +              
+      .    ▒░║                                          ║░▒ .   ..                            
+  +  .. .  ▒░╚══════════════════════════════════════════╝░▒  .. .   
+    .       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒     .     
+ .     *  +   ╲╲ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╱╱  .      .
+     .      .  ╲╲▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╱╱ .   .    
            '''.format(__version__,
                       getpass.getuser(),
                       socket.gethostname(),
-                      time.ctime()[0:-8])
+                      time.ctime()[0:-8],
+                      PROCS)
 
         # ⏣█▓▒░ banner art adapted from https://fsymbols.com/generators/tarty/
 
@@ -187,7 +190,7 @@ class Embedder:
         def _remove_internal_constraints(string):
             numbers = [int(re.sub('[^0-9]', '', i)) for i in string]
             letters = [re.sub('[^a-z]', '', i) for i in string]
-            count = [letters.count(l) for l in letters]
+            count = [letters.count(l) if (l != '') else 1 for l in letters]
             return tuple([n for n, c in zip(numbers, count) if c == 1])
 
         try:
@@ -512,10 +515,10 @@ class Embedder:
         '''
 
         if any('pka>'      in op for op in self.options.operators) or (
-           any('approach>' in op for op in self.options.operators)
+           any('scan>' in op for op in self.options.operators)
         ):
             self.embed = 'data'
-            # If a pka or approach operator is requested, the embed is skipped
+            # If a pka or scan operator is requested, the embed is skipped
             # and data is shown instead
             return
 
@@ -730,7 +733,7 @@ class Embedder:
             operator = input_string.split('>')[0]
 
             # these operators do not need molecule substitution
-            if operator not in ('run', 'pka', 'approach'):
+            if operator not in ('run', 'pka', 'scan'):
 
                 names = [mol.name for mol in self.objects]
                 filename = self._extract_filename(input_string)

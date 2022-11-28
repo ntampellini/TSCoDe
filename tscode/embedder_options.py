@@ -136,6 +136,10 @@ keywords_list = [
             'TSCODEPROCS',      # Change the number of max python parallel processes (default is 4)
 ]
 
+class Truthy_struct:
+    def __bool__(self):
+        return True
+
 class Options:
 
     rotation_range = 90
@@ -362,7 +366,24 @@ class OptionSetter:
         options.max_newbonds = int(kw.split('=')[1])
 
     def neb(self, options, *args):
-        options.neb = True
+        options.neb = Truthy_struct()
+        options.neb.images = 6
+        options.neb.preopt = False
+
+        kw = self.keywords_simple[self.keywords.index('NEB')]
+        neb_options_string = kw[4:-1].lower().replace(' ','')
+        # neb_options_string now looks like 'images=8,preopt=true' or ''
+
+        for piece in neb_options_string.split(','):
+            s = piece.split('=')
+            if s[0].lower() == 'images':
+                options.neb.images = int(s[1])
+            elif s[0].lower() == 'preopt':
+                if s[1].lower() == 'true':
+                    options.neb.preopt = True
+            else:
+                raise SyntaxError((f'Syntax error in NEB keyword -> NEB({neb_options_string}).' +
+                                    'Correct syntax looks like: NEB(images=8,preopt=true)'))
 
     def level(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('LEVEL')]

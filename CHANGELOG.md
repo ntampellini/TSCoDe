@@ -95,3 +95,11 @@
 - Added this TFD pruning in the most_diverse_conformers function (this is fast enough, RMSD-based was not) and at the end of clustered_csearch and csearch_aug as well
 - Refined distance constraining for XTB optimizations as well, guided by the target length. More accurate distances, so more accurate energies for constrained structures. Also less work for the final refinement step.
 - Implemented wider compatibility for internal constraints - intramolecular distances that have to be respected (so that csearch is aware of them) and even enforced to a specfic distance (with DIST)
+
+## 0.3.1 (Nov 27 2022)
+- Fixed TFD pruning bug for embeds with no rotable bonds.
+- approach> operator is now called scan> and automatically infers the scan direction (approaching or separating the atoms based on their distance).
+- Fixed bug in specifying indexes without letters (in _remove_internal_constraints)
+- Minor bug fixes
+- Added flexibility in NEB keyword, allowing optimization of start/end points and specifying the number of images (NEB keyword)
+- NEB calculations now support two, three or a greater odd number of structures as input, to facilitate computational refinement of MEPs

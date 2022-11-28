@@ -84,7 +84,10 @@ if __name__ == '__main__':
         from tscode.profiler import profiled_wrapper
         profiled_wrapper(filename, args.name)
         quit()
-    import faulthandler; faulthandler.enable()
+
+    # import faulthandler
+    # faulthandler.enable()
+
     embedder = Embedder(filename, stamp=args.name)
     # initialize embedder from input file
 

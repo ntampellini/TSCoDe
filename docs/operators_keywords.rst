@@ -12,11 +12,11 @@ fed to TSCoDe embeddings, or modify the behavior of the program to
 use some of its functionalities, without running a full embedding.
 Here is a list of the currently available operators:
 
--  ``approach>`` - Performs an approach of the two 
-   atoms specified, looking for the energy maximum during this scan. Thought to give
+-  ``scan>`` - Performs an distance scan of the two atoms specified (approaching or separating them),
+   looking for the energy maximum during this scan. Thought to give
    transition-state like structures for monomolecular reactions, or give an idea of 
    the reactive atoms distance in the TS before running a complete embed (see DIST keyword).
-   Can be run on multiple molecules to get aggregate results to compare. Syntax: ``approach> mol.xyz 0 1``
+   Can be run on multiple molecules to get aggregate results to compare. Syntax: ``scan> mol.xyz 0 1``
 
 -  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational
    search through TSCoDe. Then, an appropriate amount of the most diverse
@@ -133,10 +133,10 @@ one is accepted, like in ``DIST``.
    White spaces, if needed, can be expressed with underscores. Be careful
    to use the syntax of your calculator, as ORCA requires a space between method
    and basis set, while Gaussian a forward slash. Syntax (ORCA):
-   ``LEVEL(B3LYP_def2-TZVP)``. Standard values can be modified by running the
+   ``LEVEL=B3LYP_def2-TZVP``. Standard values can be modified by running the
    module with the -s flag (recommended way, run >>>python -m tscode -s)
-   or by manually modifying ``settings.py`` (not recommended).
-   .. Here ( should be written as [ in input, or it will crash (fix for Andre)
+   or by manually modifying ``settings.py``.
+   .. Here ( should be written as [ in input, or it will crash (temporary fix?)
 
 -  **MTD** - Augments the conformational sampling of transition
    state candidates through the `XTB metadynamics

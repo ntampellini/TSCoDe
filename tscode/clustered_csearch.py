@@ -338,31 +338,31 @@ def _get_torsions(graph, hydrogen_bonds, double_bonds):
 
     return torsions
 
-def _group_torsions_kmeans(coords, torsions, max_size=5):
-    '''
-    '''
-    torsions_indexes = [t.torsion for t in torsions]
-    # get torsion indexes
+# def _group_torsions_kmeans(coords, torsions, max_size=5):
+#     '''
+#     '''
+#     torsions_indexes = [t.torsion for t in torsions]
+#     # get torsion indexes
 
-    torsions_centers = np.array([np.mean((coords[i2],coords[i3]), axis=0) for _, i2, i3, _ in torsions_indexes])
-    # compute spatial distance
+#     torsions_centers = np.array([np.mean((coords[i2],coords[i3]), axis=0) for _, i2, i3, _ in torsions_indexes])
+#     # compute spatial distance
 
-    l = len(torsions)
-    for n in range((l//max_size)+1, l+1):
-        kmeans = KMeans(n_clusters=n)
-        kmeans.fit(torsions_centers)
+#     l = len(torsions)
+#     for n in range((l//max_size)+1, l+1):
+#         kmeans = KMeans(n_clusters=n)
+#         kmeans.fit(torsions_centers)
 
-        output = [[] for _ in range(n)]
-        for torsion, cluster in zip(torsions, kmeans.labels_):
-            output[cluster].append(torsion)
+#         output = [[] for _ in range(n)]
+#         for torsion, cluster in zip(torsions, kmeans.labels_):
+#             output[cluster].append(torsion)
 
-        if max([len(group) for group in output]) <= max_size:
-            break
+#         if max([len(group) for group in output]) <= max_size:
+#             break
 
-    output = sorted(output, key=len)
-    # largest groups last
+#     output = sorted(output, key=len)
+#     # largest groups last
     
-    return output
+#     return output
 
 def _group_torsions_dbscan(coords, torsions, max_size=5):
     '''
@@ -507,7 +507,8 @@ def random_csearch(
 
     return new_structures
 
-def csearch(coords,
+def csearch(
+            coords,
             atomnos,
             constrained_indexes=None,
             keep_hb=False,
@@ -539,6 +540,7 @@ def csearch(coords,
     if constrained_indexes is not None and len(constrained_indexes) > 0:
         logfunction(f'Constraining {len(constrained_indexes)} distance{"s" if len(constrained_indexes) > 1 else ""} - {constrained_indexes}')
     else:
+        logfunction(f'Free conformational search: no constraints provided.')
         constrained_indexes = np.array([])
 
     graph = graphize(coords, atomnos)
@@ -639,7 +641,8 @@ def csearch(coords,
 
 ###################################################################################
 
-def clustered_csearch(coords,
+def clustered_csearch(
+                        coords,
                         atomnos,
                         torsions,
                         graph,
