@@ -45,19 +45,19 @@ setup(
     long_description_content_type='text/markdown',
 
     install_requires=[
-        'numpy',
-        'scipy',
-        'numba-scipy',
-        'cclib',
-        'periodictable',
-        'matplotlib',
-        'networkx',
-        'rmsd',
-        'ase',
+        'numpy==1.20.3',
+        'scipy==1.6.2',
+        'numba-scipy==0.3.1',
+        'cclib==1.7',
+        'periodictable==1.6.0',
+        'matplotlib==3.4.3',
+        'networkx==2.5.1',
+        'rmsd==1.4',
+        'ase==3.21.1',
         'sella',
         'sklearn',
-        'numba',
-        'prettytable'
+        'numba==0.54.0',
+        'prettytable==3.3.0'
     ],
 
     url='https://www.github.com/ntampellini/tscode',
@@ -65,5 +65,5 @@ setup(
     author_email='nicolo.tampellini@yale.edu',
 
     packages=find_packages(),
-    python_requires=">=3.8",
+    python_requires=">=3.7",
 )
