@@ -69,8 +69,8 @@ class RunEmbedding:
         d = 0
         try:
             for mol_index, mol_pairing_dict in self.pairings_dict.items():
-                if r_atom_index := mol_pairing_dict.get(letter):
-
+                r_atom_index = mol_pairing_dict.get(letter)
+                if r_atom_index:
                     # for refine embeds, one letter corresponds to two indexes
                     # on the same molecule
                     if isinstance(r_atom_index, tuple):

@@ -103,3 +103,6 @@
 - Minor bug fixes
 - Added flexibility in NEB keyword, allowing optimization of start/end points and specifying the number of images (NEB keyword)
 - NEB calculations now support two, three or a greater odd number of structures as input, to facilitate computational refinement of MEPs
+
+## 0.3.2 (Nov 29 2022)
+- Removed Walrus operators from the code for Python 3.7 compatibility

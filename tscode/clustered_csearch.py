@@ -565,7 +565,8 @@ def csearch(
     # get informations on the intra/intermolecular hydrogen
     # bonds that we should avoid disrupting
 
-    if len(fragments := list(nx.connected_components(graph))) > 1:
+    fragments = list(nx.connected_components(graph))
+    if len(fragments) > 1:
     # if the molecule graph is not made up of a single connected component
 
         s = (f'{title} has a segmented connectivity graph: double check the input geometry.\n' +
