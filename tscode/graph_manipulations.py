@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+from copy import deepcopy
 from itertools import combinations
 
 import networkx as nx
@@ -77,6 +78,11 @@ def get_sp_n(index, graph):
     - sp3 is tetraedral
     This is mainly used to understand if a torsion is to be rotated or not.
     '''
+    element = graph.nodes[index]['atomnos']
+
+    if element not in (6,7,8,15,16):
+        return None
+
     d = {
         6:{2:1, 3:2, 4:3},      # C - 2 neighbors means sp, 3 nb means sp2, 4 nb sp3
         7:{2:2, 3:3, 4:3},      # N - 2 neighbors means sp2, 3 nb means sp3, 4 nb still sp3
@@ -84,7 +90,7 @@ def get_sp_n(index, graph):
         15:{2:2, 3:3, 4:3},     # P - like N
         16:{2:2, 3:3, 4:3},     # S
     }
-    return d[graph.nodes[index]['atomnos']][len(neighbors(graph, index))]
+    return d[element].get(len(neighbors(graph, index)))
 
 def is_amide_n(index, graph, mode=-1):
     '''
@@ -274,3 +280,23 @@ def is_vicinal(mol):
                 return True
 
     return False
+
+def get_sum_graph(graphs, extra_edges):
+    '''
+    Creates a graph containing all graphs, added in 
+    sequence, and then adds the specified extra edges
+    (with cumulative numbering).
+    '''
+
+    graph, *extra = graphs
+    out = deepcopy(graph)
+
+    for g in extra:
+        n = len(out.nodes())
+        for e1, e2 in g.edges():
+            out.add_edge(e1+n, e2+n)
+
+    for e1, e2 in extra_edges:
+        out.add_edge(e1, e2)
+
+    return graph

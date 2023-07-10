@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -55,10 +55,11 @@ orb_dim_dict = {
 
 nci_dict={
     # tag in alphabetical order (i.e. 'IN' and not 'NI')
+    # maximum distance for a given non-covalent interaction
 
     # Hydrogen Bonds
-    'HO'  :(2,'O-H hydrogen bond'),
-    'HN'  :(2,'N-H hydrogen bond'),
+    'HO'  :(2.2,'O-H hydrogen bond'),
+    'HN'  :(2.2,'N-H hydrogen bond'),
 
     # Aromatics and Stacking
     'HPh' :(2.8,'H-Ar non-conventional hydrogen bond'), # taken from https://doi.org/10.1039/C1CP20404A

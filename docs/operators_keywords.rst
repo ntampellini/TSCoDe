@@ -1,4 +1,4 @@
-.. op_kw:
+.. _op_kw:
 
 Operators and keywords
 ======================
@@ -10,21 +10,26 @@ Molecule files can be preceded by *operators*, like
 ``opt> molecule.xyz``. They operate on the input file before it is
 fed to TSCoDe embeddings, or modify the behavior of the program to
 use some of its functionalities, without running a full embedding.
+Here is a list of the currently available operators:
 
--  ``opt>`` - Performs an optimization of all conformers of a molecule before
-   running TSCoDe. Generates a new ``molecule_opt.xyz`` file with the optimized
-   coordinates.
+-  ``approach>`` - Performs an approach of the two 
+   atoms specified, looking for the energy maximum during this scan. Thought to give
+   transition-state like structures for monomolecular reactions, or give an idea of 
+   the reactive atoms distance in the TS before running a complete embed (see DIST keyword).
+   Can be run on multiple molecules to get aggregate results to compare. Syntax: ``approach> mol.xyz 0 1``
 
 -  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational
    search through TSCoDe. Then, an appropriate amount of the most diverse
    conformers are used to run TSCoDe. Generates a new ``molecule_confs.xyz``
    file with all optimized conformers.
 
--  ``confab>`` - *(deprecated)* Performs a simple confab conformational search through
-   Openbabel and optimizes all obtained conformers. Then, a maximum of
-   10 best conformers are used to run TSCoDe (overriden with ``LET`` keyword).
-   Generates a new ``molecule_confab.xyz`` file with all optimized
-   conformers. (max 7-8 rotable bonds ideally)
+-  ``csearch_hb>`` - Analogous to ``csearch>``, but recognizes the hydrogen bonds present
+   in the input structure and only rotates bonds that keep those hydrogen bonds in place.
+   Useful to restrict the conformational space that is explored, and ensures that the final
+   poses possess those initial hydrogen bonds.
+
+-  ``csearch_opt>`` - Optimizes structures and then runs conformational searches (``opt>``
+   and ``csearch>`` operators, performed in sequence).
 
 -  ``neb>`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
    if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
@@ -33,17 +38,31 @@ use some of its functionalities, without running a full embedding.
    for the search. A graph with the energy of each image is written, along with the MEP guess 
    and the converged MEP.
 
--  ``prune>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
-   during a TSCoDe embedding. That is the ensemble is pruned removing similar structure, optimized
-   at the theory level(s) chosen and again pruned for similarity.
+-  ``opt>`` - Performs an optimization of all conformers of a molecule before
+   running TSCoDe, then removes similar and high energy conformers (>10 kcal/mol above lowest).
+   Generates a new ``molecule_opt.xyz`` file with the optimized coordinates.
+
+-  ``pka>`` - Performs a conformational search of the starting structure, and then every conformer is 
+   protonated or deprotonated according to the nature of the specified index (H or not H). A free energy
+   calculation of every generated ion is carried (for now, XTB calculator only) and the ionization energy is
+   presented for each process. It can be run on multiple molecules to get aggregate results to compare.
+   It is possible to specify a reference pKa to get relative pKa results (see the ``PKA`` keyword).
+
+-  ``refine>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
+   during a TSCoDe embedding. This means the ensemble is pruned removing similar structures, optimized
+   at the selected levels of theory, and pruned again for similarity and energy. Then a random conformational search
+   is performed on residual structures and all refinements are carried out again.
+
+-  ``rsearch>`` - Analogous to ``csearch>``, but uses the random conformational search
+   algorithm instead of the torsionally-clustered one to yield ``CONFS`` structures (default is 1000).
 
 Keywords
 ++++++++
 
-Keywords are divided by at least one blank space. Some of them are
-self-sufficient (*i.e.* ``NCI``), while some others require an
+Keywords are caps-insensitive and are divided by at least one blank space.
+Some of them are self-sufficient (*i.e.* ``NCI``), while some others require an
 additional input (*i.e.* ``STEPS=10`` or ``DIST(a=1.8,b=2,c=1.34)``). In
-the latter case, whitespaces inside the parenthesis are NOT allowed.
+the latter case, whitespaces are NOT allowed inside the parenthesis.
 Floating point numbers are to be expressed with points like ``3.14``,
 while commas are only used to divide keyword arguments where more than
 one is accepted, like in ``DIST``.
@@ -52,7 +71,7 @@ one is accepted, like in ``DIST``.
    directly output all the embedded geometries.
 
 -  **CALC** - Overrides default calculator in ``settings.py``.
-   Syntax: ``CALC=ORCA``
+   (Gaussian, ORCA, XTB, Syntax: ``CALC=ORCA``
 
 -  **CHECK** - Visualize the input molecules through the ASE GUI, to
    check orbital positions or conformers reading faults. *(not available
@@ -60,8 +79,11 @@ one is accepted, like in ``DIST``.
 
 -  **CLASHES** - Manually specify the max number of clashes and/or
    the distance threshold at which two atoms are considered clashing.
-   The more forgiving, the more structures will reach the geometry
-   optimization step. Syntax: ``CLASHES(num=3,dist=1.2)``
+   The more forgiving (higher number, smaller dist), the more structures will reach the geometry
+   optimization step. Default values are num=0 and dist=1.5 (A). Syntax: ``CLASHES(num=3,dist=1.2)``
+
+-  **CONFS** - Override the maximum number of conformers to be used for
+   the embed of each molecule (default is 1000). Syntax: ``CONFS=10000``
 
 -  **DEBUG** - Outputs more intermediate files and information in general.
    Structural adjustments, distance refining and similar processes will
@@ -71,21 +93,21 @@ one is accepted, like in ``DIST``.
 
 -  **DEEP** - Performs a deeper search, retaining more starting
    points for calculations and smaller turning angles. Equivalent to
-   ``THRESH=0.3 STEPS=24 CLASHES=(num=3,dist=1.2)``. **Use with care!**
+   ``THRESH=0.3 STEPS=72 CLASHES=(num=1,dist=1.3)``. **Use with care!**
 
 -  **DIST** - Manually imposed distance between specified atom
    pairs, in Angstroms. Syntax uses parenthesis and commas:
    ``DIST(a=2.345,b=3.67,c=2.1)``
 
--  **ENANTIOMERS** - Do not discard enantiomeric structures.
+.. -  **ENANTIOMERS** - Do not discard enantiomeric structures.
 
 -  **EZPROT** - Preserve the E or Z configuration of double bonds
    (C=C and C=N) during the embed. Likely to be useful only for
-   monomolecular embeds, where molecular distortion is often great, and
+   monomolecular embeds, where molecular distortion is often important, and
    undesired isomerization processes can occur.
 
 -  **FFCALC** - Overrides default force field calculator in ``settings.py``.
-   Syntax: ``FFCALC=OB``
+   Values can be ``OB``, ``Gaussian``, ``XTB``. Syntax: ``FFCALC=OB``
 
 -  **FFLEVEL** - Manually set the theory level to be used for force field
    calculations. Default is UFF for Openbabel and Gaussian, GFN-FF for XTB.
@@ -93,27 +115,28 @@ one is accepted, like in ``DIST``.
    (recommended way, run >>>python -m tscode -s) or by manually modifying
    ``settings.py`` (not recommended).
 
--  **FFOPT** - Manually turn on ``FF=ON`` or off ``FF=OFF`` the force
+-  **FFOPT** - Manually turn on ``FFOPT=ON`` or off ``FFOPT=OFF`` the force
    field optimization step, overriding the value in ``settings.py``.
 
--  **KCAL** - Dihedral embed: when looking for energy maxima scan
-   points in order to run berny optimization, ignore scan peaks below
-   this threshold value (default is 5 kcal/mol). All other embeds: trim
-   output structures to a given value of relative energy (default is
-   None). Syntax: ``KCAL=n``, where n can be an integer or float.
+-  **KCAL** - Dihedral embed: when looking for energy local maxima during 
+   a dihedral scan, ignore scan peaks below this threshold value (default 
+   is 5 kcal/mol). All other embeds: trim output structures to a given 
+   value of relative energy (default is 10 kcal/mol). Syntax: ``KCAL=n``, where 
+   n can be an integer or float.
 
 -  **LET** - Overrides safety checks that prevent the program from
-   running too large calculations. Also, removes the limit of ten
-   conformers per molecule in cyclical embeds.
+   running too large calculations, and avoids efficiency-oriented trimming
+   when writing large files to disk (DEBUG keyword).
 
 -  **LEVEL** - Manually set the theory level to be used. Default is
    PM7 for MOPAC, PM3 for ORCA, PM6 for Gaussian and GFN2-xTB for XTB.
    White spaces, if needed, can be expressed with underscores. Be careful
-   to use the syntax of your calculator, as ORCA wants a space between method
-   and basis set while Gaussian a forward slash. Syntax:
+   to use the syntax of your calculator, as ORCA requires a space between method
+   and basis set, while Gaussian a forward slash. Syntax (ORCA):
    ``LEVEL(B3LYP_def2-TZVP)``. Standard values can be modified by running the
    module with the -s flag (recommended way, run >>>python -m tscode -s)
    or by manually modifying ``settings.py`` (not recommended).
+   .. Here ( should be written as [ in input, or it will crash
 
 -  **MTD** - Augments the conformational sampling of transition
    state candidates through the `XTB metadynamics
@@ -145,10 +168,6 @@ one is accepted, like in ``DIST``.
    that a TS structure candidate can have to be retained and not to be
    considered scrambled. Default is 0. Syntax: ``NEWBONDS=0``
 
--  **NOEMBED** - Same as calling ``prune>`` on a multimolecular file. 
-   The program does not embed structures, but uses the input ensemble
-   as a starting point as if it came out of a TSCoDe embedding.
-
 -  **NOOPT** - Skip the optimization steps, directly writing
    structures to file after compenetration and similarity pruning.
    Dihedral embeds: performs rigid scans instead of relaxed ones.
@@ -157,6 +176,9 @@ one is accepted, like in ``DIST``.
    refine bonding distances. Set by default with the ``SHRINK`` keyword
    and for monomolecular TSs.
 
+-  **PKA** - Specify the reference pKa for a compound in multimolecular
+   pKa calculation runs. Syntax: ``PKA(mol.xyz)=11``
+
 -  **PROCS** - Manually set the number of cores to be used in a
    parallel ORCA calculation, overriding the default value in
    ``settings.py``. Syntax: ``PROCS=32``
@@ -164,9 +186,22 @@ one is accepted, like in ``DIST``.
 -  **RIGID** - Only applies to "cyclical"/"chelotropic" embeds.
    Avoid bending structures to better build TSs.
 
+-  **RMSD** - RMSD threshold (Angstroms) for structure pruning.
+   The smaller, the more retained structures (default is 0.5 A).
+   Two structures are pruned if they have an RMSD value smaller than
+   this threshold and the maximum deviation value smaller than double
+   this threshold. For smaller systems, a value of 0.3 is better suited, and
+   it is set by default for embeds of less than 50 atoms. For dihedral
+   embeds, the default value is 0.2 A. Syntax: ``THRESH=n``, where n is
+   a number.
+
 -  **ROTRANGE** - Only applies to "cyclical"/"chelotropic" embeds.
    Manually specify the rotation range to be explored around the
    structure pivot. Default is 90. Syntax: ``ROTRANGE=90``
+
+-  **RUN** - Same as calling ``run>`` on a multimolecular file. 
+   The program does not embed structures, but uses the input ensemble
+   as a starting point as if it came out of a TSCoDe embedding.
 
 -  **SADDLE** - After embed and refinement, optimize structures to the 
    closest first order saddle point using the `Sella <https://github.com/zadorlab/sella>`__ library through ASE.
@@ -196,11 +231,7 @@ one is accepted, like in ``DIST``.
    reactions.
 
 -  **TS** - Uses various scans/saddle algorithms to locate the TS.
-   Useful for
+   Experimental.
 
--  **THRESH** - RMSD threshold (Angstroms) for structure pruning.
-   The smaller, the more retained structures (default is 1 A). For
-   particularly small structures, a value of 0.5 is better suited, and
-   it is set by default for TSs with less than 50 atoms. For dihedral
-   embeds, the default value is 0.2 A. Syntax: ``THRESH=n``, where n is
-   a number.
+-  **TSCODEPROCS** - Change the number of maximum python parallel
+   processes (default is 4). Syntax: ``TSCODEPROCS=1``

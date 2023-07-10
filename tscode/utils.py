@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@ from tscode.algebra import norm_of, rot_mat_from_pointer
 from tscode.errors import TriangleError
 from tscode.graph_manipulations import graphize
 from tscode.pt import pt
+from subprocess import check_call, DEVNULL, STDOUT
 
 
 class suppress_stdout_stderr(object):
@@ -68,7 +69,12 @@ class HiddenPrints:
         sys.stdout.close()
         sys.stdout = self._original_stdout
 
-def clean_directory():
+def clean_directory(to_remove=None):
+
+    if to_remove:
+        for name in to_remove:
+            os.remove(name)
+
     for f in os.listdir():
         if f.split('.')[0] == 'temp':
             os.remove(f)
@@ -115,19 +121,33 @@ def time_to_string(total_time: float, verbose=False):
     '''
     timestring = ''
 
-    names = ('hours', 'minutes', 'seconds') if verbose else ('h', 'm', 's')
+    names = ('days', 'hours', 'minutes', 'seconds') if verbose else ('d', 'h', 'm', 's')
+
+    if total_time > 24*3600:
+        d = total_time // (24*3600)
+        timestring += f'{int(d)} {names[0]} '
+        total_time %= (24*3600)
 
     if total_time > 3600:
         h = total_time // 3600
-        timestring += f'{int(h)} {names[0]} '
+        timestring += f'{int(h)} {names[1]} '
         total_time %= 3600
+
     if total_time > 60:
         m = total_time // 60
-        timestring += f'{int(m)} {names[1]} '
+        timestring += f'{int(m)} {names[2]} '
         total_time %= 60
-    timestring += f'{round(total_time, 3)} {names[2]}'
+
+    timestring += f'{round(total_time, 3)} {names[3]}'
 
     return timestring
+
+def pretty_num(n):
+    if n < 1e3:
+        return str(n)
+    if n < 1e6:
+        return str(round(n/1e3, 2)) + ' k'
+    return str(round(n/1e6, 2)) + ' M'
 
 def loadbar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
     percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration/float(total)))
@@ -295,7 +315,7 @@ def get_scan_peak_index(energies, max_thr=50, min_thr=0.1):
     # if one is present, return that
 
     peaks_nrg = [energies[i] for i in peaks]
-    return peaks_nrg.index(max(peaks_nrg))
+    return energies.index(max(peaks_nrg))
     # if more than one, return the highest
 
 def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
@@ -314,7 +334,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
 def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_newbonds=0) -> bool:
     '''
-    Check if a transition state structure has scrambled during some optimization
+    Check if a multimolecular arrangement has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the
     structure is considered scrambled, and the method returns False.
     '''
@@ -373,3 +393,39 @@ def rotate_dihedral(coords, dihedral, angle, mask=None, indexes_to_be_moved=None
     coords[mask] = (mat @ (coords[mask] - center).T).T + center
 
     return coords
+
+def flatten(array, typefunc=float):
+    out = []
+    def rec(l):
+        for e in l:
+            if type(e) in [list, tuple, np.ndarray]:
+                rec(e)
+            else:
+                out.append(typefunc(e))
+    rec(array)
+    return out
+
+def auto_newline(string, max_line_len=50, padding=2):
+    string = str(string)
+
+    out = [' '*padding]
+    line_len = 0
+    for word in string.split():
+        out.append(word)
+        line_len += len(word) + 1
+
+        if line_len >= max_line_len:
+            out.append('\n'+' '*padding)
+            line_len = 0
+
+    return ' '.join(out)
+
+def smi_to_3d(smi, new_filename):
+    with open("temp_smi.txt", "w") as f:
+        f.write(smi)
+
+    check_call(f'obabel -i smi temp_smi.txt -o xyz -O {new_filename}.xyz -h --gen3d'.split(), stdout=DEVNULL, stderr=STDOUT)
+    data = read_xyz(f"{new_filename}.xyz")
+    clean_directory(["temp_smi.txt"])
+
+    return new_filename + ".xyz"

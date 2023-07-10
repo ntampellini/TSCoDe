@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -24,18 +24,21 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 from ase import Atoms
-from ase.calculators.calculator import PropertyNotImplementedError, CalculationFailed
+from ase.calculators.calculator import (CalculationFailed,
+                                        PropertyNotImplementedError)
 from ase.calculators.gaussian import Gaussian
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
 from ase.constraints import FixInternals
 from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
+from ase.vibrations import Vibrations
 from rmsd import kabsch
 from sella import Sella
 
 from tscode.algebra import norm, norm_of
 from tscode.graph_manipulations import findPaths, graphize, neighbors
+from tscode.hypermolecule_class import align_structures
 from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
 from tscode.utils import (HiddenPrints, clean_directory,
@@ -176,7 +179,7 @@ def get_ase_calc(embedder):
             orcablocks += get_solvent_line(solvent, calculator, method)
 
         return ORCA(label='temp',
-                    command=f'{command} temp.inp > temp.out 2>&1',
+                    command=f'{command} temp.inp "--oversubscribe" > temp.out 2>&1',
                     orcasimpleinput=method,
                     orcablocks=orcablocks)
 
@@ -227,6 +230,24 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
     springs = [Spring(indexes[0], indexes[1], dist) for indexes, dist in embedder.target_distances.items()]
     # adding springs to adjust the pairings for which we have target distances
 
+    # if there are no springs, it is faster (and equivalent) to just do a classical full opitimization
+    if not springs:
+        from tscode.optimization_methods import optimize
+        return optimize(
+                        structure,
+                        atomnos,
+                        embedder.options.calculator,
+                        method=embedder.options.theory_level,
+                        mols_graphs=embedder.graphs if embedder.embed != 'monomolecular' else None,
+                        procs=embedder.options.procs,
+                        solvent=embedder.options.solvent,
+                        max_newbonds=embedder.options.max_newbonds,
+                        check=(embedder.embed != 'refine'),
+
+                        logfunction=lambda s: embedder.log(s, p=False),
+                        title=f'Candidate_{title}'
+                    )
+
     nci_indexes = [indexes for letter, indexes in embedder.pairings_table.items() if letter in ('x', 'y', 'z')]
     halfsprings = [HalfSpring(i1, i2, 2.5) for i1, i2 in nci_indexes]
     # HalfSprings get atoms involved in NCIs together if they are more than 2.5A apart,
@@ -251,7 +272,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
                 spring.tighten()
             atoms.set_constraint(springs)
             # Tightening Springs to improve
-            # spacings accuracy
+            # spacings accuracy, removing PSC
 
             opt.run(fmax=0.05, steps=200)
             # final accurate refinement
@@ -262,12 +283,17 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
         new_structure = atoms.get_positions()
 
         success = scramble_check(new_structure, atomnos, constrained_indexes, embedder.graphs)
-        exit_str = 'REFINED' if success else 'SCRAMBLED'
-
+        if iterations == 200:
+            exit_str = 'MAX ITER'            
+        elif success:
+            exit_str = 'REFINED'
+        else:
+            exit_str = 'SCRAMBLED'
+        
     except PropertyNotImplementedError:
         exit_str = 'CRASHED'
 
-    embedder.log(f'    - {embedder.options.calculator} {embedder.options.theory_level} refinement: Structure {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
+    embedder.log(f'    - {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
 
     if exit_str == 'CRASHED':
         return None, None, False
@@ -287,9 +313,9 @@ def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=
     t_start = time.perf_counter()
     with HiddenPrints():
         with Sella(atoms,
-                   logfile=None,
-                   order=1,
-                   trajectory=traj) as opt:
+                    logfile=logfile,
+                    order=1,
+                    trajectory=traj) as opt:
 
             opt.run(fmax=0.05, steps=maxiterations)
             iterations = opt.nsteps
@@ -298,22 +324,11 @@ def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=
         t_end_berny = time.perf_counter()
         elapsed = t_end_berny - t_start
         exit_str = 'converged' if iterations < maxiterations else 'stopped'
-        logfile.write(f'{title} - {exit_str} in {iterations} steps ({time_to_string(elapsed)})\n')
+        with open(logfile, 'w') as f:
+            f.write(f'{title} - {exit_str} in {iterations} steps ({time_to_string(elapsed)})\n')
 
     new_structure = atoms.get_positions()
     energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
-
-    # if freq:
-    #     vib = Vibrations(atoms, name='temp')
-    #     with HiddenPrints():
-    #         vib.run()
-    #     freqs = vib.get_frequencies()
-
-    #     if logfile is not None:
-    #         elapsed = time.perf_counter() - t_end_berny
-    #         logfile.write(f'{title} - frequency calculation completed ({time_to_string(elapsed)})\n')
-        
-    #     return new_structure, energy, freqs
 
     if mols_graphs is not None:
         success = scramble_check(new_structure, atomnos, constrained_indexes, mols_graphs, max_newbonds=embedder.options.max_newbonds)
@@ -322,7 +337,40 @@ def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=
 
     return new_structure, energy, success
 
-def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', optimizer=LBFGS, logfunction=None, write_plot=False, verbose_print=False):
+def ase_vib(embedder, coords, atomnos, logfunction=None, title='temp'):
+    '''
+    '''
+    atoms = Atoms(atomnos, positions=coords)
+    atoms.calc = get_ase_calc(embedder)
+    vib = Vibrations(atoms, name=title)
+
+    if os.path.isdir(title):
+        os.chdir(title)
+        for f in os.listdir():
+            os.remove(f)
+        os.chdir(os.path.dirname(os.getcwd()))
+    else:
+        os.mkdir(title)
+
+    os.chdir(title)
+
+    t_start = time.perf_counter()
+
+    with HiddenPrints():
+        vib.run()
+
+    # freqs = vib.get_frequencies()
+    freqs = vib.get_energies()* 8065.544 # from eV to cm-1 
+
+    if logfunction is not None:
+        elapsed = time.perf_counter() - t_start
+        logfunction(f'{title} - frequency calculation completed ({time_to_string(elapsed)})')
+    
+    os.chdir(os.path.dirname(os.getcwd()))
+
+    return freqs, np.count_nonzero(freqs.imag > 1e-3)
+
+def ase_neb(embedder, reagents, products, atomnos, ts_guess=None, n_images=6, mep_override=None, title='temp', optimizer=LBFGS, logfunction=None, write_plot=False, verbose_print=False):
     '''
     embedder: tscode embedder object
     reagents: coordinates for the atom arrangement to be used as reagents
@@ -336,20 +384,42 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
     return: 3- element tuple with coodinates of highest point along the MEP, its
     energy in kcal/mol and a boolean value indicating success.
     '''
-
+    reagents, products = align_structures(np.array([reagents, products]))
     first = Atoms(atomnos, positions=reagents)
     last = Atoms(atomnos, positions=products)
 
-    images =  [first]
-    images += [first.copy() for _ in range(n_images)]
-    images += [last]
+    if mep_override is not None:
 
-    neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
-    neb.interpolate()
+        images = [Atoms(atomnos, positions=coords) for coords in mep_override]
+        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
 
-    ase_dump(f'{title}_MEP_guess.xyz', images, atomnos)
+    elif ts_guess is None:
+        images =  [first]
+        images += [first.copy() for _ in range(n_images)]
+        images += [last]
 
-    if verbose_print and logfunction is not None:
+        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
+        neb.interpolate(method='idpp')
+
+    else:
+        ts_guess = Atoms(atomnos, positions=ts_guess)
+
+        images_1 = [first] + [first.copy() for _ in range(round((n_images-3)/2))] + [ts_guess]
+        interp_1 = DyNEB(images_1)
+        interp_1.interpolate(method='idpp')
+
+        images_2 = [ts_guess] + [last.copy() for _ in range(n_images-len(interp_1.images)-1)] + [last]
+        interp_2 = DyNEB(images_2)
+        interp_2.interpolate(method='idpp')
+
+        images = interp_1.images + interp_2.images[1:]
+
+        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
+
+    if mep_override is None:
+        ase_dump(f'{title}_MEP_guess.xyz', images, atomnos)
+
+    if verbose_print and logfunction is not None and mep_override is None:
         logfunction(f'\n\n--> Saved interpolated MEP guess to {title}_MEP_guess.xyz\n')
     
     # Set calculators for all images
@@ -366,32 +436,64 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
             # ignore runtime warnings from the NEB module:
             # if something went wrong, we will deal with it later
 
-            with optimizer(neb, maxstep=0.1, logfile=None if not verbose_print else '-') as opt:
+            with optimizer(neb, maxstep=0.1, logfile=None if not verbose_print else 'neb_opt.log') as opt:
+
+                if verbose_print and logfunction is not None:
+                    logfunction(f'\n--> Running NEB-CI through ASE ({embedder.options.theory_level} via {embedder.options.calculator})')
 
                 opt.run(fmax=0.05, steps=20)
-                # some free relaxation before starting to climb
+                while neb.get_residual() > 0.1:
+                    opt.run(fmax=0.05, steps=10+opt.nsteps)
+                    # some free relaxation before starting to climb
+                    if opt.nsteps > 500 or opt.converged:
+                        break
 
+                if verbose_print and logfunction is not None:
+                    logfunction(f'--> fmax below 0.1: Activated Climbing Image and smaller maxstep')
+
+                ase_dump(f'{title}_MEP_start_of_CI.xyz', neb.images, atomnos)
+
+                optimizer.maxstep = 0.01
                 neb.climb = True
-                opt.run(fmax=0.05, steps=500)
+
+                opt.run(fmax=0.05, steps=250+opt.nsteps)
+
+                # if verbose_print and logfunction is not None and not opt.converged:
+                #     logfunction(f'--> fmax below 0.3: Very small maxstep activated')
+
+                # if not opt.converged:
+                #     optimizer.maxstep = 0.01
+                #     opt.run(fmax=0.05, steps=500+opt.nsteps)
+
                 iterations = opt.nsteps
+                exit_status = 'CONVERGED' if iterations < 279 else 'MAX ITER'
+
+        success = True if exit_status == 'CONVERGED' else False
 
     except (PropertyNotImplementedError, CalculationFailed):
         if logfunction is not None:
             logfunction(f'    - NEB for {title} CRASHED ({time_to_string(time.perf_counter()-t_start)})\n')
-        return None, None, False
+            try:
+                ase_dump(f'{title}_MEP_crashed.xyz', neb.images, atomnos)
+            except Exception():
+                pass
+        return None, None, None, False
 
-    exit_status = 'CONVERGED' if iterations < 499 else 'MAX ITER'
+    except KeyboardInterrupt:
+        exit_status = 'ABORTED BY USER'
+        success = False
 
     if logfunction is not None:
         logfunction(f'    - NEB for {title} {exit_status} ({time_to_string(time.perf_counter()-t_start)})\n')
 
-    energies = [image.get_total_energy() * 23.06054194532933 for image in images]
-    # eV to kcal/mol
+    energies = [image.get_total_energy() * 23.06054194532933 for image in images] # eV to kcal/mol
+    
     ts_id = energies.index(max(energies))
     # print(f'TS structure is number {ts_id}, energy is {max(energies)}')
 
-    os.remove(f'{title}_MEP_guess.xyz')
-    ase_dump(f'{title}_MEP.xyz', images, atomnos)
+    if mep_override is None:
+        os.remove(f'{title}_MEP_guess.xyz')
+    ase_dump(f'{title}_MEP.xyz', images, atomnos, energies)
     # Save the converged MEP (minimum energy path) to an .xyz file
 
     if write_plot:
@@ -420,7 +522,7 @@ def ase_neb(embedder, reagents, products, atomnos, n_images=6, title='temp', opt
         plt.ylabel('Rel. E. (kcal/mol)')
         plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
 
-    return images[ts_id].get_positions(), energies[ts_id], True
+    return images[ts_id].get_positions(), energies[ts_id], energies, exit_status
 
 class OrbitalSpring:
     '''
@@ -762,8 +864,16 @@ def ase_bend(embedder, original_mol, conf, pivot, threshold, title='temp', traj=
 
     return final_mol
 
-def ase_dump(filename, images, atomnos):
+def ase_dump(filename, images, atomnos, energies=None):
+
+    if energies is None:
+        energies = ["" for _ in images]
+    else:
+        energies = np.array(energies)
+        energies -= np.min(energies)
+
     with open(filename, 'w') as f:
-                for i, image in enumerate(images):
-                    coords = image.get_positions()
-                    write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}')
+        for i, (image, energy) in enumerate(zip(images, energies)):
+            e = f" Rel.E = {round(energy, 3)} kcal/mol" if energy != "" else ""
+            coords = image.get_positions()
+            write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}{e}')

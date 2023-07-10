@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -23,15 +23,16 @@ import networkx as nx
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+from tscode.algebra import get_moi_similarity_matches, norm, norm_of
 from tscode.ase_manipulations import ase_neb, ase_popt
 from tscode.calculators._gaussian import gaussian_opt
 from tscode.calculators._mopac import mopac_opt
 from tscode.calculators._orca import orca_opt
 from tscode.calculators._xtb import xtb_opt
-from tscode.algebra import get_moi_similarity_matches, norm, norm_of
+from tscode.python_functions import prune_conformers_rmsd
 from tscode.settings import DEFAULT_LEVELS, FF_CALC
-from tscode.utils import (molecule_check, pt, scramble_check, time_to_string,
-                          write_xyz)
+from tscode.utils import (loadbar, molecule_check, pt, scramble_check,
+                          time_to_string, write_xyz)
 
 opt_funcs_dict = {
     'MOPAC':mopac_opt,
@@ -40,12 +41,13 @@ opt_funcs_dict = {
     'XTB':xtb_opt,
 }
 
-if FF_CALC == 'OB':
+if FF_CALC in ('OB', 'OPENBABEL'):
     from tscode.calculators._openbabel import openbabel_opt
     opt_funcs_dict['OB'] = openbabel_opt
+    opt_funcs_dict['OPENBABEL'] = openbabel_opt
 
-def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None,
-             mols_graphs=None, procs=1, solvent=None, max_newbonds=0, title='temp', check=True):
+def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None, constrained_distances=None,
+             mols_graphs=None, procs=1, solvent=None, charge=0, max_newbonds=0, title='temp', check=True, logfunction=None):
     '''
     Performs a geometry [partial] optimization (OPT/POPT) with MOPAC, ORCA, Gaussian or XTB at $method level, 
     constraining the distance between the specified atom pairs, if any. Moreover, if $check, performs a check on atomic
@@ -63,23 +65,33 @@ def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None
     :return not_scrambled: bool, indicating if the optimization shifted up some bonds (except the constrained ones)
     '''
     if mols_graphs is not None:
-        assert len(coords) == sum([len(graph.nodes) for graph in mols_graphs])
+        l = [len(graph.nodes) for graph in mols_graphs]
+        assert len(coords) == sum(l), f'{len(coords)} coordinates are specified but graphs have {l} = {sum(l)} nodes'
 
     if method is None:
         method = DEFAULT_LEVELS[calculator]
+
+    if constrained_distances is not None:
+        assert len(constrained_distances) == len(constrained_indexes), f'len(cd) = {len(constrained_distances)} != len(ci) = {len(constrained_indexes)}'
 
     constrained_indexes = np.array(()) if constrained_indexes is None else constrained_indexes
 
     opt_func = opt_funcs_dict[calculator]
 
+    t_start = time.perf_counter()
+
     opt_coords, energy, success = opt_func(coords,
                                             atomnos,
-                                            constrained_indexes,
+                                            constrained_indexes=constrained_indexes,
+                                            constrained_distances=constrained_distances,
                                             method=method,
                                             procs=procs,
                                             solvent=solvent,
-                                            title=title)
+                                            title=title,
+                                            charge=charge)
     # success checks that calculation had a normal termination
+
+    elapsed = time.perf_counter() - t_start
 
     if success:
         if check:
@@ -89,7 +101,16 @@ def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None
             else:
                 success = molecule_check(coords, opt_coords, atomnos, max_newbonds=max_newbonds)
 
+            if logfunction is not None:
+                if success:
+                    logfunction(f'    - {title} - REFINED {time_to_string(elapsed)}')
+                else:
+                    logfunction(f'    - {title} - SCRAMBLED {time_to_string(elapsed)}')             
+
         return opt_coords, energy, success
+
+    if logfunction is not None:
+        logfunction(f'    - {title} - CRASHED')
 
     return coords, energy, False
 
@@ -288,19 +309,19 @@ def get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
     
     return coords
 
-def prune_enantiomers(structures, atomnos, max_delta=10):
+def prune_enantiomers(structures, atomnos, max_deviation=1e-4):
     '''
     Remove duplicate (enantiomeric) structures based on the
     moments of inertia on principal axes. If all three MOI
-    are within max_delta from another structure, they are
-    classified as enantiomers and therefore only one of them
-    is kept.
+    are within max_deviation percent from another structure,
+    they are classified as enantiomers and therefore only one
+    of them is kept.
     '''
 
     heavy_structures = np.array([structure[atomnos != 1] for structure in structures])
     heavy_masses = np.array([pt[a].mass for a in atomnos if a != 1])
 
-    matches = get_moi_similarity_matches(heavy_structures, heavy_masses, max_delta=max_delta)
+    matches = get_moi_similarity_matches(heavy_structures, heavy_masses, max_deviation=max_deviation)
 
     g = nx.Graph(matches)
 
@@ -570,7 +591,38 @@ def fitness_check(embedder, coords) -> bool:
                     return False
 
             else:
-                if dist < 2.5:
+                if dist > 2.5:
                     return False
                     
     return True
+
+def _refine_structures(structures, atomnos, calculator, method, procs, solvent=None, loadstring='', logfunction=None):
+    '''
+    Refine a set of structures - optimize them and remove similar
+    ones and high energy ones (>20 kcal/mol above lowest)
+    '''
+    energies = []
+    for i, conformer in enumerate(deepcopy(structures)):
+
+        loadbar(i, len(structures), f'{loadstring} {i+1}/{len(structures)} ')
+
+        opt_coords, energy, success = optimize(conformer, atomnos, calculator, method=method, procs=procs, solvent=solvent, title=f'Structure_{i+1}', logfunction=logfunction)
+
+        if success:
+            structures[i] = opt_coords
+            energies.append(energy)
+        else:
+            energies.append(np.inf)
+
+    loadbar(len(structures), len(structures), f'{loadstring} {len(structures)}/{len(structures)} ')
+    energies = np.array(energies)
+
+    # remove similar ones
+    structures, mask = prune_conformers_rmsd(structures, atomnos)
+    energies = energies[mask]
+
+    # remove high energy ones
+    mask = (energies - np.min(energies)) < 20
+    structures, energies = structures[mask], energies[mask]
+
+    return structures, energies

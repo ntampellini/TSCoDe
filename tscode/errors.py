@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -42,4 +42,14 @@ class CCReadError(Exception):
 class MopacReadError(Exception):
     '''
     Thrown when reading MOPAC output files fails for some reason.
+    '''
+
+class SegmentedGraphError(Exception):
+    '''
+    Thrown by Clustered CSearch when graph has more than one connected component.
+    '''
+
+class NoOrbitalError(Exception):
+    '''
+    Thrown when trying to access orbital data when they are not present
     '''

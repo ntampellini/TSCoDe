@@ -54,8 +54,8 @@ setup(
         'networkx',
         'rmsd',
         'ase',
-        # 'sella',
-        'scikit-learn',
+        'sella',
+        'sklearn',
         'numba',
         'prettytable'
     ],

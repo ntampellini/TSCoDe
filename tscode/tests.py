@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -99,12 +99,13 @@ def run_tests():
         print(f'{FF_CALC} FF raw calculator works.')
 
         ##########################################################################
+        
+        if FF_CALC != 'OB':
+            atoms.calc = get_ase_calc((FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], PROCS, None))
+            LBFGS(atoms, logfile=None).run()
 
-        atoms.calc = get_ase_calc((FF_CALC, DEFAULT_FF_LEVELS[FF_CALC], PROCS, None))
-        LBFGS(atoms, logfile=None).run()
-
-        clean_directory()
-        print(f'{FF_CALC} ASE calculator works.')
+            clean_directory()
+            print(f'{FF_CALC} ASE calculator works.')
 
     print('\nNo installation faults detected with the current settings. Running tests.')
 
@@ -112,7 +113,7 @@ def run_tests():
 
     tests = []
     for f in os.listdir():
-        if f.endswith('.txt'):
+        if f.endswith('.inp'):
             tests.append(os.path.realpath(f))
 
     # os.chdir(os.path.dirname(os.getcwd()))

@@ -96,16 +96,8 @@
 - Refined distance constraining for XTB optimizations as well, guided by the target length. More accurate distances, so more accurate energies for constrained structures. Also less work for the final refinement step.
 - Implemented wider compatibility for internal constraints - intramolecular distances that have to be respected (so that csearch is aware of them) and even enforced to a specfic distance (with DIST)
 
-## 0.3.1 (July 10 2023)
+## 0.3.1 (2022)
 - Fixed TFD pruning bug for embeds with no rotable bonds.
 - approach> operator is now called scan> and automatically infers the scan direction (approaching or separating the atoms based on their distance).
 - Fixed bug in specifying indexes without letters (in _remove_internal_constraints)
 - Minor bug fixes
-- Remodeling and expansion of the "neb>" operator
-<!-- - Added flexibility in NEB keyword, allowing optimization of start/end points and specifying the number of images -->
-- Added "autoneb>" operator, that automatically builds a MEP guess based on input structure. Currently only supporting 7-membered rings inversions.
-- The Hypermolecule class can now also accept SMILES strings instead of molecular files. Only for embeds with no index to be specified, as "autoneb>"
-- Changed run> operator back to refine> (and RUN keyword bask to REFINE).
-- Fixed bug with scan> termination called when not required.
-- Changed default for conformational search during embeds to false, and NOCSEARCH keyword to CSEARCH.
-- Clustered csearch module: added flexibility in some functions to allow external use of them.

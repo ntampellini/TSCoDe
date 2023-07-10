@@ -1,12 +1,11 @@
 import cProfile
 from pstats import Stats
-from tscode.embedder import Docker
-from tscode.run import RunEmbedding
+from tscode.embedder import Embedder
 
 def profiled_wrapper(filename, name):
 
     datafile = f"TSCoDe_{name}_cProfile.dat"
-    cProfile.run("RunEmbedding(Embedder(filename, args.name))", datafile)
+    cProfile.run("Embedder(filename, args.name).run()", datafile)
 
     with open(f"TSCoDe_{name}_cProfile_output_time.txt", "w") as f:
         p = Stats(datafile, stream=f)

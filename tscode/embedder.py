@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -15,8 +15,12 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+import getpass
+import logging
 import os
+import random
 import re
+import socket
 import time
 from itertools import groupby
 
@@ -28,9 +32,10 @@ from tscode.embedder_options import Options, OptionSetter, keywords_list
 from tscode.errors import InputError
 from tscode.hypermolecule_class import Hypermolecule, Pivot
 from tscode.operators import operate
+from tscode.run import RunEmbedding
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS
-from tscode.utils import (ase_view, cartesian_product, clean_directory,
-                          time_to_string)
+from tscode.utils import (ase_view, auto_newline, cartesian_product,
+                          clean_directory, time_to_string)
 
 
 class Embedder:
@@ -46,6 +51,7 @@ class Embedder:
         with the user-requested keywords, if there are any.
 
         '''
+
         self.t_start_run = time.perf_counter()
         os.chdir(os.path.dirname(filename))
 
@@ -62,55 +68,111 @@ class Embedder:
         except FileNotFoundError:
             pass
 
-        self.logfile = open(f'TSCoDe_{self.stamp}.log', 'a', buffering=1)
+        log_filename = f'TSCoDe_{self.stamp}.log'
+        self.logfile = open(log_filename, 'a', buffering=1, encoding="utf-8")
+        logging.basicConfig(filename=log_filename, filemode='a')
 
+        try:
 
-        s ='\n*************************************************************\n'
-        s += '*      TSCoDe: Transition State Conformational Docker       *\n'
-        s += '*************************************************************\n'
-        s += "*{0:^59}*\n".format("Version %s - Public Beta" % (__version__))
-        s += "*       Nicolo' Tampellini - nicolo.tampellini@yale.edu     *\n"
-        s += '*************************************************************\n'
+            self.write_banner()
+            # Write banner to log file
 
-        self.log(s)
+            self.options = Options()
+            # initialize option subclass
 
-        self.options = Options()
-        # initialize option subclass
+            self.embed = None
+            # initialize embed type variable, to be modified later
 
-        self.embed = None
-        # initialize embed type variable, to be modified later
+            inp = self._parse_input(filename)
+            # collect information about molecule files
 
-        inp = self._parse_input(filename)
-        self.objects = [Hypermolecule(name, c_ids) for name, c_ids in inp]
+            self.objects = [Hypermolecule(name, c_ids) for name, c_ids in inp]
+            # load designated molecular files
 
-        self.ids = np.array([len(mol.atomnos) for mol in self.objects])
-        # Used to divide molecules in TSs
+            # self.objects.sort(key=lambda obj: len(obj.atomcoords[0]), reverse=True)
+            # sort them in descending number of atoms (not for now - messes up pairings)
 
-        self.graphs = [mol.graph for mol in self.objects]
-        # Store molecular graphs
+            self.ids = np.array([len(mol.atomnos) for mol in self.objects])
+            # Compute length of each molecule coordinates. Used to divide molecules in TSs
 
-        self._read_pairings()
-        self._set_options(filename)
-        self._calculator_setup()
-        self._apply_operators()
+            self.graphs = [mol.graph for mol in self.objects]
+            # Store molecular graphs
 
-        self._setup()
-        # setting embed type and getting ready to embed (if needed)
+            self._read_pairings()
+            # read imposed pairings from input file [i.e. mol1(6)<->mol2(45)]
 
-        if self.options.debug:
-            for mol in self.objects:
-                if hasattr(mol, 'reactive_atoms_classes_dict'):
-                    mol.write_hypermolecule()
-            self.log(f'--> DEBUG: written hypermolecule files ({len(self.objects)})\n')
+            self._set_options(filename)
+            # read the keywords line and set the relative options
+            # then read the operators and store them 
 
-        if self.options.check_structures:
-            self._inspect_structures()
+            self._calculator_setup()
+            # initialize default or specified calculator
+
+            self._apply_operators()
+            # execute the operators, replacing the self.objects molecule
+
+            self._setup()
+            # setting embed type and getting ready to embed (if needed)
+
+            if self.options.debug:
+                for mol in self.objects:
+                    if hasattr(mol, 'reactive_atoms_classes_dict'):
+                        mol.write_hypermolecule()
+                self.log(f'--> DEBUG: written hypermolecule files ({len(self.objects)})\n')
+
+            if self.options.check_structures:
+                self._inspect_structures()
+
+        except Exception as e:
+            logging.exception(e)
+            raise e
 
     def log(self, string='', p=True):
         if p:
             print(string)
         string += '\n'
         self.logfile.write(string)
+
+    def write_banner(self):
+        '''
+        Write banner to log file, containing program and run info
+        '''
+        banner = '''
+       +   .     ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ .     .    
+    *    .   .. ╱────────────────────────────────────╲   *     .  
+ .     ..   +  ╱▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╲ .   .   +  
+   +       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ . ..   .  
+     .  ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒  .   *  
+       ▒░████████╗░██████╗░█████╗░░█████╗░██████╗░███████╗░░░▒  .  .  
+   +   ▒░╚══██╔══╝██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝░░░▒   ..  
+ ..  . ▒░░░░██║░░░╚█████╗░██║░░╚═╝██║░░██║██║░░██║█████╗░░░░░▒ *    +   
+   .   ▒░░░░██║░░░░╚═══██╗██║░░██╗██║░░██║██║░░██║██╔══╝░░░░░▒   .   .
+.       ▒░░░██║░░░██████╔╝╚█████╔╝╚█████╔╝██████╔╝███████╗░░░▒ ..   +   
+ *  .  ╱ ▒░░╚═╝░░░╚═════╝░░╚════╝░░╚════╝░╚═════╝░╚══════╝░░▒ ╲ .  ..  
+  ..  ╱   ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒   ╲   .   
+.    ╱    ▒░░╔══════════════════════════════════════════╗░░▒    ╲ +    
+    ╱      ▒░║  Transition State Conformational Docker  ║░▒      ╲ ..  
+ +  ╲╲     ▒░║        nicolo.tampellini@yale.edu        ║░▒     ╱╱    .  
+     ╲╲    ▒░║                                          ║░▒    ╱╱  .       
+ ..   ╲╲   ▒░║     Version    >{0:^25}║░▒   ╱╱ .  *                                    
+   .   ╲╲  ▒░║      User      >{1:^25}║░▒  ╱╱   .                                     
+        ╲╲ ▒░║      Host      >{2:^25}║░▒ ╱╱ *   .                                                      
+ ..   *  ╲╲▒░║      Time      >{3:^25}║░▒╱╱   ..            
+    .     ╲▒░║    Processors  >{4:^25}║░▒╱  +              
+      .    ▒░║                                          ║░▒ .   ..                            
+  +  .. .  ▒░╚══════════════════════════════════════════╝░▒  .. .   
+    .       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒     .     
+ .     *  +   ╲╲ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╱╱  .      .
+     .      .  ╲╲▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╱╱ .   .    
+           '''.format(__version__,
+                      getpass.getuser(),
+                      socket.gethostname(),
+                      time.ctime()[0:-8],
+                      PROCS)
+
+        # ⏣█▓▒░ banner art adapted from https://fsymbols.com/generators/tarty/
+
+        self.log(banner)
 
     def _parse_input(self, filename):
         '''
@@ -125,9 +187,13 @@ class Embedder:
 
         lines = [line for line in lines if line[0] not in ('#', '\n')]
         
+        def _remove_internal_constraints(string):
+            numbers = [int(re.sub('[^0-9]', '', i)) for i in string]
+            letters = [re.sub('[^a-z]', '', i) for i in string]
+            count = [letters.count(l) if (l != '') else 1 for l in letters]
+            return tuple([n for n, c in zip(numbers, count) if c == 1])
+
         try:
-            assert len(lines) < 5
-            # (optional) keyword line + 1, 2 or 3 lines for molecules
 
             keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
             if any(k.upper() in keywords_list for k in keywords):
@@ -139,18 +205,14 @@ class Embedder:
             for line in self.mol_lines:
 
                 if '>' in line:
-                    self.options.operators.append(line)
+                    self.options.operators.append(line.rstrip('\n'))
                     line = line.split('>')[-1].lstrip()
                     # record that we will need to perform these operations before the run
 
                 filename, *reactive_atoms = line.split()
 
-                # if len(reactive_atoms) > 4:
-                #     s = f'Too many reactive atoms specified for {filename} ({len(reactive_atoms)}).'
-                #     raise SyntaxError(s)
-
                 if reactive_atoms:
-                    reactive_indexes = tuple([int(re.sub('[^0-9]', '', i)) for i in reactive_atoms])
+                    reactive_indexes = _remove_internal_constraints(reactive_atoms)
                 else:
                     reactive_indexes = None
 
@@ -184,6 +246,10 @@ class Embedder:
 
         if self.embed in ('cyclical', 'chelotropic', 'string'):
             for i, mol in enumerate(self.objects):
+
+                if not hasattr(mol, 'reactive_atoms_classes_dict'):
+                    mol.compute_orbitals()
+
                 for c, _ in enumerate(mol.atomcoords):
                     for r_atom in mol.reactive_atoms_classes_dict[c].values():
                         r_atom.cumnum = r_atom.index
@@ -223,10 +289,18 @@ class Embedder:
 
                         pairings.append([int(index), l])
 
-            for index, letter in pairings:
-                self.pairings_dict[i][letter] = index
             # appending pairing to dict before
             # calculating their cumulative index
+            # If a pairing is already present, add the number
+            # (refine>/REFINE runs)
+            for index, letter in pairings:
+
+                if self.pairings_dict[i].get(letter) is not None:
+                    prev = self.pairings_dict[i][letter]
+                    self.pairings_dict[i][letter] = (prev, index)
+
+                else:
+                    self.pairings_dict[i][letter] = index
 
             if i > 0:
                 for z in pairings:
@@ -268,13 +342,6 @@ class Embedder:
 
             if len(ids) > 2:
                 raise SyntaxError(f'Letter \'{letter}\' is specified more than two times. Please remove the unwanted letters.')
-
-        if not self.pairings_table:
-            if all([len(mol.reactive_indexes) == 2 for mol in self.objects]):
-                self.log('--> No atom pairings imposed. Computing all possible dispositions.\n')
-                # only print the no pairings statements if there are multiple regioisomers to be computed
-        else:
-            self.log(f'--> Atom pairings imposed are {len(self.pairings_table)}: {list(self.pairings_table.values())} (Cumulative index numbering)\n')
         
         if len(self.mol_lines) == 3:
         # adding third pairing if we have three molecules and user specified two pairings
@@ -290,6 +357,20 @@ class Embedder:
                 second_constraint = list(sorted(unlabeled_list))
                 self.pairings_table['?'] = second_constraint
 
+        # Now record the internal constraints, that is the intramolecular
+        # distances to freeze and later enforce to the imposed spacings
+        self.internal_constraints = []
+        for letter, pair in self.pairings_table.items():
+            for mol_id in self.pairings_dict:
+                if isinstance(self.pairings_dict[mol_id].get(letter), tuple):
+
+                    # They are internal constraints only if we have a distance 
+                    # to impose later on. We are checking this way because the
+                    # set_options function is still to be called at this stage
+                    if f'{letter}=' in self.kw_line:
+                        self.internal_constraints.append([pair])
+        self.internal_constraints = np.concatenate(self.internal_constraints) if self.internal_constraints else []
+
     def _set_custom_orbs(self, orb_string):
         '''
         Update the reactive_atoms classes with the user-specified orbital distances.
@@ -302,6 +383,8 @@ class Embedder:
 
         self.pairings_dists = {piece.split('=')[0] : float(piece.split('=')[1]) for piece in orb_string.split(',')}
 
+        # Set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
+        # user-specified one, as the final atomic distances will be given by two halves of this length.
         for letter, dist in self.pairings_dists.items():
 
             if letter not in self.pairings_table:
@@ -313,12 +396,21 @@ class Embedder:
                     r_index = self.pairings_dict[i].get(letter)
                     if r_index is None:
                         continue
+                    
+                    if isinstance(r_index, int):
+                        r_atom = mol.reactive_atoms_classes_dict[c][r_index]
+                        r_atom.init(mol, r_index, update=True, orb_dim=dist/2, conf=c)
+                    
+                    else:
+                        for r_i in r_index:
+                            r_atom = mol.reactive_atoms_classes_dict[c].get(r_i)
+                            if r_atom:
+                                r_atom.init(mol, r_i, update=True, orb_dim=dist/2, conf=c)
 
-                    r_atom = mol.reactive_atoms_classes_dict[c][r_index]
-                    r_atom.init(mol, r_index, update=True, orb_dim=dist/2)
-                                
-            # Set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
-            # user-specified one, as the final atomic distances will be given by two halves of this length.
+        # saves the last orb_string executed so that operators can
+        # keep the imposed orbital spacings when replacing molecules
+        self.orb_string = orb_string
+        # self.log(f'DEBUG ---> Updated orb string -> {orb_string}')
 
     def _set_pivots(self, mol):
         '''
@@ -331,24 +423,24 @@ class Embedder:
 
         for c, _ in enumerate(mol.atomcoords):
 
-            if len(mol.pivots[c]) == 2:
-            # reactive atoms have one and two centers,
-            # respectively. Apply bridging carboxylic acid correction.
-                symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict[c].values()]
-                if 'H' in symbols:
-                    if ('O' in symbols) or ('S' in symbols):
-                        if max([norm_of(p.pivot)/self.options.shrink_multiplier for p in mol.pivots[c]]) < 4.5:
-                            class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict[c].values()]
-                            if 'Single Bond' in class_types and 'Ketone' in class_types:
-                            # if we have a bridging acid, remove the longest of the two pivots,
-                            # as it would lead to weird structures
-                                norms = np.linalg.norm([p.pivot for p in mol.pivots[c]], axis=1)
-                                for sample in norms:
-                                    to_keep = [i for i in norms if sample >= i]
-                                    if len(to_keep) == 1:
-                                        mask = np.array([i in to_keep for i in norms])
-                                        mol.pivots[c] = mol.pivots[c][mask]
-                                        break
+            # if len(mol.pivots[c]) == 2:
+            # # reactive atoms have one and two centers,
+            # # respectively. Apply bridging carboxylic acid correction.
+            #     symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict[c].values()]
+            #     if 'H' in symbols:
+            #         if ('O' in symbols) or ('S' in symbols):
+            #             if max([norm_of(p.pivot)/self.options.shrink_multiplier for p in mol.pivots[c]]) < 4.5:
+            #                 class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict[c].values()]
+            #                 if 'Single Bond' in class_types and 'Ketone' in class_types:
+            #                 # if we have a bridging acid, remove the longest of the two pivots,
+            #                 # as it would lead to weird structures
+            #                     norms = np.linalg.norm([p.pivot for p in mol.pivots[c]], axis=1)
+            #                     for sample in norms:
+            #                         to_keep = [i for i in norms if sample >= i]
+            #                         if len(to_keep) == 1:
+            #                             mask = np.array([i in to_keep for i in norms])
+            #                             mol.pivots[c] = mol.pivots[c][mask]
+            #                             break
 
             if self.options.suprafacial:
                 if len(mol.pivots[c]) == 4:
@@ -363,15 +455,15 @@ class Embedder:
                             mol.pivots[c] = mol.pivots[c][mask]
                             break
 
+            # if mol is reacting with a sigmastar orbital (two connected reactive Sp3/Single
+            # Bond centers) then remove all pivots that are not the shortest. This ensures
+            # the "suprafaciality" to the pivots used, preventing the embed of
+            # impossible bonding structures
             if mol.sp3_sigmastar:
                 pivots_lengths = [norm_of(pivot.pivot) for pivot in mol.pivots[c]]
                 shortest_length = min(pivots_lengths)
                 mask = np.array([(i - shortest_length) < 1e-5 for i in pivots_lengths])
                 mol.pivots[c] = mol.pivots[c][mask]
-            # if mol is reacting with a sigmastar orbital (two connected reactive Sp3/Single
-            # Bond centers) then remove all pivots that are not the shortest. This ensures
-            # the "suprafaciality" to the pivots used, preventing the embed of
-            # impossible bonding structures
 
     def _get_pivots(self, mol):
         '''
@@ -422,18 +514,32 @@ class Embedder:
         Setting embed type and calculating the number of conformation combinations based on embed type
         '''
 
-        if 'prune>' in self.options.operators or self.options.noembed:
-            self.embed == 'prune'
+        if any('pka>'      in op for op in self.options.operators) or (
+           any('scan>' in op for op in self.options.operators)
+        ):
+            self.embed = 'data'
+            # If a pka or scan operator is requested, the embed is skipped
+            # and data is shown instead
+            return
 
-            # If the run is a prune>/NOEMBED one, the self.embed
+        if any('refine>' in op for op in self.options.operators) or self.options.noembed:
+            self.embed = 'refine'
+
+            # If the run is a refine>/REFINE one, the self.embed
             # attribute is set in advance by the self._set_options
             # function through the OptionSetter class
             return
 
+        for mol in self.objects:
+            if self.options.max_confs < len(mol.atomcoords):
+                self.log(f'--> {mol.name} - kept {self.options.max_confs}/{len(mol.atomcoords)} conformations for the embed (override with CONFS=n)\n')
+                mol.atomcoords = mol.atomcoords[0:self.options.max_confs]
+        # remove conformers if there are too many
+
         if all([len(mol.reactive_indexes) == 0 for mol in self.objects]):
             self.embed = None
             # Flag the embed type as None if no reactive indexes are
-            # provided (and the run is not a prune> one)
+            # provided (and the run is not a refine> one)
             return
 
         if len(self.objects) == 1:
@@ -443,13 +549,13 @@ class Embedder:
 
             if len(mol.reactive_indexes) == 4:
                 self.embed = 'dihedral'
-                if self.options.kcal_thresh is None:
+                if 'kcal' not in self.kw_line.lower():
                 # set to 5 if user did not specify a value
                     self.options.kcal_thresh = 5
 
-                if self.options.pruning_thresh is None:
+                if 'rmsd' not in self.kw_line.lower():
                 # set to 0.2 if user did not specify a value
-                    self.options.pruning_thresh = 0.2
+                    self.options.rmsd = 0.2
 
                 return
 
@@ -487,7 +593,7 @@ class Embedder:
                         for c, _ in enumerate(mol.atomcoords):
                             for index, atom in mol.reactive_atoms_classes_dict[c].items():
                                 orb_dim = norm_of(atom.center[0]-atom.coord)
-                                atom.init(mol, index, update=True, orb_dim=orb_dim + 0.2)
+                                atom.init(mol, index, update=True, orb_dim=orb_dim + 0.2, conf=c)
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
                     # be generated a tad too close to each other for how the cyclical embed works          
 
@@ -500,16 +606,19 @@ class Embedder:
                 self.systematic_angles = cartesian_product(*[range(self.options.rotation_steps+1) for _ in self.objects]) \
                             * 2*self.options.rotation_range/self.options.rotation_steps - self.options.rotation_range
 
-                for molecule in self.objects:
-                    self._set_pivots(molecule)
+                if p:
+                # avoid calculating pivots if this is an early call 
+                    for molecule in self.objects:
+                        self._set_pivots(molecule)
 
             elif string:
                 
                 self.embed = 'string'
-                self.options.rotation_steps = 24
+                self.options.rotation_steps = 36
 
                 for mol in self.objects:
-                    mol.compute_orbitals()
+                    if not hasattr(mol, 'reactive_atoms_classes_dict'):
+                        mol.compute_orbitals()
 
                 if hasattr(self.options, 'custom_rotation_steps'):
                 # if user specified a custom value, use it.
@@ -525,9 +634,12 @@ class Embedder:
                                   '4) Two molecules with one reactive center each (string embed)\n'
                                   '5) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
             
-            self._set_reactive_atoms_cumnums()
-            # appending to each reactive atom the cumulative
-            # number indexing in the TS context
+            if p:
+            # avoid calculating this if this is an early call 
+
+                self._set_reactive_atoms_cumnums()
+                # appending to each reactive atom the cumulative
+                # number indexing in the TS context
 
         else:
             raise InputError('Bad input - too many/few molecules specified (one to three required).')
@@ -539,16 +651,15 @@ class Embedder:
             self.options.only_refined = True
         # SHRINK - scale orbitals and rebuild pivots
 
-        if self.options.pruning_thresh is None:
-            self.options.pruning_thresh = 1
+        if self.options.rmsd is None:
+            self.options.rmsd = 0.5
 
             if sum(self.ids) < 50:
-                self.options.pruning_thresh = 0.5
+                self.options.rmsd = 0.3
             # small molecules need smaller RMSD threshold
 
-        self.candidates = self._get_number_of_candidates()
-
         if p:
+            self.candidates = self._get_number_of_candidates()
             self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
 
     def _get_number_of_candidates(self):
@@ -567,8 +678,7 @@ class Embedder:
                                 for mol in self.objects]))
                       )
 
-        candidates = 2*len(self.systematic_angles)*np.prod([len(mol.atomcoords) if self.options.let else min(len(mol.atomcoords), 10)
-                                                            for mol in self.objects])
+        candidates = 2*len(self.systematic_angles)*np.prod([len(mol.atomcoords) for mol in self.objects])
         
         if l == 3:
             candidates *= 4
@@ -608,55 +718,48 @@ class Embedder:
         if self.options.theory_level is None:
             self.options.theory_level = DEFAULT_LEVELS[CALCULATOR]
 
-        # Setting up procs number from settings if user did not specify another value
-        if self.options.procs is None:
-            self.options.procs = PROCS
-
-            if self.options.theory_level in ('MNDO','AM1','PM3','HF-3c','HF MINIX D3BJ GCP(HF/MINIX) PATOM') and self.options.procs != 1:
-                raise Exception(('ORCA does not support parallelization for Semiempirical Methods. '
-                                 'Please change the value of PROCS to 1 or change the theory level '
-                                 'from the setup command.'))
-
-        # if self.options.solvent is not None:
-        #     from solvents import get_solvent_line
-        #     self.options.theory_level = get_solvent_line(self.options.solvent,
-        #                                                  self.options.calculator,
-        #                                                  self.options.theory_level)
-
     def _apply_operators(self):
         '''
         Replace molecules in self.objects with
         their post-operator ones.
         '''
 
-        self._setup()
         # early call to get the self.embed attribute
+        self._setup(p=False)
 
         for input_string in self.options.operators:
 
             outname = operate(input_string, self)
             operator = input_string.split('>')[0]
 
-            if operator != 'prune':
-            # the prune operator does not need molecule substitution
+            # these operators do not need molecule substitution
+            if operator not in ('refine', 'pka', 'scan'):
 
                 names = [mol.name for mol in self.objects]
                 filename = self._extract_filename(input_string)
                 index = names.index(filename)
                 reactive_indexes = self.objects[index].reactive_indexes
 
-                self.objects[index] = Hypermolecule(outname, reactive_indexes)
                 # replacing the old molecule with the one post-operators
+                self.objects[index] = Hypermolecule(outname, reactive_indexes)
 
-                self._set_reactive_atoms_cumnums()
-                # updating the orbital cumnums
+                # calculating where the new orbitals are
+                self.objects[index].compute_orbitals()
 
-        self.embed = None
+                # updating orbital size if not default
+                if hasattr(self, 'orb_string'):
+                    self._set_custom_orbs(self.orb_string)
+
+        # updating the orbital cumnums for 
+        # all the molecules in the run
+        self._set_reactive_atoms_cumnums()
+
         # resetting the attribute
+        self.embed = None
 
     def _extract_filename(self, input_string):
         '''
-        Input: 'prune> TSCoDe_unoptimized_comp_check.xyz 5a 36a 0b 43b 33c 60c'
+        Input: 'refine> TSCoDe_unoptimized_comp_check.xyz 5a 36a 0b 43b 33c 60c'
         Output: 'TSCoDe_unoptimized_comp_check.xyz'
         '''
         input_string = input_string.split('>')[-1].lstrip()
@@ -687,5 +790,29 @@ class Embedder:
     def normal_termination(self):
         clean_directory()
         self.log(f'\n--> TSCoDe normal termination: total time {time_to_string(time.perf_counter() - self.t_start_run, verbose=True)}.')
+        self.write_quote()
         self.logfile.close()
         quit()
+
+    def write_quote(self):
+        '''
+        Reads the quote file and writes one in the logfile
+        '''
+        from tscode.quotes import quotes
+        quote, author = random.choice(quotes).values()
+
+        self.log('\n' + auto_newline(quote))
+
+        if author:
+            self.log(f'    - {author}\n')
+
+    def run(self):
+        '''
+        Run the embedding.
+        '''
+        try:
+            RunEmbedding(self).run()
+
+        except Exception as e:
+            logging.exception(e)
+            raise e

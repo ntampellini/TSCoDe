@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -27,12 +27,12 @@ from numpy.linalg import LinAlgError
 from rmsd import kabsch
 
 from tscode.algebra import norm_of
-from tscode.errors import CCReadError
+from tscode.errors import CCReadError, NoOrbitalError
 from tscode.graph_manipulations import (graphize, is_sigmatropic, is_vicinal,
                                         neighbors)
 from tscode.pt import pt
 from tscode.reactive_atoms_classes import get_atom_type
-from tscode.utils import read_xyz
+from tscode.utils import flatten, read_xyz, smi_to_3d
 
 
 def align_structures(structures:np.array, indexes=None):
@@ -98,8 +98,12 @@ class Hypermolecule:
             if '.' in filename:
                 raise SyntaxError((f'Molecule {filename} cannot be read. Please check your syntax.'))
 
-            raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
-                                'If this looks like a keyword, it is probably faulted by a syntax error.'))
+            try:
+                filename = smi_to_3d(filename, "generated_3D_coords")
+                print(f"--> Embedded SMILES string to 3D structure, saved as {filename}")
+            except Exception as e:
+                raise SyntaxError((f'The program is trying to read something that is not a valid molecule input ({filename}). ' +
+                            'If this looks like a keyword, it is probably faulted by a syntax error.'))
 
         self.rootname = filename.split('.')[0]
         self.name = filename
@@ -111,14 +115,11 @@ class Hypermolecule:
             self.reactive_indexes = np.array(reactive_indexes) if isinstance(reactive_indexes, (tuple, list)) else ()
 
         ccread_object = read_xyz(filename)
+
         if ccread_object is None:
             raise CCReadError(f'Cannot read file {filename}')
 
         coordinates = np.array(ccread_object.atomcoords)
-
-        # if coordinates.shape[0] > 5:
-        #     coordinates = coordinates[0:5]
-        # # Do not keep more than 5 conformations
         
         self.atomnos = ccread_object.atomnos
         self.position = np.array([0,0,0], dtype=float)  # used in Embedder class
@@ -291,25 +292,14 @@ class Hypermolecule:
                 self.weights[i].append(data[1])
                 self.hypermolecule.append(data[0])
 
-        def flatten(array):
-            out = []
-            def rec(l):
-                for e in l:
-                    if type(e) in [list, np.ndarray]:
-                        rec(e)
-                    else:
-                        out.append(float(e))
-            rec(array)
-            return out
-
         self.hypermolecule = np.asarray(self.hypermolecule)
         self.weights = np.array(self.weights).flatten()
         self.weights = np.array([weights / np.sum(weights) for weights in self.weights])
         self.weights = flatten(self.weights)
 
         self.dimensions = (max([coord[0] for coord in self.hypermolecule]) - min([coord[0] for coord in self.hypermolecule]),
-                            max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
-                            max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
+                           max([coord[1] for coord in self.hypermolecule]) - min([coord[1] for coord in self.hypermolecule]),
+                           max([coord[2] for coord in self.hypermolecule]) - min([coord[2] for coord in self.hypermolecule]))
 
     def write_hypermolecule(self):
         '''
@@ -326,6 +316,16 @@ class Hypermolecule:
                     f.write('%-5s %-8s %-8s %-8s\n' % (pt[self.atomnos[i]].symbol, round(atom[0], 6), round(atom[1], 6), round(atom[2], 6)))
                 for orb in orbs:
                     f.write('%-5s %-8s %-8s %-8s\n' % ('X', round(orb[0], 6), round(orb[1], 6), round(orb[2], 6)))
+
+    def get_orbital_length(self, index):
+        '''
+        index: reactive atom index
+        '''
+        if index not in self.reactive_indexes:
+            raise NoOrbitalError(f'Index provided must be a molecule reactive index ({index}, {self.name})')
+
+        r_atom = self.reactive_atoms_classes_dict[0][index]
+        return norm_of(r_atom.center[0] - r_atom.coord)
 
 class Pivot:
     '''

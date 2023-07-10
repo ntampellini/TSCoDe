@@ -1,7 +1,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -186,7 +186,7 @@ def get_inertia_moments(coords, masses):
     return np.diag(inertia_moment_matrix)
 
 @nb.njit
-def get_moi_similarity_matches(structures, masses, max_delta=10):
+def get_moi_similarity_matches(structures, masses, max_deviation=1e-4):
     ''''''
     l = len(structures)
     mat = np.zeros((l,l), dtype=nb.boolean)
@@ -194,8 +194,8 @@ def get_moi_similarity_matches(structures, masses, max_delta=10):
         im_i = get_inertia_moments(structures[i], masses)
         for j in range(i+1,l):
             im_j = get_inertia_moments(structures[j], masses)
-            delta = np.abs(im_i - im_j)
-            if np.all(delta < max_delta):
+            rel_delta = np.abs(im_i - im_j) / im_i
+            if np.all(rel_delta < max_deviation):
                 mat[i,j] = 1
                 break
 

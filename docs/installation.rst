@@ -70,7 +70,8 @@ XTB (recommended)
 This is free software. See the `GitHub
 repository <https://github.com/grimme-lab/xtb>`__ and the
 `documentation <https://xtb-docs.readthedocs.io/en/latest/contents.html>`__
-for how to install it on your machine.
+for how to install it on your machine. Be sure to optimize the number of
+threads used on you system for maximal computaional efficiency.
 
 TSCoDe
 ------

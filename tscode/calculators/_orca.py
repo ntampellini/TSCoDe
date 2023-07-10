@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,12 +18,12 @@ GNU General Public License for more details.
 from subprocess import DEVNULL, STDOUT, check_call
 
 from tscode.utils import read_xyz
-from tscode.settings import COMMANDS
+from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
 from tscode.utils import clean_directory, pt
 
 
-def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, solvent=None, title='temp', read_output=True):
+def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', charge=0, procs=1, mem=MEM_GB, solvent=None, title='temp', read_output=True, **kwargs):
     '''
     This function writes an ORCA .inp file, runs it with the subprocess
     module and reads its output.
@@ -43,18 +43,20 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, s
         s += '\n' + get_solvent_line(solvent, 'ORCA', method) + '\n'
 
     if procs > 1:
-        s += f'%pal nprocs {procs} end\n'
+        s += f'%pal nprocs {procs} end\n\n'
+
+    s += f'%maxcore {mem*1000}\n\n'
 
     if constrained_indexes is not None:
         s += f'%{""}geom\nConstraints\n'
         # weird f-string to prevent python misinterpreting %
 
         for a, b in constrained_indexes:
-            s += '{B %s %s C}\n' % (a, b)
+            s += '  {B %s %s C}\n' % (a, b)
 
-        s += 'end\nend\n\n'
+        s += '  end\nend\n\n'
 
-    s += '*xyz 0 1\n'
+    s += f'*xyz {charge} 1\n'
 
     for i, atom in enumerate(coords):
         s += '%s     % .6f % .6f % .6f\n' % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
@@ -66,7 +68,8 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, s
         f.write(s)
     
     try:
-        check_call(f'{COMMANDS["ORCA"]} {title}.inp'.split(), stdout=DEVNULL, stderr=STDOUT)
+        with open(f"{title}.out", "w") as f:
+            check_call(f'{COMMANDS["ORCA"]} {title}.inp'.split(), stdout=f, stderr=STDOUT)
 
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
@@ -78,7 +81,7 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', procs=1, s
             opt_coords = read_xyz(f'{title}.xyz').atomcoords[0]
             energy = read_orca_property(f'{title}_property.txt')
 
-            clean_directory()
+            clean_directory((f'{title}.inp',))
 
             return opt_coords, energy, True
 

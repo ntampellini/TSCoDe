@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@ FF_OPT_BOOL = True
 FF_CALC = 'XTB'
 # Calculator to perform Force Field optimizations.
 # Possibilites are:
-# 'OB' : Openbabel UFF and MMFF methods
+# 'OB' : Openbabel UFF and MMFF94 methods
 # 'GAUSSIAN' : FF methods supported by Gaussian (UFF, MMFF)
 # 'XTB' : GFN-FF method
 
@@ -37,7 +37,7 @@ DEFAULT_FF_LEVELS = {
     ### THESE TWO LINES
     'GAUSSIAN':'UFF',
     'XTB':'GFN-FF',
-    'OB':'UFF',
+    'OB':'MMFF94',
 }
 # Default levels used to run calculations, overridden by FFLEVEL keyword
 
@@ -59,14 +59,14 @@ DEFAULT_LEVELS = {
 
 COMMANDS = {
     'MOPAC':'MOPAC2016.exe',
-    'ORCA':'orca.exe',
+    'ORCA':'/home/nt383/project/orca/orca_5_0_3_linux_x86-64_shared_openmpi411/orca',
     'GAUSSIAN':'g09.exe',
 }
 # Command with which calculators will be called from the command line
 
-PROCS = 1
+PROCS = 4
 # Number of processors (cores) to be used by ORCA and/or Gaussian
 
-MEM_GB = 1
+MEM_GB = 4
 # Memory allocated for each job (Gaussian only). If you experience problems
 # in running Gaussian calculation, try setting PROCS to 1 and MEM_GB to 0.5.

@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021 Nicolò Tampellini
+Copyright (C) 2021-2023 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@ GNU General Public License for more details.
 def run_setup():
     '''
     Invoked by the command
-    > python -m tscode -setup
+    > python -m tscode -s (--setup)
 
     Guides the user in setting up the calculation options
     contained in the settings.py file.
@@ -105,15 +105,15 @@ def run_setup():
 
     #########################################################################################
 
-    if properties['CALCULATOR'] in ('ORCA', 'GAUSSIAN'):
-        properties['PROCS'] = ask(f'How many cores should {properties["CALCULATOR"]} jobs run on? [1] : ',
-                                    accepted=[str(n) for n in range(1,1000)], default=1)
+    
+    properties['PROCS'] = ask(f'How many cores should jobs run on? [{os.cpu_count()}] : ',
+                                accepted=[str(n) for n in range(1,1000)], default=os.cpu_count())
 
     #########################################################################################
 
-    if properties['CALCULATOR'] == 'GAUSSIAN':
-        properties['MEM_GB'] = int(ask(f'How much memory should a GAUSSIAN job have, in GBs? [1] : ',
-                                    accepted=[str(n) for n in range(1,1000)], default='1'))
+    # if properties['CALCULATOR'] in ('GAUSSIAN', 'ORCA'):
+    properties['MEM_GB'] = int(ask(f'How much memory per core should a GAUSSIAN/ORCA job have, in GBs? [4] : ',
+                                accepted=[str(n) for n in range(1,1000)], default='4'))
 
     #########################################################################################
 
@@ -175,13 +175,8 @@ def run_setup():
 
     ff = f'{FF_CALC}/{DEFAULT_FF_LEVELS[FF_CALC]}' if FF_OPT_BOOL else 'Turned off'
     opt = f'{CALCULATOR}/{DEFAULT_LEVELS[CALCULATOR]}'
-    s = f'  FF    : {ff}\n  OPT   : {opt}'
-
-    if CALCULATOR in ('GAUSSIAN', 'ORCA'):
-        s += f'\n  PROCS : {PROCS}'
-
-        if CALCULATOR == 'GAUSSIAN':
-            s += f'\n  MEM   : {MEM_GB} GB'
+    s = f'  FF    : {ff}\n  OPT   : {opt}\n  PROCS : {PROCS}'
+    s += f'\n  MEM   : {MEM_GB} GB'
 
     print(s)
 
