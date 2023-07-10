@@ -12,11 +12,9 @@ fed to TSCoDe embeddings, or modify the behavior of the program to
 use some of its functionalities, without running a full embedding.
 Here is a list of the currently available operators:
 
--  ``approach>`` - Performs an approach of the two 
-   atoms specified, looking for the energy maximum during this scan. Thought to give
-   transition-state like structures for monomolecular reactions, or give an idea of 
-   the reactive atoms distance in the TS before running a complete embed (see DIST keyword).
-   Can be run on multiple molecules to get aggregate results to compare. Syntax: ``approach> mol.xyz 0 1``
+-  ``opt>`` - Performs an optimization of all conformers of a molecule before
+   running TSCoDe. Generates a new ``molecule_opt.xyz`` file with the optimized
+   coordinates.
 
 -  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational
    search through TSCoDe. Then, an appropriate amount of the most diverse
@@ -38,28 +36,14 @@ Here is a list of the currently available operators:
    for the search. A graph with the energy of each image is written, along with the MEP guess 
    and the converged MEP.
 
--  ``opt>`` - Performs an optimization of all conformers of a molecule before
-   running TSCoDe, then removes similar and high energy conformers (>10 kcal/mol above lowest).
-   Generates a new ``molecule_opt.xyz`` file with the optimized coordinates.
-
--  ``pka>`` - Performs a conformational search of the starting structure, and then every conformer is 
-   protonated or deprotonated according to the nature of the specified index (H or not H). A free energy
-   calculation of every generated ion is carried (for now, XTB calculator only) and the ionization energy is
-   presented for each process. It can be run on multiple molecules to get aggregate results to compare.
-   It is possible to specify a reference pKa to get relative pKa results (see the ``PKA`` keyword).
-
--  ``refine>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
-   during a TSCoDe embedding. This means the ensemble is pruned removing similar structures, optimized
-   at the selected levels of theory, and pruned again for similarity and energy. Then a random conformational search
-   is performed on residual structures and all refinements are carried out again.
-
--  ``rsearch>`` - Analogous to ``csearch>``, but uses the random conformational search
-   algorithm instead of the torsionally-clustered one to yield ``CONFS`` structures (default is 1000).
+-  ``prune>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
+   during a TSCoDe embedding. That is the ensemble is pruned removing similar structure, optimized
+   at the theory level(s) chosen and again pruned for similarity.
 
 Keywords
 ++++++++
 
-Keywords are caps-insensitive and are divided by at least one blank space.
+Keywords are case-insensitive and are divided by at least one blank space.
 Some of them are self-sufficient (*i.e.* ``NCI``), while some others require an
 additional input (*i.e.* ``STEPS=10`` or ``DIST(a=1.8,b=2,c=1.34)``). In
 the latter case, whitespaces are NOT allowed inside the parenthesis.
@@ -118,11 +102,11 @@ one is accepted, like in ``DIST``.
 -  **FFOPT** - Manually turn on ``FFOPT=ON`` or off ``FFOPT=OFF`` the force
    field optimization step, overriding the value in ``settings.py``.
 
--  **KCAL** - Dihedral embed: when looking for energy local maxima during 
-   a dihedral scan, ignore scan peaks below this threshold value (default 
-   is 5 kcal/mol). All other embeds: trim output structures to a given 
-   value of relative energy (default is 10 kcal/mol). Syntax: ``KCAL=n``, where 
-   n can be an integer or float.
+-  **KCAL** - Dihedral embed: when looking for energy maxima scan
+   points in order to run berny optimization, ignore scan peaks below
+   this threshold value (default is 5 kcal/mol). All other embeds: trim
+   output structures to a given value of relative energy (default is
+   None). Syntax: ``KCAL=n``, where n can be an integer or float.
 
 -  **LET** - Overrides safety checks that prevent the program from
    running too large calculations, and avoids efficiency-oriented trimming
@@ -135,8 +119,8 @@ one is accepted, like in ``DIST``.
    and basis set, while Gaussian a forward slash. Syntax (ORCA):
    ``LEVEL(B3LYP_def2-TZVP)``. Standard values can be modified by running the
    module with the -s flag (recommended way, run >>>python -m tscode -s)
-   or by manually modifying ``settings.py`` (not recommended).
-   .. Here ( should be written as [ in input, or it will crash
+   or by manually modifying ``settings.py``.
+   .. Here ( should be written as [ in input, or it will crash (temporary fix?)
 
 -  **MTD** - Augments the conformational sampling of transition
    state candidates through the `XTB metadynamics
@@ -179,6 +163,9 @@ one is accepted, like in ``DIST``.
 -  **PKA** - Specify the reference pKa for a compound in multimolecular
    pKa calculation runs. Syntax: ``PKA(mol.xyz)=11``
 
+-  **PKA** - Specify the reference pKa for a compound in multimolecular
+   pKa calculation runs. Syntax: ``PKA(mol.xyz)=11``
+
 -  **PROCS** - Manually set the number of cores to be used in a
    parallel ORCA calculation, overriding the default value in
    ``settings.py``. Syntax: ``PROCS=32``
@@ -195,11 +182,20 @@ one is accepted, like in ``DIST``.
    embeds, the default value is 0.2 A. Syntax: ``THRESH=n``, where n is
    a number.
 
+-  **RMSD** - RMSD threshold (Angstroms) for structure pruning.
+   The smaller, the more retained structures (default is 0.5 A).
+   Two structures are pruned if they have an RMSD value smaller than
+   this threshold and the maximum deviation value smaller than double
+   this threshold. For smaller systems, a value of 0.3 is better suited, and
+   it is set by default for embeds of less than 50 atoms. For dihedral
+   embeds, the default value is 0.2 A. Syntax: ``THRESH=n``, where n is
+   a number.
+
 -  **ROTRANGE** - Only applies to "cyclical"/"chelotropic" embeds.
    Manually specify the rotation range to be explored around the
    structure pivot. Default is 90. Syntax: ``ROTRANGE=90``
 
--  **RUN** - Same as calling ``run>`` on a multimolecular file. 
+-  **REFINE** - Same as calling ``refine>`` on a multimolecular file. 
    The program does not embed structures, but uses the input ensemble
    as a starting point as if it came out of a TSCoDe embedding.
 

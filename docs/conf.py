@@ -26,7 +26,7 @@ author = 'Nicolò Tampellini'
 # os.chdir(os.path.dirname(os.path.realpath(__file__)))
 # os.chdir(os.path.dirname(os.getcwd()))
 # from tscode.__main__ import __version__
-release = '0.3.1'
+release = '0.3.3'
 # release='latest'
 
 # -- General configuration ---------------------------------------------------

@@ -26,12 +26,15 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import (CalculationFailed,
                                         PropertyNotImplementedError)
+from ase.calculators.calculator import (CalculationFailed,
+                                        PropertyNotImplementedError)
 from ase.calculators.gaussian import Gaussian
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
 from ase.constraints import FixInternals
 from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
+from ase.vibrations import Vibrations
 from ase.vibrations import Vibrations
 from rmsd import kabsch
 from sella import Sella
@@ -180,6 +183,7 @@ def get_ase_calc(embedder):
 
         return ORCA(label='temp',
                     command=f'{command} temp.inp "--oversubscribe" > temp.out 2>&1',
+                    command=f'{command} temp.inp "--oversubscribe" > temp.out 2>&1',
                     orcasimpleinput=method,
                     orcablocks=orcablocks)
 
@@ -273,6 +277,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
             atoms.set_constraint(springs)
             # Tightening Springs to improve
             # spacings accuracy, removing PSC
+            # spacings accuracy, removing PSC
 
             opt.run(fmax=0.05, steps=200)
             # final accurate refinement
@@ -290,9 +295,17 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
         else:
             exit_str = 'SCRAMBLED'
         
+        if iterations == 200:
+            exit_str = 'MAX ITER'            
+        elif success:
+            exit_str = 'REFINED'
+        else:
+            exit_str = 'SCRAMBLED'
+        
     except PropertyNotImplementedError:
         exit_str = 'CRASHED'
 
+    embedder.log(f'    - {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
     embedder.log(f'    - {title} {exit_str} ({iterations} iterations, {time_to_string(time.perf_counter()-t_start_opt)})', p=False)
 
     if exit_str == 'CRASHED':
@@ -482,10 +495,15 @@ def ase_neb(embedder, reagents, products, atomnos, ts_guess=None, n_images=6, me
     except KeyboardInterrupt:
         exit_status = 'ABORTED BY USER'
         success = False
+    except KeyboardInterrupt:
+        exit_status = 'ABORTED BY USER'
+        success = False
 
     if logfunction is not None:
         logfunction(f'    - NEB for {title} {exit_status} ({time_to_string(time.perf_counter()-t_start)})\n')
 
+    energies = [image.get_total_energy() * 23.06054194532933 for image in images] # eV to kcal/mol
+    
     energies = [image.get_total_energy() * 23.06054194532933 for image in images] # eV to kcal/mol
     
     ts_id = energies.index(max(energies))

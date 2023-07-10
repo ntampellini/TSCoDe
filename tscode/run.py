@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021-2023 Nicolò Tampellini
+Copyright (C) 2021 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -56,59 +56,7 @@ class RunEmbedding:
         for attr in dir(embedder):
             if attr[0:2] != '__' and attr != 'run':
                 setattr(self, attr, getattr(embedder, attr))
-
-    def get_pairing_dist_from_letter(self, letter):
-        '''
-        Get constrained distance between paired reactive
-        atoms, accessed via the associated constraint letter
-        '''
-
-        if hasattr(self, 'pairings_dists') and self.pairings_dists.get(letter) is not None:
-            return self.pairings_dists[letter]
-
-        d = 0
-        try:
-            for mol_index, mol_pairing_dict in self.pairings_dict.items():
-                if r_atom_index := mol_pairing_dict.get(letter):
-
-                    # for refine embeds, one letter corresponds to two indexes
-                    # on the same molecule
-                    if isinstance(r_atom_index, tuple):
-                        i1, i2 = r_atom_index
-                        return (self.objects[mol_index].get_orbital_length(i1) +
-                                self.objects[mol_index].get_orbital_length(i2))
-
-                    # for other runs, it is just one atom per molecule per letter
-                    d += self.objects[mol_index].get_orbital_length(r_atom_index)
-
-            return d
-
-        # If no orbitals were built, return None
-        except NoOrbitalError:
-            return None
-
-    def get_pairing_dists_from_constrained_indexes(self, constrained_pair):
-        '''
-        Returns the constrained distance
-        for a specific constrained pair of indexes
-        '''
-        letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
-                                                                           pair[1] == constrained_pair[1]))
-
-        return self.get_pairing_dist_from_letter(letter)
-
-    def get_pairing_dists(self, conf, coords):
-        '''
-        Returns a list with the constrained distances for each embedder constraint
-        '''
-        if self.constrained_indexes[conf].size == 0:
-            return None
-
-        constraints = np.concatenate([self.constrained_indexes[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[conf]
-        return [self.get_pairing_dists_from_constrained_indexes(pair) for pair in constraints]
-
-    def rel_energies(self):
-        return self.energies - np.min(self.energies)
+        self.run()
 
     def apply_mask(self, attributes, mask):
         '''
@@ -139,7 +87,7 @@ class RunEmbedding:
             'string' : string_embed,
         }
 
-        if self.embed == 'refine':
+        if self.embed == 'prune':
             self.log('\n')
             return
 
@@ -267,11 +215,6 @@ class RunEmbedding:
             if before > len(self.structures):
                 self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for RMSD similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
 
-        if verbose and len(self.structures) == before:
-            self.log(f'All structures passed the similarity check.{" "*15}')
-
-        self.log()
-
     def force_field_refining(self):
         '''
         Performs structural optimizations with the embedder force field caculator.
@@ -372,12 +315,10 @@ class RunEmbedding:
         self.log(s+'\n')
 
         with open(self.outname, 'w') as f:        
-            for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
-                                                                self.exit_status,
-                                                                self.rel_energies())):
-
-                kind = 'REFINED - ' if status else 'NOT REFINED - '
-                write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(energy, 3)} kcal/mol ({self.options.ff_level})')
+            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                exit_str = f'{self.options.ff_level} REFINED' if self.exit_status[i] else 'RAW'
+                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - {exit_str} - Checkpoint before {self.options.calculator} optimization')
+        self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file before {self.options.calculator} optimization.\n')
 
     def _set_target_distances(self):
         '''
@@ -448,19 +389,16 @@ class RunEmbedding:
             constraints = np.concatenate([self.constrained_indexes[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[i]
 
             try:
-
-                new_structure, new_energy, self.exit_status[i] = optimize(structure,
-                                                                            self.atomnos,
-                                                                            self.options.calculator,
-                                                                            method=method,
-                                                                            constrained_indexes=constraints,
-                                                                            mols_graphs=self.graphs if self.embed != 'monomolecular' else None,
-                                                                            procs=self.options.procs,
-                                                                            max_newbonds=self.options.max_newbonds,
-                                                                            check=(self.embed != 'refine'),
-
-                                                                            logfunction=lambda s: self.log(s, p=False),
-                                                                            title=f'Candidate_{i+1}',)
+                t_start_opt = time.perf_counter()
+                new_structure, self.energies[i], self.exit_status[i] = optimize(structure,
+                                                                                    self.atomnos,
+                                                                                    self.options.calculator,
+                                                                                    method=method,
+                                                                                    constrained_indexes=self.constrained_indexes[i],
+                                                                                    mols_graphs=self.graphs,
+                                                                                    procs=self.options.procs,
+                                                                                    max_newbonds=self.options.max_newbonds,
+                                                                                    check=(self.embed != 'prune'))
 
                 if self.exit_status[i]:
                     self.energies[i] = new_energy
@@ -510,7 +448,7 @@ class RunEmbedding:
         Refines constrained distances between active structures, discarding similar ones and scrambled ones.
         '''
 
-        if self.embed != 'refine':
+        if self.embed != 'prune':
 
             self.write_structures('poses_unrefined', energies=False, p=False)
             self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures before distance refinement.\n')
@@ -601,9 +539,7 @@ class RunEmbedding:
 
         self.outname = f'TSCoDe_poses_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
-            for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
-                                                                self.exit_status,
-                                                                self.rel_energies())):
+            for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
 
                 kind = 'REFINED - ' if status else 'NOT REFINED - '
                 write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(energy, 3)} kcal/mol ({self.options.theory_level})')
@@ -868,8 +804,8 @@ class RunEmbedding:
 
             self.outname = f'TSCoDe_NEB_TSs_{self.stamp}.xyz'
             with open(self.outname, 'w') as f:        
-                for structure, energy in zip(align_structures(self.structures), self.rel_energies()):
-                    write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(energy, 3)} kcal/mol')
+                for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                    write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
             self.log(f'Wrote {len(self.structures)} final TS structures to {self.outname} file\n')
 
@@ -932,8 +868,8 @@ class RunEmbedding:
 
             self.outname = f'TSCoDe_SADDLE_TSs_{self.stamp}.xyz'
             with open(self.outname, 'w') as f:        
-                for structure, energy in zip(align_structures(self.structures), self.rel_energies()):
-                    write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(energy, 3)} kcal/mol')
+                for i, structure in enumerate(align_structures(self.structures, self.constrained_indexes[0])):
+                    write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(self.energies[i], 3)} kcal/mol')
 
             self.log(f'Wrote {len(self.structures)} saddle-optimized structures to {self.outname} file\n')
 
@@ -1124,7 +1060,7 @@ class RunEmbedding:
         self.log(f'--> Calculation options used were:')
         for line in str(self.options).split('\n'):
 
-            if self.embed in ('monomolecular', 'string', 'refine') and line.split()[0] in ('rotation_range',
+            if self.embed in ('monomolecular', 'string', 'prune') and line.split()[0] in ('rotation_range',
                                                                                           'rotation_steps',
                                                                                           'rigid',
                                                                                           'suprafacial',
@@ -1142,10 +1078,7 @@ class RunEmbedding:
                                                                     'saddle'):
                 continue
 
-            if self.embed == 'refine' and line.split()[0] in ('shrink',
-                                                              'shrink_multiplier',
-                                                              'fix_angles_in_deformation',
-                                                              'double_bond_protection'):
+            if self.embed == 'prune' and line.split()[0] in ('shrink', 'shrink_multiplier', 'fix_angles_in_deformation'):
                 continue
 
             if not self.options.optimization and line.split()[0] in ('calculator',
@@ -1159,16 +1092,6 @@ class RunEmbedding:
                                                                      'theory_level'):
                 continue
             
-            if self.options.rigid and line.split()[0] in ('double_bond_protection',
-                                                          'fix_angles_in_deformation'):
-                continue
-
-            if not self.options.shrink and line.split()[0] in ('shrink_multiplier',):
-                continue
-
-            if not self.options.ff_opt and line.split()[0] in ('ff_calc', 'ff_level'):
-                continue
-
             self.log(f'    - {line}')
 
     def write_vmd(self, indexes=None):
@@ -1209,13 +1132,6 @@ class RunEmbedding:
 
             if relative:
                 rel_e -= np.min(self.energies)
-
-        # truncate if there are too many (embed debug first dump)
-        if len(self.structures) > 1000 and not self.options.let:
-            self.log(f'Truncated {tag} output structures to 1000 (from {len(self.structures)} - keyword LET to override).')
-            output_structures = self.structures[0:1000]
-        else:
-            output_structures = self.structures
 
         self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
@@ -1341,98 +1257,3 @@ class RunEmbedding:
         except KeyboardInterrupt:
             print('\n\nKeyboardInterrupt requested by user. Quitting.')
             quit()
-
-    def data_termination(self):
-        '''
-        Type of termination for runs when there is no embedding,
-        but some computed data are to be shown in a formatted way.
-        '''
-
-        if any('pka>' in op for op in self.options.operators):
-            self.pka_termination()
-
-        if len([op for op in self.options.operators if 'scan>' in op]) > 1:
-            self.scan_termination()
-
-        self.normal_termination()
-
-    def pka_termination(self):
-        '''
-        Print data acquired during pKa energetics calculation
-        for every molecule in input
-        '''
-
-        self.log(f'\n--> pKa energetics (from best conformers)')
-        solv = 'gas phase' if self.options.solvent is None else self.options.solvent
-
-        from prettytable import PrettyTable
-        table = PrettyTable()
-        table.field_names = ['Name', '#(Symb)', 'Process', 'Energy (kcal/mol)']
-
-        for mol in self.objects:
-            if hasattr(mol, 'pka_data'):
-                table.add_row([mol.rootname,
-                               f'{mol.reactive_indexes[0]}({pt[mol.atomnos[mol.reactive_indexes[0]]].symbol})',
-                               mol.pka_data[0],
-                               mol.pka_data[1]])
-
-        # Add pKa column if we were given a reference
-        if hasattr(self, 'pka_ref'):
-
-            pkas = []
-            for mol in self.objects:
-                if mol.name == self.pka_ref[0]:
-                    dG_ref = mol.pka_data[1]
-                    break
-
-            for mol in self.objects:
-                process, free_energy = mol.pka_data
-
-                dG = free_energy - dG_ref if process == 'HA -> A-' else dG_ref - free_energy
-                # The free energy difference has a different sign for acids or bases, since
-                # the pKa for a base is the one of its conjugate acid, BH+
-
-                pka = dG / (np.log(10) * 1.9872036e-3 * 298.15) + self.pka_ref[1]
-                pkas.append(round(pka, 3))
-
-            table.add_column(f'pKa ({solv}, 298.15 K)', pkas)
-
-        self.log(table.get_string())
-        self.log(f'\n  Level used is {self.options.theory_level} via {self.options.calculator}' + 
-                 f", using the ALPB solvation model for {self.options.solvent}" if self.options.solvent is not None else "")
-
-        if len(self.objects) == 2:
-            mol0, mol1 = self.objects
-            if hasattr(mol0, 'pka_data') and hasattr(mol1, 'pka_data'):
-                tags = (mol0.pka_data[0],
-                        mol1.pka_data[0])
-                if 'HA -> A-' in tags and 'B -> BH+' in tags:
-                    dG = mol0.pka_data[1] + mol1.pka_data[1]
-                    self.log(f'\n  Equilibrium data:')
-                    self.log(f'\n    HA + B -> BH+ + A-    K({solv}, 298.15 K) = {round(np.exp(-dG/(1.9872036e-3 * 298.15)), 3)}')
-                    self.log(f'\n                         dG({solv}, 298.15 K) = {round(dG, 3)} kcal/mol')
-
-    def scan_termination(self):
-        '''
-        Print the unified data and write the cumulative plot
-        for the approach of all the molecules in input
-        '''
-        import pickle
-
-        import matplotlib.pyplot as plt
-
-        fig = plt.figure()
-
-        for mol in self.objects:
-            if hasattr(mol, 'scan_data'):
-                plt.plot(*mol.scan_data, label=mol.rootname)
-
-        plt.legend()
-        plt.title('Unified scan energetics')
-        plt.xlabel(f'Distance (A)')
-        plt.gca().invert_xaxis()
-        plt.ylabel('Rel. E. (kcal/mol)')
-        plt.savefig(f'{self.stamp}_cumulative_plt.svg')
-        pickle.dump(fig, open(f'{self.stamp}_cumulative_plt.pickle', 'wb'))
-        
-        self.log(f'\n--> Written cumulative scan plot at {self.stamp}_cumulative_plt.svg')

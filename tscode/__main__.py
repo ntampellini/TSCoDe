@@ -20,7 +20,7 @@ Nicolo' Tampellini - nicolo.tampellini@yale.edu
 
 '''
 
-__version__ = '0.3.1'
+__version__ = '0.3.3'
 
 if __name__ == '__main__':
 

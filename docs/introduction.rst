@@ -78,29 +78,12 @@ The complete program logic will be presented in a future publication.
 Extra features
 --------------
 
-**Routine processes automation**
-
-Over its development, the program has also become a collection of (semi)automated
-computational tools that I personally like and use with good frequency.
-
-The ``approach>`` operator automates finding a good spatial distance for a reactive
-pair of atoms, particularly useful to impose that in later embeds (see the
-:ref:`operators <op_kw>` page).
-
-Atropisomers rotation transition states are a routine operation in computational 
-chemistry. Here, a convenient automation of the process is part of the monomolecular
-embed (see the embeds table on the :ref:`usage <usg>` page). This makes the enantiomeric
-process faster, easier and more robust, since a rigorous search routine is followed.
-
-More functionality will be implemented in future releases - feature requests and
-collaborations are encouraged.
-
-.. **Infer differential NCIs** - After the poses generation, the program
-.. can be told to infer the non-covalent interactions (NCIs) between
-.. molecules in the generated structures (``NCI`` keyword). If a particular
-.. NCI is not shared by all structures, that is reported. If a particularly
-.. strong NCI is present only in a few TSs, this function can be a handy
-.. tool for tracing the source of selectivity in a given chemical reaction.
+**Infer differential NCIs** - After the poses generation, the program
+can be told to infer the non-covalent interactions (NCIs) between
+molecules in the generated structures (``NCI`` keyword). If a particular
+NCI is not shared by all structures, that is reported. If a particularly
+strong NCI is present only in a few TSs, this function can be a handy
+tool for tracing the source of selectivity in a given chemical reaction.
 
 **Transition state searches**
 

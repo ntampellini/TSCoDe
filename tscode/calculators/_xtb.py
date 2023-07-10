@@ -89,6 +89,30 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
             print("Recursion limit reached in constrained optimization - Crashed.")
             quit()
 
+    if constrained_distances is not None:
+        for target_d, (a, b) in zip(constrained_distances, constrained_indexes):
+            d = norm_of(coords[b] - coords[a])
+            delta = d - target_d
+
+            if abs(delta) > 0.2:
+                sign = (d > target_d)
+                recursive_c_d = [d + 0.2 * sign for d in constrained_distances]
+
+                coords, _, _ = xtb_opt(
+                                        coords,
+                                        atomnos,
+                                        constrained_indexes,
+                                        constrained_distances=recursive_c_d,
+                                        method=method,
+                                        title=title,
+                                        **kwargs,
+                                    )
+
+            d = norm_of(coords[b] - coords[a])
+            delta = d - target_d
+            coords[b] -= norm(coords[b] - coords[a]) * delta
+
+
     with open(f'{title}.xyz', 'w') as f:
         write_xyz(coords, atomnos, f, title=title)
 
@@ -271,6 +295,85 @@ def energy_grepper(filename, signal_string, position):
             line = f.readline()
             if signal_string in line:
                 return float(line.split()[position]) * 627.5096080305927 # Eh to kcal/mol
+            if not line:
+                raise Exception()
+
+def xtb_get_free_energy(coords, atomnos, method='GFN2-xTB', solvent=None,
+                        charge=0, title='temp', **kwargs):
+    '''
+    '''
+    with open(f'{title}.xyz', 'w') as f:
+        write_xyz(coords, atomnos, f, title=title)
+
+    s = f'$opt\n   logfile={title}_opt.log\n$end'
+          
+    if method.upper() in ('GFN-XTB', 'GFNXTB'):
+        s += '\n$gfn\n   method=1\n'
+
+    elif method.upper() in ('GFN2-XTB', 'GFN2XTB'):
+        s += '\n$gfn\n   method=2\n'
+    
+    s += '\n$end'
+
+    s = ''.join(s)
+    with open(f'{title}.inp', 'w') as f:
+        f.write(s)
+    
+    flags = '--ohess'
+    
+    if method in ('GFN-FF', 'GFNFF'):
+        flags += ' --gfnff'
+        # declaring the use of FF instead of semiempirical
+
+    if charge != 0:
+        flags += f' --chrg {charge}'
+
+    if solvent is not None:
+
+        if solvent == 'methanol':
+            flags += f' --gbsa methanol'
+
+        else:
+            flags += f' --alpb {solvent}'
+
+    try:
+        with open('temp_hess.log', 'w') as outfile:
+            check_call(f'xtb --input {title}.inp {title}.xyz {flags}'.split(), stdout=outfile, stderr=STDOUT)
+        
+    except KeyboardInterrupt:
+        print('KeyboardInterrupt requested by user. Quitting.')
+        quit()
+
+    try:
+        free_energy = read_xtb_free_energy('temp_hess.log')
+
+        clean_directory()
+        for filename in ('gfnff_topo', 'charges', 'wbo', 'xtbrestart', 'xtbtopo.mol', '.xtboptok',
+                         'hessian', 'g98.out', 'vibspectrum', 'wbo', 'xtbhess.xyz', 'charges', 'temp_hess.log'):
+            try:
+                os.remove(filename)
+            except FileNotFoundError:
+                pass
+
+        return free_energy
+
+    except FileNotFoundError:
+        # return np.inf
+        print(f'temp_hess.log not present here - we are in', os.getcwd())
+        print(os.listdir())
+        quit()
+
+def read_xtb_free_energy(filename):
+    '''
+    returns free energy in kcal/mol from an XTB
+    .xyz result file (xtbopt.xyz)
+    '''
+    with open(filename, 'r') as f:
+        line = f.readline()
+        while True:
+            line = f.readline()
+            if 'TOTAL FREE ENERGY' in line:
+                return float(line.split()[4]) * 627.5096080305927 # Eh to kcal/mol
             if not line:
                 raise Exception()
 

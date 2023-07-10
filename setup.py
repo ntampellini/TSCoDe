@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021-2023 Nicolò Tampellini
+Copyright (C) 2021 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -54,10 +54,9 @@ setup(
         'networkx',
         'rmsd',
         'ase',
-        # 'sella',
-        'scikit-learn',
+        'sella',
+        'sklearn',
         'numba',
-        'prettytable'
     ],
 
     url='https://www.github.com/ntampellini/tscode',
@@ -65,5 +64,5 @@ setup(
     author_email='nicolo.tampellini@yale.edu',
 
     packages=find_packages(),
-    python_requires=">=3.8",
+    python_requires=">=3.7",
 )

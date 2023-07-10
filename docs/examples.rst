@@ -117,3 +117,9 @@ Work is in progress to expand this section with more examples.
    :align: center
 
    *Best pose generated for the above input. The yellow bond is the imposed interaction, dotted lines are hydrogen bonds*
+
+.. 4. Complex embedding with internal and external constraints
+.. +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+.. ::
+
