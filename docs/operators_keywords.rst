@@ -31,12 +31,16 @@ Here is a list of the currently available operators:
 
 -  ``neb>`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
    if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
-   The implementation is a climbing image nudged elastic band (CI-NEB) TS search with 6 moving images.  
-   The operator should be used on a file that contains two structures, the start and end points
-   for the search. A graph with the energy of each image is written, along with the MEP guess 
-   and the converged MEP.
+   The implementation is a climbing image nudged elastic band (CI-NEB) TS search with 7 moving images.  
+   The operator should be used on a file that contains two or three structures, that will be interpolated as the
+   start, end and optional transition state guess for the NEB optimization. Alternatively, an odd number of
+   structures can be used as a starting point, overriding interpolation.
+   
+   A graph with the energy of each image is written, along with the MEP guess 
+   and the converged MEP. It is also possible to provide three structures, that will be used as start,
+   end and transition state guess, respectively.
 
--  ``prune>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
+-  ``refine>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
    during a TSCoDe embedding. That is the ensemble is pruned removing similar structure, optimized
    at the theory level(s) chosen and again pruned for similarity.
 
@@ -134,7 +138,7 @@ one is accepted, like in ``DIST``.
    band (CI-NEB) TS search after the partial optimization step,
    inferring reagents and products for each generated TS pose. For dihedral
    embeds, that is atropisomer rotations, scan points around the energy
-   maxima are used (reliable). For all other embeds, these are guessed by obtaining
+   maxima are used. For all other embeds, these are guessed by obtaining
    reagents and products by bonding/distancing reactive atom pairs and
    making use of different constrained optimizations (experimental). For trimolecular
    transition states with more than one reactive pairing (``a``, ``b``
@@ -163,24 +167,12 @@ one is accepted, like in ``DIST``.
 -  **PKA** - Specify the reference pKa for a compound in multimolecular
    pKa calculation runs. Syntax: ``PKA(mol.xyz)=11``
 
--  **PKA** - Specify the reference pKa for a compound in multimolecular
-   pKa calculation runs. Syntax: ``PKA(mol.xyz)=11``
-
 -  **PROCS** - Manually set the number of cores to be used in a
    parallel ORCA calculation, overriding the default value in
    ``settings.py``. Syntax: ``PROCS=32``
 
 -  **RIGID** - Only applies to "cyclical"/"chelotropic" embeds.
    Avoid bending structures to better build TSs.
-
--  **RMSD** - RMSD threshold (Angstroms) for structure pruning.
-   The smaller, the more retained structures (default is 0.5 A).
-   Two structures are pruned if they have an RMSD value smaller than
-   this threshold and the maximum deviation value smaller than double
-   this threshold. For smaller systems, a value of 0.3 is better suited, and
-   it is set by default for embeds of less than 50 atoms. For dihedral
-   embeds, the default value is 0.2 A. Syntax: ``THRESH=n``, where n is
-   a number.
 
 -  **RMSD** - RMSD threshold (Angstroms) for structure pruning.
    The smaller, the more retained structures (default is 0.5 A).
