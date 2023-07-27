@@ -89,30 +89,6 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
             print("Recursion limit reached in constrained optimization - Crashed.")
             quit()
 
-    if constrained_distances is not None:
-        for target_d, (a, b) in zip(constrained_distances, constrained_indexes):
-            d = norm_of(coords[b] - coords[a])
-            delta = d - target_d
-
-            if abs(delta) > 0.2:
-                sign = (d > target_d)
-                recursive_c_d = [d + 0.2 * sign for d in constrained_distances]
-
-                coords, _, _ = xtb_opt(
-                                        coords,
-                                        atomnos,
-                                        constrained_indexes,
-                                        constrained_distances=recursive_c_d,
-                                        method=method,
-                                        title=title,
-                                        **kwargs,
-                                    )
-
-            d = norm_of(coords[b] - coords[a])
-            delta = d - target_d
-            coords[b] -= norm(coords[b] - coords[a]) * delta
-
-
     with open(f'{title}.xyz', 'w') as f:
         write_xyz(coords, atomnos, f, title=title)
 
