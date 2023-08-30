@@ -11,7 +11,7 @@ Introduction
    When transition state embedding is a problem, TSCoDe is the solution.
 
 
-.. figure:: /images/intro_embed.png
+.. figure:: /images/intro_embed.PNG
    :alt: Embed logic scheme
    :align: center
    :width: 700px
