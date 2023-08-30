@@ -15,10 +15,13 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+import os
+
 import numpy as np
 
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, FF_CALC,
-                             FF_OPT_BOOL, PROCS)
+                             FF_OPT_BOOL, PROCS, THREADS)
+from tscode.utils import read_xyz
 
 keywords_list = [
             'BYPASS',         # Debug keyword. Used to skip all pruning steps and
@@ -133,7 +136,7 @@ keywords_list = [
 
             'TS',             # Uses various scans/saddle algorithms to locate the TS
 
-            'TSCODEPROCS',      # Change the number of max python parallel processes (default is 4)
+            'THREADS',       # Change the number of maximum concurrent processes (default is 4)
 ]
 
 class Truthy_struct:
@@ -157,7 +160,7 @@ class Options:
     calculator = CALCULATOR
     theory_level = None        # set later in _calculator_setup()
     procs = PROCS
-    tscode_procs = 4
+    threads = THREADS
     solvent = None
     ff_opt = FF_OPT_BOOL
     ff_calc = FF_CALC
@@ -217,11 +220,11 @@ class Options:
             'keep_hb',
             'operators',
             'keep_hb',
-            'operators'
+            # 'operators',
         )
         
         for name in repr_if_true:
-            if not d[name]:
+            if d.get(name,True):
                 d.pop(name)
 
         repr_if_not_none = (
@@ -282,6 +285,12 @@ class OptionSetter:
         from tscode.graph_manipulations import get_sum_graph
         from tscode.utils import graphize
 
+        # if there is a checkpoint with the same name, restart the run
+        if f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz' in os.listdir():
+            self.embedder.objects[0].atomcoords = read_xyz(f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz').atomcoords
+
+            self.embedder.log(f'\n--> Read checkpoint from TSCoDe_checkpoint_{self.embedder.stamp}.xyz - resuming the run\n')
+
         self.embedder.structures = self.embedder.objects[0].atomcoords
         self.embedder.atomnos = self.embedder.objects[0].atomnos
         self.embedder.constrained_indexes = _get_monomolecular_reactive_indexes(self.embedder)
@@ -332,7 +341,7 @@ class OptionSetter:
         kw = self.keywords_simple[self.keywords.index('FFOPT')]
         value = kw.split('=')[1].upper()
         if value not in ('ON', 'OFF'):
-            raise SystemExit('FFOPT keyword can only have value \'ON\' or \'OFF\' (i.e. \'FFOPT=OFF\'')
+            raise SystemExit('FFOPT keyword can only have value \'ON\' or \'OFF\' (i.e. \'FFOPT=OFF\')')
 
         options.ff_opt = True if value == 'ON' else False
 
@@ -456,9 +465,9 @@ class OptionSetter:
         kw = self.keywords_simple[self.keywords.index('PROCS')]
         options.procs = int(kw.split('=')[1])
 
-    def tscodeprocs(self, options, *args):
-        kw = self.keywords_simple[self.keywords.index('TSCODEPROCS')]
-        options.tscode_procs = int(kw.split('=')[1])
+    def threads(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('THREADS')]
+        options.threads = int(kw.split('=')[1])
 
     def ezprot(self, options, *args):
         options.double_bond_protection = True

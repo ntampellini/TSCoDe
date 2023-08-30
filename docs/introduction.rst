@@ -8,7 +8,7 @@ Introduction
    :align: center
    :width: 500px
 
-   Transition state embedding is a problem. TSCoDe is the solution.
+   When transition state embedding is a problem, TSCoDe is the solution.
 
 
 .. figure:: /images/intro_embed.png

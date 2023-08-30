@@ -114,3 +114,11 @@
 - Fixed bug with scan> termination called when not required.
 - Changed default for conformational search during embeds to false, and NOCSEARCH keyword to CSEARCH.
 - Clustered csearch module: added flexibility in some functions to allow external use of them.
+
+## 0.3.4 (August 30 2023)
+- Added the ability to recognize interrupted refine> runs and restart from last checkpoint.
+- Moreover, checkpoints now update every 20 optimized structures.
+- Layered optimization protocol for optimization_refinement when using ORCA - first round with 3 iterations, then 5 extra, then to convergence.
+- XTB calculations that do not reach convergence do not crash the program anymore unless specified with assert_convergence=True.
+- XTB force field ensemble optimizations are carried in two steps, first with loose convergence and then with tight convergence.
+- Various small bugfixes and printout beautifications.

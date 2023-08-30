@@ -46,7 +46,7 @@ if FF_CALC in ('OB', 'OPENBABEL'):
     opt_funcs_dict['OB'] = openbabel_opt
     opt_funcs_dict['OPENBABEL'] = openbabel_opt
 
-def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None, constrained_distances=None,
+def optimize(coords, atomnos, calculator,  method=None, maxiter=None, conv_thr="tight", constrained_indexes=None, constrained_distances=None,
              mols_graphs=None, procs=1, solvent=None, charge=0, max_newbonds=0, title='temp', check=True, logfunction=None):
     '''
     Performs a geometry [partial] optimization (OPT/POPT) with MOPAC, ORCA, Gaussian or XTB at $method level, 
@@ -87,6 +87,8 @@ def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None
                                             method=method,
                                             procs=procs,
                                             solvent=solvent,
+                                            maxiter=maxiter,
+                                            conv_thr=conv_thr,
                                             title=title,
                                             charge=charge)
     # success checks that calculation had a normal termination
@@ -101,11 +103,11 @@ def optimize(coords, atomnos, calculator,  method=None, constrained_indexes=None
             else:
                 success = molecule_check(coords, opt_coords, atomnos, max_newbonds=max_newbonds)
 
-            if logfunction is not None:
-                if success:
-                    logfunction(f'    - {title} - REFINED {time_to_string(elapsed)}')
-                else:
-                    logfunction(f'    - {title} - SCRAMBLED {time_to_string(elapsed)}')             
+        if logfunction is not None:
+            if success:
+                logfunction(f'    - {title} - REFINED {time_to_string(elapsed)}')
+            else:
+                logfunction(f'    - {title} - SCRAMBLED {time_to_string(elapsed)}')             
 
         return opt_coords, energy, success
 

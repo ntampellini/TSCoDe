@@ -39,7 +39,7 @@ def string_embed(embedder):
     '''
     assert len(embedder.objects) == 2
 
-    # if embedder.options.tscode_procs > 1:
+    # if embedder.options.threads > 1:
     #     return string_embed_parallel(embedder)
     # Not implemented for now - significatively slower
 
@@ -184,7 +184,7 @@ def string_embed_parallel(embedder):
     mol1, mol2 = embedder.objects
 
     poses, processes = [], []
-    with ProcessPoolExecutor(max_workers=embedder.options.tscode_procs) as executor:
+    with ProcessPoolExecutor(max_workers=embedder.options.threads) as executor:
         
         for i, (c1, c2) in enumerate(conf_indexes):
 

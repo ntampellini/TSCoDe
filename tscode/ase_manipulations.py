@@ -183,7 +183,6 @@ def get_ase_calc(embedder):
 
         return ORCA(label='temp',
                     command=f'{command} temp.inp "--oversubscribe" > temp.out 2>&1',
-                    command=f'{command} temp.inp "--oversubscribe" > temp.out 2>&1',
                     orcasimpleinput=method,
                     orcablocks=orcablocks)
 

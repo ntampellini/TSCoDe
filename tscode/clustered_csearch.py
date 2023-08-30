@@ -29,6 +29,7 @@ from tscode.graph_manipulations import (findPaths, get_sp_n, is_amide_n,
                                         is_ester_o, is_sp_n, neighbors)
 from tscode.hypermolecule_class import align_structures, graphize
 from tscode.optimization_methods import optimize
+from tscode.pt import pt
 from tscode.python_functions import prune_conformers_tfd, torsion_comp_check
 from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC
 from tscode.utils import (cartesian_product, flatten, get_double_bonds_indexes,
@@ -398,7 +399,7 @@ def random_csearch(
                     graph,
                     constrained_indexes=None,
                     n_out=100,
-                    max_tries=1000,
+                    max_tries=10000,
                     rotations=None,
                     title='test',
                     logfunction=print,
@@ -419,7 +420,13 @@ def random_csearch(
 
     logfunction(f'\n> Torsion list: (indexes : n-fold)')
     for i, t in enumerate(torsions):
-        logfunction(' {} - {:21s} : {}-fold'.format(i, str(t.torsion), t.n_fold))
+        logfunction(' {} - {:21s} : {}{}{}{} : {}-fold'.format(i,
+                                                               str(t.torsion),
+                                                               pt[atomnos[t.torsion[0]]].symbol,
+                                                               pt[atomnos[t.torsion[1]]].symbol,
+                                                               pt[atomnos[t.torsion[2]]].symbol,
+                                                               pt[atomnos[t.torsion[3]]].symbol,
+                                                               t.n_fold))
 
     central_ids = set(flatten([t.torsion[1:3] for t in torsions], int))
     logfunction(f'\n> Rotable bonds ids: {" ".join([str(i) for i in sorted(central_ids)])}')
@@ -504,7 +511,7 @@ def random_csearch(
     # Get a descriptor for how exhaustive the sampling has been
     exhaustiveness = len(new_structures) / np.prod([t.n_fold for t in torsions])
 
-    logfunction(f'  Generated {len(new_structures)} conformers, ({round(100*exhaustiveness, 2)} % of the total conformational space (CSearch time {time_to_string(time.perf_counter()-t_start_run)})')
+    logfunction(f'  Generated {len(new_structures)} conformers, (est. {round(100*exhaustiveness, 2)} % of the total conformational space) - CSearch time {time_to_string(time.perf_counter()-t_start_run)}')
 
     return new_structures
 
@@ -832,7 +839,7 @@ def clustered_csearch(
     exhaustiveness = len(output_structures) / np.prod([t.n_fold for t in torsions])
 
     logfunction(f'  Selected the {"best" if mode == 0 else "most diverse"} {len(output_structures)} conformers, corresponding\n' +
-                f'  to about {round(100*exhaustiveness, 2)} % of the total conformational space (CSearch time {time_to_string(time.perf_counter()-t_start_run)})')
+                f'  to about {round(100*exhaustiveness, 2)} % of the total conformational space - CSearch time {time_to_string(time.perf_counter()-t_start_run)}')
 
     return output_structures
 

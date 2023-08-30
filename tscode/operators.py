@@ -179,7 +179,7 @@ def csearch_operator(filename, embedder, keep_hb=False, mode=1):
                                 constrained_indexes=_get_internal_constraints(filename, embedder),
                                 keep_hb=keep_hb,
                                 mode=mode,
-                                n_out=embedder.options.max_confs,
+                                n_out=embedder.options.max_confs//len(data.atomcoords),
                                 title=f'{filename}_conf{i}',
                                 logfunction=embedder.log,
                                 write_torsions=embedder.options.debug

@@ -25,7 +25,8 @@ from tscode.utils import clean_directory, read_xyz, write_xyz
 
 def xtb_opt(coords, atomnos, constrained_indexes=None,
             constrained_distances=None, method='GFN2-xTB', solvent=None,
-            charge=0, title='temp', read_output=True, procs=None, opt=True, **kwargs):
+            charge=0, title='temp', read_output=True, procs=None, opt=True,
+            conv_thr="tight", assert_convergence=False, **kwargs):
     '''
     This function writes an XTB .inp file, runs it with the subprocess
     module and reads its output.
@@ -119,8 +120,8 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
     flags = ''
     
     if opt:
-        flags += '--opt tight'
-        # tighter convergence works better
+        flags += f'--opt {conv_thr}'
+        # specify convergence tightness
     
     if method in ('GFN-FF', 'GFNFF'):
 
@@ -149,29 +150,30 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
         with open("temp.log", "w") as f:
             check_call(f'xtb {title}.xyz --input {title}.inp {flags}'.split(), stdout=f, stderr=STDOUT)
 
+    # sometimes the SCC does not converge: only raise the error if specified
+    except CalledProcessError:
+        if assert_convergence:
+            raise CalledProcessError
+    
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
         quit()
-
-    # sometimes the SCC does not converge
-    # except CalledProcessError:
-    #     print('CalledProcessError.')
-    #     return coords, None, False
 
     if read_output:
         
         if opt:
 
-            try:
-                outname = 'xtbopt.xyz'
+            outname = 'xtbopt.xyz'
+
+            if outname in os.listdir():
                 coords = read_xyz(outname).atomcoords[0]
                 energy = read_xtb_energy(outname)
 
-                clean_directory((f'{title}.inp', f'{title}.xyz', f'{title}_opt.log'))
-                os.remove(outname)
+            else:
+                energy = None
 
-            except FileNotFoundError:
-                return None, None, False
+            clean_directory((outname, f'{title}.inp', f'{title}.xyz', f'{title}_opt.log'))
+        
         else:    
             energy = energy_grepper('temp.log', 'TOTAL ENERGY', 3)
             clean_directory((f'{title}.inp', f'{title}.xyz', f'{title}.log'))

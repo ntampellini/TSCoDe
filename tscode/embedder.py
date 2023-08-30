@@ -29,13 +29,15 @@ import numpy as np
 from tscode.__main__ import __version__
 from tscode.algebra import norm_of
 from tscode.embedder_options import Options, OptionSetter, keywords_list
+from tscode.embeds import _get_monomolecular_reactive_indexes
 from tscode.errors import InputError
+from tscode.graph_manipulations import get_sum_graph
 from tscode.hypermolecule_class import Hypermolecule, Pivot
 from tscode.operators import operate
 from tscode.run import RunEmbedding
-from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS
+from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS, THREADS
 from tscode.utils import (ase_view, auto_newline, cartesian_product,
-                          clean_directory, time_to_string)
+                          clean_directory, graphize, time_to_string)
 
 
 class Embedder:
@@ -156,9 +158,9 @@ class Embedder:
      ╲╲    ▒░║                                          ║░▒    ╱╱  .       
  ..   ╲╲   ▒░║     Version    >{0:^25}║░▒   ╱╱ .  *                                    
    .   ╲╲  ▒░║      User      >{1:^25}║░▒  ╱╱   .                                     
-        ╲╲ ▒░║      Host      >{2:^25}║░▒ ╱╱ *   .                                                      
- ..   *  ╲╲▒░║      Time      >{3:^25}║░▒╱╱   ..            
-    .     ╲▒░║    Processors  >{4:^25}║░▒╱  +              
+        ╲╲ ▒░║      Time      >{2:^25}║░▒ ╱╱ *   .                                                      
+ ..   *  ╲╲▒░║      Cores     >{3:^25}║░▒╱╱   ..            
+    .     ╲▒░║     Threads    >{4:^25}║░▒╱  +              
       .    ▒░║                                          ║░▒ .   ..                            
   +  .. .  ▒░╚══════════════════════════════════════════╝░▒  .. .   
     .       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒     .     
@@ -166,9 +168,9 @@ class Embedder:
      .      .  ╲╲▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╱╱ .   .    
            '''.format(__version__,
                       getpass.getuser(),
-                      socket.gethostname(),
                       time.ctime()[0:-8],
-                      PROCS)
+                      PROCS,
+                      THREADS)
 
         # ⏣█▓▒░ banner art adapted from https://fsymbols.com/generators/tarty/
 
@@ -749,6 +751,16 @@ class Embedder:
                 # updating orbital size if not default
                 if hasattr(self, 'orb_string'):
                     self._set_custom_orbs(self.orb_string)
+
+                # updating global docker if necessary
+                if operator in ('rsearch', 'csearch') and self.options.noembed and len(self.objects) == 1:
+                    self.structures = self.objects[0].atomcoords
+                    self.atomnos = self.objects[0].atomnos
+                    self.constrained_indexes = _get_monomolecular_reactive_indexes(self)
+                    self.ids = None
+                    self.energies = np.array([0 for _ in self.structures])
+                    self.exit_status = np.ones(self.structures.shape[0], dtype=bool)
+                    self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indexes[0])
 
         # updating the orbital cumnums for 
         # all the molecules in the run

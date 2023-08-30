@@ -23,7 +23,18 @@ from tscode.solvents import get_solvent_line
 from tscode.utils import clean_directory, pt
 
 
-def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', charge=0, procs=1, mem=MEM_GB, solvent=None, title='temp', read_output=True, **kwargs):
+def orca_opt(coords,
+             atomnos,
+             constrained_indexes=None,
+             method='PM3',
+             charge=0,
+             procs=1,
+             maxiter=None,
+             mem=MEM_GB,
+             solvent=None,
+             title='temp',
+             read_output=True,
+             **kwargs):
     '''
     This function writes an ORCA .inp file, runs it with the subprocess
     module and reads its output.
@@ -56,6 +67,10 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', charge=0, 
 
         s += '  end\nend\n\n'
 
+    if maxiter is not None:
+        s += f'%{""}geom\n  MaxIter {maxiter}\nend\n'
+        # weird f-string to prevent python misinterpreting %
+
     s += f'*xyz {charge} 1\n'
 
     for i, atom in enumerate(coords):
@@ -69,7 +84,7 @@ def orca_opt(coords, atomnos, constrained_indexes=None, method='PM3', charge=0, 
     
     try:
         with open(f"{title}.out", "w") as f:
-            check_call(f'{COMMANDS["ORCA"]} {title}.inp'.split(), stdout=f, stderr=STDOUT)
+            check_call(f'{COMMANDS["ORCA"]} {title}.inp \"--oversubscribe\"'.split(), stdout=f, stderr=STDOUT)
 
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')

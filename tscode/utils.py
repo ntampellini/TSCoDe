@@ -73,7 +73,10 @@ def clean_directory(to_remove=None):
 
     if to_remove:
         for name in to_remove:
-            os.remove(name)
+            try:
+                os.remove(name)
+            except FileNotFoundError:
+                pass
 
     for f in os.listdir():
         if f.split('.')[0] == 'temp':
@@ -425,7 +428,7 @@ def smi_to_3d(smi, new_filename):
         f.write(smi)
 
     check_call(f'obabel -i smi temp_smi.txt -o xyz -O {new_filename}.xyz -h --gen3d'.split(), stdout=DEVNULL, stderr=STDOUT)
-    data = read_xyz(f"{new_filename}.xyz")
+    # data = read_xyz(f"{new_filename}.xyz")
     clean_directory(["temp_smi.txt"])
 
     return new_filename + ".xyz"

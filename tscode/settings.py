@@ -59,14 +59,18 @@ DEFAULT_LEVELS = {
 
 COMMANDS = {
     'MOPAC':'MOPAC2016.exe',
-    'ORCA':'/home/nt383/project/orca/orca_5_0_3_linux_x86-64_shared_openmpi411/orca',
+    'ORCA':'/vast/palmer/apps/avx.grace/software/ORCA/5.0.4-gompi-2020b/bin/orca',
     'GAUSSIAN':'g09.exe',
+    'XTB':'xtb',
 }
 # Command with which calculators will be called from the command line
 
-PROCS = 4
+PROCS = 8
 # Number of processors (cores) to be used by ORCA and/or Gaussian
 
-MEM_GB = 4
+THREADS = 1
+# Number of threads for concurrent geometry optimizations
+
+MEM_GB = 8
 # Memory allocated for each job (Gaussian only). If you experience problems
 # in running Gaussian calculation, try setting PROCS to 1 and MEM_GB to 0.5.

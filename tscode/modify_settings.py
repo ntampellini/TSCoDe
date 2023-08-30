@@ -37,6 +37,7 @@ def run_setup():
         'NEW_DEFAULT':None,
         'NEW_COMMAND':None,
         'PROCS':1,
+        'THREADS':1,
         'MEM_GB':1,
     }
 
@@ -104,10 +105,14 @@ def run_setup():
             properties['NEW_COMMAND'] = answer
 
     #########################################################################################
-
     
     properties['PROCS'] = ask(f'How many cores should jobs run on? [{os.cpu_count()}] : ',
                                 accepted=[str(n) for n in range(1,1000)], default=os.cpu_count())
+
+    #########################################################################################
+
+    properties['THREADS'] = ask(f'How many threads should jobs run on? [1] : ',
+                                accepted=[str(n) for n in range(1,1000)], default=1)
 
     #########################################################################################
 
@@ -164,6 +169,10 @@ def run_setup():
             lines[l] = 'PROCS = ' + str(properties['PROCS']) + '\n'
             PROCS = properties['PROCS']
 
+        elif 'THREADS =' in line:
+            lines[l] = 'THREADS = ' + str(properties['THREADS']) + '\n'
+            THREADS = properties['THREADS']
+
         elif 'MEM_GB =' in line:
             lines[l] = 'MEM_GB = ' + str(properties['MEM_GB']) + '\n'
             MEM_GB = properties['MEM_GB']
@@ -175,8 +184,8 @@ def run_setup():
 
     ff = f'{FF_CALC}/{DEFAULT_FF_LEVELS[FF_CALC]}' if FF_OPT_BOOL else 'Turned off'
     opt = f'{CALCULATOR}/{DEFAULT_LEVELS[CALCULATOR]}'
-    s = f'  FF    : {ff}\n  OPT   : {opt}\n  PROCS : {PROCS}'
-    s += f'\n  MEM   : {MEM_GB} GB'
+    s = f'  FF      : {ff}\n  OPT     : {opt}\n  PROCS   : {PROCS}\n  THREADS : {THREADS}'
+    s += f'\n  MEM     : {MEM_GB} GB'
 
     print(s)
 

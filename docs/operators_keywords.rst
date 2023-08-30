@@ -17,9 +17,14 @@ Here is a list of the currently available operators:
    coordinates.
 
 -  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational
-   search through TSCoDe. Then, an appropriate amount of the most diverse
-   conformers are used to run TSCoDe. Generates a new ``molecule_confs.xyz``
-   file with all optimized conformers.
+   search on the specified input structure. Only the bonds that do not brake imposed
+   constraints are rotated (see examples). Generates a new ``molecule_confs.xyz``
+   file with the unoptimized conformers.
+
+-  ``rsearch>`` - Performs a random torsion-based conformational
+   search on the specified input structure. Only the bonds that do not brake imposed
+   constraints are rotated (see examples). Generates a new ``molecule_confs.xyz``
+   file with the unoptimized conformers.
 
 -  ``csearch_hb>`` - Analogous to ``csearch>``, but recognizes the hydrogen bonds present
    in the input structure and only rotates bonds that keep those hydrogen bonds in place.
@@ -39,6 +44,9 @@ Here is a list of the currently available operators:
    A graph with the energy of each image is written, along with the MEP guess 
    and the converged MEP. It is also possible to provide three structures, that will be used as start,
    end and transition state guess, respectively.
+
+-  ``autoneb>`` - Analogous to the ``neb>`` operator, but automatically builds a MEP guess from a single structure.
+   At the moment, it is only able to do so for atropisomeric 7-member rings inversions.
 
 -  ``refine>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
    during a TSCoDe embedding. That is the ensemble is pruned removing similar structure, optimized
