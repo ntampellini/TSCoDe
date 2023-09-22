@@ -18,9 +18,8 @@ GNU General Public License for more details.
 from tscode.__main__ import __version__
 from setuptools import setup, find_packages
 
-long_description = ('## TSCoDe: Transition State Conformational Docker.\nSystematically generate poses for ' +
-                'bimolecular and trimolecular transition states. Support for open and cyclical transition ' +
-                'states, exploring all regiosomeric and stereoisomeric poses.')
+long_description = ('## TSCoDe: Transition State Conformational Docker.\nSystematic generation of multimolecular arrangements for ' +
+                'mono/bi/trimolecular transition states. Numerous utilities for conformational exploration and ensemble optimization.')
 
 with open('CHANGELOG.md', 'r') as f:
     long_description += '\n\n'
@@ -29,7 +28,7 @@ with open('CHANGELOG.md', 'r') as f:
 setup(
     name='tscode',
     version=__version__,
-    description='Computational chemistry general purpose transition state builder',
+    description='Computational chemistry general purpose transition state builder and ensemble optimizer',
     keywords=['computational chemistry', 'ASE', 'transition state', 'xtb'],
 
     # package_dir={'':'tscode'},
@@ -45,19 +44,20 @@ setup(
     long_description_content_type='text/markdown',
 
     install_requires=[
-        'numpy',
-        'scipy',
-        'numba-scipy',
-        'cclib',
-        'periodictable',
-        'matplotlib',
-        'networkx',
-        'rmsd',
-        'ase',
-        'sella',
+        'numpy==1.20.3',
+        'scipy==1.6.2',
+        'numba-scipy==0.3.0',
+        'cclib==1.7',
+        'periodictable==1.6.0',
+        'matplotlib==3.4.2',
+        'networkx==2.5.1',
+        'rmsd==1.4',
+        'ase==3.21.1',
+        'sella==1.0.0',
         'sklearn',
-        'numba',
-        'prettytable'
+        'scikit-learn==1.0.1'
+        'numba==0.54.1',
+        'prettytable==3.3.0'
     ],
 
     url='https://www.github.com/ntampellini/tscode',

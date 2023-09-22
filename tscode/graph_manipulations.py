@@ -193,6 +193,21 @@ def get_phenyls(coords, atomnos):
 
     return np.array(output)
 
+def _get_phenyl_ids(i, G):
+    '''
+    If i is part of a phenyl group, return the six
+    heavy atom indices associated with the ring
+    '''
+    for n in neighbors(G, i):
+        paths = nx.all_simple_paths(G, source=i, target=n, cutoff=6)
+        for path in paths:
+            if len(path) == 6:
+                if all(G.nodes[n]['atomnos'] != 1 for n in path):
+                    if all(len(neighbors(G, i)) == 3 for i in path):
+                        return path
+    
+    return None
+
 def findPaths(G, u, n, excludeSet = None):
     '''
     Recursively find all paths of a NetworkX
@@ -290,13 +305,18 @@ def get_sum_graph(graphs, extra_edges):
 
     graph, *extra = graphs
     out = deepcopy(graph)
+    cum_atomnos = list(nx.get_node_attributes(graphs[0], "atomnos").values())
 
     for g in extra:
         n = len(out.nodes())
         for e1, e2 in g.edges():
             out.add_edge(e1+n, e2+n)
 
+        cum_atomnos += list(nx.get_node_attributes(g, "atomnos").values())
+
     for e1, e2 in extra_edges:
         out.add_edge(e1, e2)
 
-    return graph
+    nx.set_node_attributes(out, dict(enumerate(cum_atomnos)), 'atomnos')
+
+    return out

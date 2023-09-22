@@ -192,13 +192,13 @@ def rotation_matrix_from_vectors(vec1, vec2):
 
 def polygonize(lengths):
     '''
-    Returns coordinates for the polygon vertexes used in cyclical TS construction,
+    Returns coordinates for the polygon vertices used in cyclical TS construction,
     as a list of vector couples specifying starting and ending point of each pivot 
-    vector. For bimolecular TSs, returns vertexes for the centered superposition of
-    two segments. For trimolecular TSs, returns triangle vertexes.
+    vector. For bimolecular TSs, returns vertices for the centered superposition of
+    two segments. For trimolecular TSs, returns triangle vertices.
 
-    :params vertexes: list of floats, used as polygon side lenghts.
-    :return vertexes_out: list of vectors couples (start, end)
+    :params vertices: list of floats, used as polygon side lenghts.
+    :return vertices_out: list of vectors couples (start, end)
     '''
     assert len(lengths) in (2,3)
 
@@ -211,8 +211,8 @@ def polygonize(lengths):
         arr[1,0] = np.array([-lengths[1]/2,0,0])
         arr[1,1] = np.array([+lengths[1]/2,0,0])
 
-        vertexes_out = np.vstack(([arr],[arr]))
-        vertexes_out[1,1] *= -1
+        vertices_out = np.vstack(([arr],[arr]))
+        vertices_out[1,1] *= -1
 
     else:
         
@@ -232,16 +232,16 @@ def polygonize(lengths):
         arr[1,1] = np.array([x,y,0])
         arr[2,0] = np.array([x,y,0])
 
-        vertexes_out = np.vstack(([arr],[arr],[arr],[arr],
+        vertices_out = np.vstack(([arr],[arr],[arr],[arr],
                                   [arr],[arr],[arr],[arr]))
 
         swaps = [(1,2),(2,1),(3,1),(3,2),(4,0),(5,0),(5,1),(6,0),(6,2),(7,0),(7,1),(7,2)]
 
         for t,v in swaps:
             # triangle, vector couples to be swapped
-            vertexes_out[t,v][[0,1]] = vertexes_out[t,v][[1,0]]
+            vertices_out[t,v][[0,1]] = vertices_out[t,v][[1,0]]
 
-    return vertexes_out
+    return vertices_out
 
 def ase_view(mol):
     '''

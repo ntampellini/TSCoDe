@@ -199,7 +199,7 @@ def read_xtb_energy(filename):
         return float(line.split()[1]) * 627.5096080305927 # Eh to kcal/mol
 
 def xtb_get_free_energy(coords, atomnos, method='GFN2-xTB', solvent=None,
-                        charge=0, title='temp', **kwargs):
+                        charge=0, title='temp', sph=False, **kwargs):
     '''
     '''
     with open(f'{title}.xyz', 'w') as f:
@@ -219,7 +219,10 @@ def xtb_get_free_energy(coords, atomnos, method='GFN2-xTB', solvent=None,
     with open(f'{title}.inp', 'w') as f:
         f.write(s)
     
-    flags = '--ohess'
+    if sph:
+        flags = '--bhess'
+    else:
+        flags = '--ohess'
     
     if method in ('GFN-FF', 'GFNFF'):
         flags += ' --gfnff'

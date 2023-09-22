@@ -24,7 +24,7 @@ from subprocess import DEVNULL, STDOUT, check_call
 import numpy as np
 from networkx import connected_components
 
-from tscode.clustered_csearch import csearch
+from tscode.torsion_module import csearch
 from tscode.errors import InputError
 from tscode.graph_manipulations import graphize
 from tscode.hypermolecule_class import align_structures
@@ -118,14 +118,12 @@ def confab_operator(filename, options, logfunction=None):
 
     if len(tuple(connected_components(graphize(data.atomcoords[0], data.atomnos)))) > 1:
         raise InputError((f'Requested conformational search on a molecular complex (file {filename}). '
-                           'Confab is not suited for this task, and using TSCoDe\'s csearch> operator '
-                           'is a better idea.'))
+                           'Confab is not suited for this task, use internal csearch> operator.'))
 
     if len(set(data.atomnos) - {1,6,7,8,9,15,16,17,35,53}) != 0:
         raise InputError(('Requested conformational search on a molecule that contains atoms different '
                             'than the ones for which OpenBabel Force Fields are parametrized. Please '
-                            'perform this conformational search through the more sophisticated and better '
-                            'integrated csearch> operator, part of the TSCoDe program.'))
+                            'perform this conformational search through the csearch> operator.'))
                                 
     confname = filename[:-4] + '_confab.xyz'
 
@@ -323,15 +321,15 @@ def neb_operator(filename, embedder, attempts=5):
             mep_override[0] = reagents
             mep_override[-1] = products
 
-    else:
-        embedder.log(f'--> Performing NEB TS optimization. Structures from {filename}\n'
-                     f'Theory level is {embedder.options.theory_level} via {embedder.options.calculator}')
+    # else:
+    #     embedder.log(f'--> Performing NEB TS optimization. Structures from {filename}\n'
+    #                  f'Theory level is {embedder.options.theory_level} via {embedder.options.calculator}')
 
-        print('Getting start point energy...', end='\r')
-        _, reag_energy, _ = ase_popt(embedder, reagents, data.atomnos, steps=0)
+    #     print('Getting start point energy...', end='\r')
+    #     _, reag_energy, _ = ase_popt(embedder, reagents, data.atomnos, steps=0)
 
-        print('Getting end point energy...', end='\r')
-        _, prod_energy, _ = ase_popt(embedder, products, data.atomnos, steps=0)
+    #     print('Getting end point energy...', end='\r')
+    #     _, prod_energy, _ = ase_popt(embedder, products, data.atomnos, steps=0)
 
     for attempt in range(attempts):
 

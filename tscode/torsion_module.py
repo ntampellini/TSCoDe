@@ -21,12 +21,14 @@ from copy import deepcopy
 
 import networkx as nx
 import numpy as np
+from rmsd import kabsch_rmsd
 from sklearn.cluster import KMeans, dbscan
 
 from tscode.algebra import norm, norm_of, vec_angle
 from tscode.errors import SegmentedGraphError
-from tscode.graph_manipulations import (findPaths, get_sp_n, is_amide_n,
-                                        is_ester_o, is_sp_n, neighbors)
+from tscode.graph_manipulations import (_get_phenyl_ids, findPaths, get_sp_n,
+                                        is_amide_n, is_ester_o, is_sp_n,
+                                        neighbors)
 from tscode.hypermolecule_class import align_structures, graphize
 from tscode.optimization_methods import optimize
 from tscode.pt import pt
@@ -101,6 +103,9 @@ class Torsion:
 
             if 3 in (sp_n_i2, sp_n_i3): # Csp3-X, Nsp3-X, Ssulfone-X
                 return 3
+            
+            if 2 in (sp_n_i2, sp_n_i3):
+                return 2
 
         return 4 #O-O, S-S, Ar-Ar, Ar-CO, and everything else
 
@@ -177,6 +182,31 @@ def _is_nondummy(i, root, graph) -> bool:
     # the rotation is considered dummy: some other rotation
     # will account for its freedom (i.e. alkynes, hydrogen bonds)
 
+    # check if it is a phenyl-like rotation
+    if len(nb) == 2:
+
+        # get the 6 indices of the aromatic atoms (i1-i6)
+        phenyl_indices = _get_phenyl_ids(i, G)
+
+        # compare the two halves of the 6-membered ring (indices i2-i3 region with i5-i6 region)
+        if phenyl_indices is not None:
+            i1, i2, i3, i4, i5, i6 = phenyl_indices
+            G.remove_edge(i3, i4)
+            G.remove_edge(i4, i5)
+            G.remove_edge(i1, i2)
+            G.remove_edge(i1, i6)
+
+            subgraphs = [nx.subgraph(G, _set) for _set in nx.connected_components(G)
+                    if i2 in _set or i6 in _set]
+
+            if len(subgraphs) == 2:
+                return not nx.is_isomorphic(subgraphs[0], subgraphs[1],
+                                            node_match=lambda n1, n2: n1['atomnos'] == n2['atomnos'])
+            
+            # We should not end up here, but if we do, rotation should not be dummy
+            return True
+
+    # if not, compare immediate neighbors of i
     for n in nb:
         G.remove_edge(i, n)
 
@@ -195,8 +225,8 @@ def _is_nondummy(i, root, graph) -> bool:
             return True
     # Care should be taken because chiral centers are not taken into account: a rotation 
     # involving an index where substituents only differ by stereochemistry, and where a 
-    # rotation is not an element of symmetry of the subsystem, the rotation is discarded
-    # even if it would be meaningful to keep it.
+    # rotation is not an element of symmetry of the subsystem, the rotation is considered
+    # dummy even if it would be more correct not to.
 
     return False
 
@@ -340,32 +370,6 @@ def _get_torsions(graph, hydrogen_bonds, double_bonds, keepdummy=False):
 
     return torsions
 
-# def _group_torsions_kmeans(coords, torsions, max_size=5):
-#     '''
-#     '''
-#     torsions_indexes = [t.torsion for t in torsions]
-#     # get torsion indexes
-
-#     torsions_centers = np.array([np.mean((coords[i2],coords[i3]), axis=0) for _, i2, i3, _ in torsions_indexes])
-#     # compute spatial distance
-
-#     l = len(torsions)
-#     for n in range((l//max_size)+1, l+1):
-#         kmeans = KMeans(n_clusters=n)
-#         kmeans.fit(torsions_centers)
-
-#         output = [[] for _ in range(n)]
-#         for torsion, cluster in zip(torsions, kmeans.labels_):
-#             output[cluster].append(torsion)
-
-#         if max([len(group) for group in output]) <= max_size:
-#             break
-
-#     output = sorted(output, key=len)
-#     # largest groups last
-    
-#     return output
-
 def _group_torsions_dbscan(coords, torsions, max_size=5):
     '''
     '''
@@ -420,7 +424,8 @@ def random_csearch(
 
     logfunction(f'\n> Torsion list: (indexes : n-fold)')
     for i, t in enumerate(torsions):
-        logfunction(' {} - {:21s} : {}{}{}{} : {}-fold'.format(i,
+        logfunction(' {:2s} - {:21s} : {}{}{}{} : {}-fold'.format(
+                                                               str(i),
                                                                str(t.torsion),
                                                                pt[atomnos[t.torsion[0]]].symbol,
                                                                pt[atomnos[t.torsion[1]]].symbol,
@@ -646,8 +651,6 @@ def csearch(
                                     interactive_print=interactive_print,
                                     write_torsions=write_torsions
                                 )
-
-###################################################################################
 
 def clustered_csearch(
                         coords,
@@ -945,3 +948,205 @@ def _write_torsion_vmd(coords, atomnos, constrained_indexes, grouped_torsions, t
 
 
         f.write(s)
+
+def rotationally_corrected_rmsd(ref, coord, atomnos, torsions, graph, angles):
+
+    torsion_corrections = [0 for _ in torsions]
+
+    # Now rotate every dummy torsion by the appropriate increment until we minimize local RMSD 
+    for i, torsion in enumerate(torsions):
+
+        # Create a temporary, modifiable graph
+        # temp_graph = deepcopy(graph)
+
+        # Temporarily chop graph in subgraphs along every other torsion
+        for other_torsion in torsions:
+            if other_torsion is not torsion:
+                graph.remove_edge(other_torsion[1],
+                                  other_torsion[2])
+
+        # Get nodes of the subgraph containing only the torsion of interest
+        heavy_subgraph_nodes = [i for i in [_set for _set in nx.connected_components(graph)
+                                if torsion[1] in _set][0] if atomnos[i] != 1]
+
+        # Restore graph (faster than working with a copy)
+        for other_torsion in torsions:
+            if other_torsion is not torsion:
+                graph.add_edge(other_torsion[1],
+                                  other_torsion[2])
+        
+        best_rmsd = np.inf
+
+        # Look for the rotational angle that minimizes local RMSD and save it for later
+        for angle in angles[i]:
+
+            coord = rotate_dihedral(coord,
+                                    torsion, 
+                                    angle,
+                                    mask=_get_rotation_mask(graph, torsions[i]))
+            
+            locally_corrected_rmsd = kabsch_rmsd(ref[heavy_subgraph_nodes], coord[heavy_subgraph_nodes])
+
+            if locally_corrected_rmsd < best_rmsd:
+                best_rmsd = locally_corrected_rmsd
+                torsion_corrections[i] = angle
+
+            # it is faster to undo the rotation rather than working with a copy of coords
+            coord = rotate_dihedral(coord,
+                                    torsion, 
+                                    -angle,
+                                    mask=_get_rotation_mask(graph, torsions[i]))
+
+        # print(f"Torsion {i+1}: best correction = {torsion_corrections[i]}°")
+
+    # Now perform all optimal rotations on original structure to get the globally corrected RMSD
+    for torsion, optimal_angle in zip(torsions, torsion_corrections):
+        coord = rotate_dihedral(coord,
+                                torsion, 
+                                optimal_angle,
+                                mask=_get_rotation_mask(graph, torsion))
+        # print(f'rotating {torsion}, {optimal_angle}')
+            
+    return kabsch_rmsd(ref[(atomnos != 1)], coord[(atomnos != 1)])
+
+def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, verbose=False, logfunction=None):
+    '''
+    Removes similar structures by repeatedly grouping them into k
+    subgroups and removing similar ones. A cache is present to avoid
+    repeating RMSD computations.
+    
+    Similarity occurs for structures with both RMSD < max_rmsd and
+    maximum deviation < max_delta.
+    '''
+
+    structures = np.array([s - s.mean(axis=0) for s in structures])
+    ref = structures[0]
+
+    # add hydrogen bonds to molecular graph 
+    hydrogen_bonds = _get_hydrogen_bonds(ref, atomnos, graph)
+    for hb in hydrogen_bonds:
+        graph.add_edge(*hb)
+
+    # get all rotable bonds in the molecule, including dummy rotations
+    torsions = _get_torsions(graph,
+                            hydrogen_bonds=_get_hydrogen_bonds(ref, atomnos, graph),
+                            double_bonds=get_double_bonds_indexes(ref, atomnos),
+                            keepdummy=True)
+
+    # only keep dummy rotations (checking both directions)
+    torsions = [t for t in torsions if not (
+                                _is_nondummy(t.i2, t.i3, graph) and (
+                                _is_nondummy(t.i3, t.i2, graph)))]
+
+    # since we only compute RMSD based on heavy atoms, discard quadruplets that involve hydrogen atoms
+    torsions = [t for t in torsions if not 1 in [atomnos[i] for i in t.torsion]]
+
+    # get torsions angles
+    angles = [t.get_angles() for t in torsions]
+
+    # Used specific directionality of torsions so that we always rotate the dummy portion (the one attached to the last index)
+    torsions = [t.torsion if _is_nondummy(t.i2, t.i3, graph) else list(reversed(t.torsion)) for t in torsions]
+
+    # Set up final mask and cache
+    final_mask = np.ones(structures.shape[0], dtype=bool)
+    cache_set = set()
+    
+    # Print out torsion information
+    if logfunction is not None:
+        logfunction(f'\n >> Dihedrals considered for subsymmetry corrections:')
+        for i, (torsion, angle) in enumerate(zip(torsions, angles)):
+            logfunction(' {:2s} - {:21s} : {}{}{}{} : {}-fold'.format(
+                                                                str(i),
+                                                                str(torsion),
+                                                                pt[atomnos[torsion[0]]].symbol,
+                                                                pt[atomnos[torsion[1]]].symbol,
+                                                                pt[atomnos[torsion[2]]].symbol,
+                                                                pt[atomnos[torsion[3]]].symbol,
+                                                                len(angle)))
+        logfunction("\n")
+
+    # Halt the run if there are too many structures so that we do not slow down refining
+    if len(structures) > 750:
+        if logfunction is not None:
+            logfunction(f'Skipped symmetry-corrected RMSD refining, too many structures (>750)')
+
+        return structures[final_mask], final_mask
+
+    # Start the grouping prcedure
+    for k in (5e5,  2e5,  1e5,  5e4, 2e4, 1e4,
+              5000, 2000, 1000, 500, 200, 100,
+              50,   20,   10,   5,   2,   1):
+
+        num_active_str = np.count_nonzero(final_mask)
+        
+        if k == 1 or 5*k < num_active_str:
+        # proceed only of there are at least five structures per group
+
+            if verbose:      
+                print(f'Working on subgroups with k={k} ({num_active_str} candidates left) {" "*10}', end='\r')
+
+            d = int(len(structures) // k)
+
+            for step in range(int(k)):
+            # operating on each of the k subdivisions of the array
+                if step == k-1:
+                    l = len(range(d*step, num_active_str))
+                else:
+                    l = len(range(d*step, int(d*(step+1))))
+
+                similarity_mat = np.zeros((l, l))
+
+                for i_rel in range(l):
+                    for j_rel in range(i_rel+1,l):
+
+                        i_abs = i_rel+(d*step)
+                        j_abs = j_rel+(d*step)
+
+                        if (i_abs, j_abs) not in cache_set:
+                        # if we have already performed the comparison,
+                        # structures were not similar and we can skip them
+
+                            rmsd = rotationally_corrected_rmsd(structures[i_abs],
+                                                               structures[j_abs],
+                                                               atomnos,
+                                                               torsions,
+                                                               graph,
+                                                               angles)
+
+                            if rmsd < max_rmsd:
+                                similarity_mat[i_rel,j_rel] = 1
+                                break
+
+                for i_rel, j_rel in zip(*np.where(similarity_mat == False)):
+                    i_abs = i_rel+(d*step)
+                    j_abs = j_rel+(d*step)
+                    cache_set.add((i_abs, j_abs))
+                    # adding indexes of structures that are considered equal,
+                    # so as not to repeat computing their RMSD
+                    # Their index accounts for their position in the initial
+                    # array (absolute index)
+
+                matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
+                g = nx.Graph(matches)
+
+                subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+                groups = [tuple(graph.nodes) for graph in subgraphs]
+
+                best_of_cluster = [group[0] for group in groups]
+                # of each cluster, keep the fist structure
+
+                rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
+                rejects = []
+                for s in rejects_sets:
+                    for i in s:
+                        rejects.append(i)
+
+                for i in rejects:
+                    abs_index = i + d*step
+                    final_mask[abs_index] = 0
+
+    # restore molecular graph
+    for hb in hydrogen_bonds:
+        graph.remove_edge(*hb)
+
+    return structures[final_mask], final_mask

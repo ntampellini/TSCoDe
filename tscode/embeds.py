@@ -23,7 +23,7 @@ import numpy as np
 from tscode.algebra import (align_vec_pair, norm, rot_mat_from_pointer,
                             vec_angle)
 from tscode.ase_manipulations import ase_bend
-from tscode.clustered_csearch import _get_quadruplets
+from tscode.torsion_module import _get_quadruplets
 from tscode.errors import TriangleError, ZeroCandidatesError
 from tscode.graph_manipulations import get_sum_graph
 from tscode.optimization_methods import optimize
@@ -251,9 +251,9 @@ def cyclical_embed(embedder):
             return np.array([[0, 1,0],
                              [0,-1,0]])
 
-        vertexes = np.zeros((3,2))
+        vertices = np.zeros((3,2))
 
-        vertexes[1] = np.array([norms[0],0])
+        vertices[1] = np.array([norms[0],0])
 
         a = np.power(norms[0], 2)
         b = np.power(norms[1], 2)
@@ -261,20 +261,20 @@ def cyclical_embed(embedder):
         x = (a-b+c)/(2*a**0.5)
         y = (c-x**2)**0.5
 
-        vertexes[2] = np.array([x,y])
+        vertices[2] = np.array([x,y])
         # similar to the code from polygonize, to get the active triangle
         # but without the orientation specified in the polygonize function
         
-        a = vertexes[1,0] # first point, x
-        b = vertexes[2,0] # second point, x
-        c = vertexes[2,1] # second point, y
+        a = vertices[1,0] # first point, x
+        b = vertices[2,0] # second point, x
+        c = vertices[2,1] # second point, y
 
         x = a/2
         y = (b**2 + c**2 - a*b)/(2*c)
         cc = np.array([x,y])
         # 2D coordinates of the triangle circocenter
 
-        v0, v1, v2 = vertexes
+        v0, v1, v2 = vertices
 
         meanpoint1 = np.mean((v0,v1), axis=0)
         meanpoint2 = np.mean((v1,v2), axis=0)
@@ -325,10 +325,10 @@ def cyclical_embed(embedder):
         p0, p1, p2 = [end - start for start, end in triangle_vectors]
         p0_mean, p1_mean, p2_mean = [np.mean((end, start), axis=0) for start, end in triangle_vectors]
 
-        ############### get triangle vertexes
+        ############### get triangle vertices
 
-        vertexes = np.zeros((3,2))
-        vertexes[1] = np.array([norms[0],0])
+        vertices = np.zeros((3,2))
+        vertices[1] = np.array([norms[0],0])
 
         a = np.power(norms[0], 2)
         b = np.power(norms[1], 2)
@@ -336,20 +336,20 @@ def cyclical_embed(embedder):
         x = (a-b+c)/(2*a**0.5)
         y = (c-x**2)**0.5
 
-        vertexes[2] = np.array([x,y])
+        vertices[2] = np.array([x,y])
         # similar to the code from polygonize, to get the active triangle
         # but without the orientation specified in the polygonize function
         
-        a = vertexes[1,0] # first point, x
-        b = vertexes[2,0] # second point, x
-        c = vertexes[2,1] # second point, y
+        a = vertices[1,0] # first point, x
+        b = vertices[2,0] # second point, x
+        c = vertices[2,1] # second point, y
 
         x = a/2
         y = (b**2 + c**2 - a*b)/(2*c)
-        cc = np.array([x,y])
+        # cc = np.array([x,y])
         # 2D coordinates of the triangle circocenter
 
-        v0, v1, v2 = vertexes
+        v0, v1, v2 = vertices
 
         v0 = np.concatenate((v0, [0]))
         v1 = np.concatenate((v1, [0]))
@@ -522,7 +522,7 @@ def cyclical_embed(embedder):
                     index = deltas.index(max(deltas))
                     mol = embedder.objects[index]
 
-                    if not tuple(sorted(mol.reactive_indexes)) in list(mol.graph.edges):
+                    if tuple(sorted(mol.reactive_indexes)) not in list(mol.graph.edges):
                         # do not try to bend molecules where the two reactive indices are bonded
 
                         pivot = pivots[index]
@@ -631,12 +631,12 @@ def cyclical_embed(embedder):
             # directions to orient the molecules toward, orthogonal to each vec_pair
 
             for v, vecs in enumerate(polygon_vectors):
-            # getting vertexes to embed molecules with and iterating over start/end points
+            # getting vertices to embed molecules with and iterating over start/end points
 
                 ids = _get_cyclical_reactive_indexes(embedder, pivots, v)
                 # get indexes of atoms that face each other
 
-                if not embedder.pairings_table or all([pair in ids for pair in embedder.pairings_table.values()]):
+                if not embedder.pairings_table or all((pair in ids) or (pair in embedder.internal_constraints) for pair in embedder.pairings_table.values()):
                 # ensure that the active arrangement has all the pairings that the user specified
 
                     if len(embedder.objects) == 3:
@@ -739,7 +739,7 @@ def _fast_bimol_rigid_cyclical_embed(embedder):
 
         pivots_indexes = cartesian_product(*[range(len(mol.pivots[conf_ids[i]])) for i, mol in enumerate(embedder.objects)])
         # indexes of pivots in each molecule self.pivots[conf] list. For three mols with 2 pivots each: [[0,0,0], [0,0,1], [0,1,0], ...]
-        
+
         for p, pi in enumerate(pivots_indexes):
 
             loadbar(p+ci*(len(pivots_indexes)), len(pivots_indexes)*len(conf_indexes), prefix=f'Embedding structures ')
@@ -757,15 +757,15 @@ def _fast_bimol_rigid_cyclical_embed(embedder):
             polygon_vectors = polygonize(norms)
 
             directions = np.array([[0, 1,0], [0,-1,0]])
-            # directions to orient the molecules toward, orthogonal to each vec_pair
+            # directions to orient the molecules toward, orthogonal to each vec_pair          
 
             for v, vecs in enumerate(polygon_vectors):
-            # getting vertexes to embed molecules with and iterating over start/end points
+            # getting vertices to embed molecules with and iterating over start/end points
 
                 ids = _get_cyclical_reactive_indexes(embedder, pivots, v)
                 # get indexes of atoms that face each other
 
-                if not embedder.pairings_table or all([pair in ids for pair in embedder.pairings_table.values()]):
+                if not embedder.pairings_table or all((pair in ids) or (pair in embedder.internal_constraints) for pair in embedder.pairings_table.values()):
                 # ensure that the active arrangement has all the pairings that the user specified
                         
                     for angles in embedder.systematic_angles:
@@ -935,8 +935,8 @@ def _get_monomolecular_reactive_indexes(embedder):
     '''
     '''
     if embedder.pairings_table:
-            return np.array([list(embedder.pairings_table.values())
-                            for _ in embedder.structures])
+        return np.array([list(embedder.pairings_table.values())
+                        for _ in embedder.structures])
     # This option gives the possibility to specify pairings in
     # refine>/REFINE runs, so as to make constrained optimizations
     # accessible.

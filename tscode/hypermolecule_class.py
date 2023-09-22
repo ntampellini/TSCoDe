@@ -146,7 +146,7 @@ class Hypermolecule:
 
         # self._compute_hypermolecule()
 
-    def compute_orbitals(self):
+    def compute_orbitals(self, manual=None):
         '''
         Computes orbital positions for atoms in self.reactive_atoms
         '''
@@ -156,7 +156,7 @@ class Hypermolecule:
 
         self.sp3_sigmastar, self.sigmatropic = None, None
 
-        self._inspect_reactive_atoms()
+        self._inspect_reactive_atoms(manual=manual)
         # sets reactive atoms properties
 
         # self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
@@ -213,7 +213,7 @@ class Hypermolecule:
         if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
         return list(indexes)
 
-    def _inspect_reactive_atoms(self):
+    def _inspect_reactive_atoms(self, manual=None):
         '''
         Control the type of reactive atoms and sets the class attribute self.reactive_atoms_classes_dict
         '''
@@ -223,7 +223,10 @@ class Hypermolecule:
             for index in self.reactive_indexes:
                 symbol = pt[self.atomnos[index]].symbol
 
-                atom_type = get_atom_type(self.graph, index)()
+                if manual is None:
+                    atom_type = get_atom_type(self.graph, index)()
+                else:
+                    atom_type = manual()
 
                 atom_type.init(self, index, conf=c)
                 # setting the reactive_atom class type

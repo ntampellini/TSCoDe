@@ -24,7 +24,7 @@ import numpy as np
 from tscode.algebra import norm_of
 from tscode.ase_manipulations import ase_adjust_spacings, ase_saddle
 from tscode.calculators._xtb import xtb_metadyn_augmentation
-from tscode.clustered_csearch import _get_quadruplets, csearch
+from tscode.torsion_module import _get_quadruplets, csearch, prune_conformers_rmsd_rot_corr
 from tscode.embeds import (cyclical_embed, dihedral_embed, monomolecular_embed,
                            string_embed)
 from tscode.errors import (MopacReadError, NoOrbitalError, SegmentedGraphError,
@@ -40,6 +40,7 @@ from tscode.python_functions import (compenetration_check,
                                      prune_conformers_tfd, scramble)
 from tscode.utils import clean_directory, loadbar, time_to_string, write_xyz
 from tscode.graph_manipulations import get_sum_graph
+from tscode.multiembed import multiembed_dispatcher
 
 
 class RunEmbedding:
@@ -64,6 +65,8 @@ class RunEmbedding:
         '''
 
         if hasattr(self, 'pairings_dists') and self.pairings_dists.get(letter) is not None:
+            # if self.options.shrink:
+            #     return self.pairings_dists[letter] * self.options.shrink_multiplier
             return self.pairings_dists[letter]
 
         d = 0
@@ -137,6 +140,7 @@ class RunEmbedding:
             'dihedral' : dihedral_embed,
             'monomolecular' : monomolecular_embed,
             'string' : string_embed,
+            'multiembed' : multiembed_dispatcher,
         }
 
         if self.embed == 'refine':
@@ -154,12 +158,17 @@ class RunEmbedding:
         # for the torsion fingerprint outcome, but other future features might
         # rely on the embed_graph to be accurate if conformers have different
         # constrained indexes.
-        self.embed_graph = get_sum_graph(self.graphs, self.constrained_indexes[0])
+
+        additional_bonds = self.constrained_indexes[0]
+        if len(self.internal_constraints) > 0:
+            additional_bonds = np.concatenate((self.internal_constraints, additional_bonds))
+
+        self.embed_graph = get_sum_graph(self.graphs, additional_bonds)
         
         self.log(f'Generated {len(self.structures)} transition state candidates ({time_to_string(time.perf_counter()-self.t_start_run)})\n')
 
-        if self.options.debug:
-            self.write_structures('embedded', energies=False)
+        # if self.options.debug:
+        self.write_structures('embedded', energies=False)
 
     def compenetration_refining(self):
         '''
@@ -257,15 +266,28 @@ class RunEmbedding:
 
         if rmsd:
 
-            before = len(self.structures)
+            before1 = len(self.structures)
 
             t_start = time.perf_counter()
             self.structures, mask = prune_conformers_rmsd(self.structures, self.atomnos, max_rmsd=self.options.rmsd, verbose=verbose)
 
             self.apply_mask(attr, mask)
 
-            if before > len(self.structures):
+            if before1 > len(self.structures):
                 self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for RMSD similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
+
+            ### Second step: again but symmetry-corrected (unless we have too many structures)
+
+            before2 = len(self.structures)
+
+            t_start = time.perf_counter()
+            self.structures, mask = prune_conformers_rmsd_rot_corr(self.structures, self.atomnos, self.embed_graph, max_rmsd=self.options.rmsd, verbose=verbose, logfunction=(self.log if verbose else None))
+
+            self.apply_mask(attr, mask)
+
+            if before2 > len(self.structures):
+                self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for symmetry-corrected RMSD similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
+
 
         if verbose and len(self.structures) == before:
             self.log(f'All structures passed the similarity check.{" "*15}')
@@ -326,7 +348,7 @@ class RunEmbedding:
 
                 ### Update checkpoint every 50 optimized structures
 
-                if i % 50 == 49:
+                if i % 20 == 19:
 
                     with open(self.outname, 'w') as f:        
                         for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
@@ -493,7 +515,7 @@ class RunEmbedding:
 
                     ### Update checkpoint every 50 optimized structures
 
-                    if i % 50 == 49:
+                    if i % 20 == 19:
 
                         with open(self.outname, 'w') as f:        
                             for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
@@ -745,7 +767,7 @@ class RunEmbedding:
         except FileNotFoundError:
             pass
 
-        self.log(f'Wrote {len(self.structures)} rough TS structures to {self.outname} file.\n')
+        self.log(f'Wrote {len(self.structures)} structures to {self.outname} file.\n')
 
     def metadynamics_augmentation(self):
         '''

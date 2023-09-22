@@ -4,7 +4,7 @@
 import tracemalloc
 
 from tscode.embedder import Embedder
-from tscode.clustered_csearch import csearch
+from tscode.torsion_module import csearch
 
 embedder = Embedder(r'C:\Users\Nik\Desktop\debug\malloc\input', stamp='debug')
 # embedder = Embedder(r'/mnt/c/Users/Nik/Desktop/debug/malloc/input', stamp='debug')

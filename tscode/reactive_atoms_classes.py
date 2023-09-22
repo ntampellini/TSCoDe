@@ -621,5 +621,4 @@ def get_atom_type(graph, index):
     the atom with the given index on the graph
     '''
     nb = neighbors(graph, index)
-
     return atom_type_dict[pt[graph.nodes[index]['atomnos']].symbol + str(len(nb))]

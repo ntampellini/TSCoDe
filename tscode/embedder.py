@@ -580,14 +580,23 @@ class Embedder:
         elif len(self.objects) in (2,3):
         # Setting embed type and calculating the number of conformation combinations based on embed type
 
-            cyclical = all([len(molecule.reactive_indexes) == 2 for molecule in self.objects])
-            chelotropic = sorted([len(molecule.reactive_indexes) for molecule in self.objects]) == [1,2]
-            string = all([len(molecule.reactive_indexes) == 1 for molecule in self.objects]) and len(self.objects) == 2
+            cyclical = all(len(molecule.reactive_indexes) == 2 for molecule in self.objects)
 
-            if cyclical or chelotropic:
+            # chelotropic embed should check that the two atoms on one molecule are bonded
+            chelotropic = sorted(len(molecule.reactive_indexes) for molecule in self.objects) == [1,2]
+
+            string = all(len(molecule.reactive_indexes) == 1 for molecule in self.objects) and len(self.objects) == 2
+
+            multiembed = (len(self.objects) == 2 and
+                          all(len(molecule.reactive_indexes) >= 2 for molecule in self.objects) and 
+                          not cyclical)
+
+            if cyclical or chelotropic or multiembed:
 
                 if cyclical:
                     self.embed = 'cyclical'
+                elif multiembed:
+                    self.embed = 'multiembed'
                 else:
                     self.embed = 'chelotropic'
                     for mol in self.objects:
@@ -627,6 +636,10 @@ class Embedder:
                     self.options.rotation_steps = self.options.custom_rotation_steps
 
                 self.systematic_angles = [n * 360 / self.options.rotation_steps for n in range(self.options.rotation_steps)]
+
+            elif multiembed:
+                # Complex, unspecified embed type - will explore many possibilities concurrently
+                self.embed = 'multiembed' 
    
             else:
                 raise InputError(('Bad input - The only molecular configurations accepted are:\n' 
@@ -634,7 +647,8 @@ class Embedder:
                                   '2) One molecule with four indexes (dihedral embed)\n'
                                   '3) Two or three molecules with two reactive centers each (cyclical embed)\n'
                                   '4) Two molecules with one reactive center each (string embed)\n'
-                                  '5) Two molecules, one with a single reactive center and the other with two (chelotropic embed)'))
+                                  '5) Two molecules, one with a single reactive center and the other with two (chelotropic embed)\n'
+                                  '6) Two molecules with at least two reactive centers each'))
             
             if p:
             # avoid calculating this if this is an early call 

@@ -122,3 +122,10 @@
 - XTB calculations that do not reach convergence do not crash the program anymore unless specified with assert_convergence=True.
 - XTB force field ensemble optimizations are carried in two steps, first with loose convergence and then with tight convergence.
 - Various small bugfixes and printout beautifications.
+
+## 0.3.5 (September 22 2023)
+- Added rotationally-corrected RMSD pruning, to treat symmetrical rotations and get rid of identical rotamers that only differ from indexing order. The treatment is skipped for ensembles greater than 750 structures, to avoid unnecessary slowing down the refinement process.
+- Renamed clustered_csearch.py as torsion_module.py, since it now contains mostly  torsion-based constructs and utilities.
+- Resolved a bug for internal constraints preventing paired embeds to be recognized as correct.
+- Implemented "multiembed" embeds, able to perform bimolecular cyclical embeds systematically on every arrangement of pairs of multiple atoms (see documentation)
+- Fixed dependency requirements (again?)

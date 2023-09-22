@@ -19,7 +19,7 @@ GNU General Public License for more details.
 import numpy as np
 
 from tscode.calculators._xtb import xtb_get_free_energy
-from tscode.clustered_csearch import csearch
+from tscode.torsion_module import csearch
 from tscode.optimization_methods import _refine_structures, optimize, write_xyz
 from tscode.utils import loadbar, graphize
 from tscode.graph_manipulations import neighbors
