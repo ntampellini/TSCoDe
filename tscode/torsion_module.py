@@ -450,7 +450,7 @@ def random_csearch(
 
     logfunction(f'\n--> Random dihedral CSearch on {title}\n    mode 2 (random) - {len(torsions)} torsions')
     
-    angles  = cartesian_product(*[t.get_angles() for t in torsions])
+    angles = cartesian_product(*[t.get_angles() for t in torsions])
     # calculating the angles for rotation based on step values
 
     if rotations is not None:
@@ -538,8 +538,8 @@ def csearch(
     '''
     n: number of structures to keep from each torsion cluster
     mode: 0 - torsion clustered - keep the n lowest energy conformers
-          1 - torsion clustered - keep the n most diverse conformers
-          2 - random dihedral rotations - quickly generate n_out conformers
+    1 - torsion clustered - keep the n most diverse conformers
+    2 - random dihedral rotations - quickly generate n_out conformers
 
     n_out: maximum number of output structures
 
@@ -671,7 +671,7 @@ def clustered_csearch(
     '''
     n: number of structures to keep from each torsion cluster
     mode: 0 - torsion clustered - keep the n lowest energy conformers
-          1 - torsion clustered - keep the n most diverse conformers
+    1 - torsion clustered - keep the n most diverse conformers
 
     n_out: maximum number of output structures
 
@@ -723,7 +723,7 @@ def clustered_csearch(
     starting_points = [coords]
     for tg, torsions_group in enumerate(grouped_torsions):
 
-        angles  = cartesian_product(*[t.get_angles() for t in torsions_group])
+        angles = cartesian_product(*[t.get_angles() for t in torsions_group])
         candidates = len(angles)*len(starting_points)
         # calculating the angles for rotation based on step values
 
@@ -851,8 +851,9 @@ def most_diverse_conformers(n, structures, torsion_array, energies=None, interac
     Return the n most diverse structures from the set.
     First removes similar structures based on torsional fingerprints, then divides them in n subsets and:
     - If the enrgy list is given, chooses the
-      one with the lowest energy from each.
+    one with the lowest energy from each.
     - If it is not, picks the most diverse structures.
+    
     '''
         
     if len(structures) <= n:
@@ -1073,9 +1074,9 @@ def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, ver
         return structures[final_mask], final_mask
 
     # Start the grouping prcedure
-    for k in (5e5,  2e5,  1e5,  5e4, 2e4, 1e4,
-              5000, 2000, 1000, 500, 200, 100,
-              50,   20,   10,   5,   2,   1):
+    for k in (5e5, 2e5, 1e5, 5e4, 2e4, 1e4,
+              5000,2000, 1000, 500, 200, 100,
+              50, 20, 10, 5, 2, 1):
 
         num_active_str = np.count_nonzero(final_mask)
         
@@ -1090,14 +1091,14 @@ def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, ver
             for step in range(int(k)):
             # operating on each of the k subdivisions of the array
                 if step == k-1:
-                    l = len(range(d*step, num_active_str))
+                    _l = len(range(d*step, num_active_str))
                 else:
-                    l = len(range(d*step, int(d*(step+1))))
+                    _l = len(range(d*step, int(d*(step+1))))
 
-                similarity_mat = np.zeros((l, l))
+                similarity_mat = np.zeros((_l, _l))
 
-                for i_rel in range(l):
-                    for j_rel in range(i_rel+1,l):
+                for i_rel in range(_l):
+                    for j_rel in range(i_rel+1,_l):
 
                         i_abs = i_rel+(d*step)
                         j_abs = j_rel+(d*step)

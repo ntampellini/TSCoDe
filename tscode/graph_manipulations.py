@@ -35,8 +35,9 @@ def graphize(coords, atomnos, mask=None):
     :params coords: atomic coordinates as 3D vectors
     :params atomnos: atomic numbers as a list
     :params mask: bool array, with False for atoms
-                  to be excluded in the bond evaluation
+    to be excluded in the bond evaluation
     :return connectivity graph
+    
     '''
 
     mask = np.array([True for _ in atomnos], dtype=bool) if mask is None else mask
@@ -236,7 +237,7 @@ def is_sigmatropic(mol, conf):
     - has 2 reactive atoms
     - they are of sp2 or analogous types
     - they are connected, or at least one path connecting them
-      is made up of atoms that do not make more than three bonds each
+    is made up of atoms that do not make more than three bonds each
     - they are less than 3 A apart (cisoid propenal makes it, transoid does not)
 
     Used to set the mol.sigmatropic attribute, that affects orbital

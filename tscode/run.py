@@ -58,57 +58,57 @@ class RunEmbedding:
             if attr[0:2] != '__' and attr != 'run':
                 setattr(self, attr, getattr(embedder, attr))
 
-    def get_pairing_dist_from_letter(self, letter):
-        '''
-        Get constrained distance between paired reactive
-        atoms, accessed via the associated constraint letter
-        '''
+    # def get_pairing_dist_from_letter(self, letter):
+    #     '''
+    #     Get constrained distance between paired reactive
+    #     atoms, accessed via the associated constraint letter
+    #     '''
 
-        if hasattr(self, 'pairings_dists') and self.pairings_dists.get(letter) is not None:
-            # if self.options.shrink:
-            #     return self.pairings_dists[letter] * self.options.shrink_multiplier
-            return self.pairings_dists[letter]
+    #     if hasattr(self, 'pairings_dists') and self.pairings_dists.get(letter) is not None:
+    #         # if self.options.shrink:
+    #         #     return self.pairings_dists[letter] * self.options.shrink_multiplier
+    #         return self.pairings_dists[letter]
 
-        d = 0
-        try:
-            for mol_index, mol_pairing_dict in self.pairings_dict.items():
-                if r_atom_index := mol_pairing_dict.get(letter):
+    #     d = 0
+    #     try:
+    #         for mol_index, mol_pairing_dict in self.pairings_dict.items():
+    #             if r_atom_index := mol_pairing_dict.get(letter):
 
-                    # for refine embeds, one letter corresponds to two indexes
-                    # on the same molecule
-                    if isinstance(r_atom_index, tuple):
-                        i1, i2 = r_atom_index
-                        return (self.objects[mol_index].get_orbital_length(i1) +
-                                self.objects[mol_index].get_orbital_length(i2))
+    #                 # for refine embeds, one letter corresponds to two indexes
+    #                 # on the same molecule
+    #                 if isinstance(r_atom_index, tuple):
+    #                     i1, i2 = r_atom_index
+    #                     return (self.objects[mol_index].get_orbital_length(i1) +
+    #                             self.objects[mol_index].get_orbital_length(i2))
 
-                    # for other runs, it is just one atom per molecule per letter
-                    d += self.objects[mol_index].get_orbital_length(r_atom_index)
+    #                 # for other runs, it is just one atom per molecule per letter
+    #                 d += self.objects[mol_index].get_orbital_length(r_atom_index)
 
-            return d
+    #         return d
 
-        # If no orbitals were built, return None
-        except NoOrbitalError:
-            return None
+    #     # If no orbitals were built, return None
+    #     except NoOrbitalError:
+    #         return None
 
-    def get_pairing_dists_from_constrained_indexes(self, constrained_pair):
-        '''
-        Returns the constrained distance
-        for a specific constrained pair of indexes
-        '''
-        letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
-                                                                           pair[1] == constrained_pair[1]))
+    # def get_pairing_dists_from_constrained_indexes(self, constrained_pair):
+    #     '''
+    #     Returns the constrained distance
+    #     for a specific constrained pair of indexes
+    #     '''
+    #     letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
+    #                                                                        pair[1] == constrained_pair[1]))
 
-        return self.get_pairing_dist_from_letter(letter)
+    #     return self.get_pairing_dist_from_letter(letter)
 
-    def get_pairing_dists(self, conf, coords):
-        '''
-        Returns a list with the constrained distances for each embedder constraint
-        '''
-        if self.constrained_indexes[conf].size == 0:
-            return None
+    # def get_pairing_dists(self, conf):
+    #     '''
+    #     Returns a list with the constrained distances for each embedder constraint
+    #     '''
+    #     if self.constrained_indexes[conf].size == 0:
+    #         return None
 
-        constraints = np.concatenate([self.constrained_indexes[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[conf]
-        return [self.get_pairing_dists_from_constrained_indexes(pair) for pair in constraints]
+    #     constraints = np.concatenate([self.constrained_indexes[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[conf]
+    #     return [self.get_pairing_dists_from_constrained_indexes(pair) for pair in constraints]
 
     def rel_energies(self):
         return self.energies - np.min(self.energies)
@@ -670,12 +670,12 @@ class RunEmbedding:
 
             self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.calculator})')
 
-            if self.options.ff_opt:
-                try:
-                    os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
-                    # We don't need the pre-optimized structures anymore
-                except FileNotFoundError:
-                    pass
+            # if self.options.ff_opt:
+            #     try:
+            #         os.remove(f'TSCoDe_checkpoint_{self.stamp}.xyz')
+            #         # We don't need the pre-optimized structures anymore
+            #     except FileNotFoundError:
+            #         pass
 
             self._set_target_distances()
             t_start = time.perf_counter()
@@ -1163,7 +1163,7 @@ class RunEmbedding:
                     self.log('    '+p)
                 self.log()
         
-        if not [l for l in self.nci if l != []]:
+        if not [_l for _l in self.nci if _l != []]:
             self.log('No particular NCIs spotted for these structures\n')
 
         else:

@@ -188,11 +188,11 @@ def get_inertia_moments(coords, masses):
 @nb.njit
 def get_moi_similarity_matches(structures, masses, max_deviation=1e-4):
     ''''''
-    l = len(structures)
-    mat = np.zeros((l,l), dtype=nb.boolean)
-    for i in range(l):
+    _l = len(structures)
+    mat = np.zeros((_l,_l), dtype=nb.boolean)
+    for i in range(_l):
         im_i = get_inertia_moments(structures[i], masses)
-        for j in range(i+1,l):
+        for j in range(i+1,_l):
             im_j = get_inertia_moments(structures[j], masses)
             rel_delta = np.abs(im_i - im_j) / im_i
             if np.all(rel_delta < max_deviation):
@@ -291,8 +291,8 @@ def quaternion_to_rotation_matrix(Q):
  
     Output
     :return: A 3x3 element matrix representing the full 3D rotation matrix. 
-             This rotation matrix converts a point in the local reference 
-             frame to a point in the global reference frame.
+    This rotation matrix converts a point in the local reference 
+    frame to a point in the global reference frame.
     """
     # Extract the values from Q (adjusting for scalar last in input)
     q0 = Q[3]

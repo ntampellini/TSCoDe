@@ -128,8 +128,8 @@ def get_ase_calc(embedder):
     Attach the correct ASE calculator
     to the ASE Atoms object.
     embedder: either a TSCoDe embedder object or
-        a 4-element strings tuple containing
-        (calculator, method, procs, solvent)
+    a 4-element strings tuple containing
+    (calculator, method, procs, solvent)
     '''
     if isinstance(embedder, tuple):
         calculator, method, procs, solvent = embedder
@@ -351,6 +351,7 @@ def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=
 
 def ase_vib(embedder, coords, atomnos, logfunction=None, title='temp'):
     '''
+    Calculate frequencies through ASE - returns frequencies and number of negatives (not in use)
     '''
     atoms = Atoms(atomnos, positions=coords)
     atoms.calc = get_ase_calc(embedder)
@@ -660,7 +661,7 @@ def ase_popt(embedder, coords, atomnos, constrained_indexes=None,
     safe: if True, adds a potential that prevents atoms from scrambling
     safe_mask: bool array, with False for atoms to be excluded when calculating bonds to preserve
     traj: if set to a string, traj is used as a filename for the bending trajectory.
-          not only the atoms will be printed, but also all the orbitals and the active pivot.
+    not only the atoms will be printed, but also all the orbitals and the active pivot.
     '''
     atoms = Atoms(atomnos, positions=coords)
     atoms.calc = get_ase_calc(embedder)
@@ -704,10 +705,10 @@ def ase_bend(embedder, original_mol, conf, pivot, threshold, title='temp', traj=
     pivot: pivot connecting two Hypermolecule orbitals to be approached/distanced
     threshold: target distance for the specified pivot, in Angstroms
     title: name to be used for referring to this structure in the embedder log
-    traj: if set to a string, traj+'.traj' is used as a filename for the bending trajectory.
-          not only the atoms will be printed, but also all the orbitals and the active pivot.
+    traj: if set to a string, traj+\'.traj\' is used as a filename for the bending trajectory.
+    not only the atoms will be printed, but also all the orbitals and the active pivot.
     check: if True, after bending checks that the bent structure did not scramble.
-           If it did, returns the initial molecule.
+    If it did, returns the initial molecule.
     '''
 
     identifier = np.sum(original_mol.atomcoords[conf])

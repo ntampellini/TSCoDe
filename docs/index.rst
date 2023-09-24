@@ -10,3 +10,4 @@ TSCoDe - Transition State Conformational Docker
    operators_keywords
    examples
    license
+   modules

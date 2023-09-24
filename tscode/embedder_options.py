@@ -202,6 +202,9 @@ class Options:
     # this list will be filled with operator strings
     # that need to be exectured before the run. i.e. ['csearch>mol.xyz']
 
+    operators_dict = {}
+    # Analogous dictionary that will contain the seuquences of operators for each molecule
+
     def __repr__(self):
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
         
@@ -286,18 +289,12 @@ class OptionSetter:
         from tscode.utils import graphize
 
         # if there is a checkpoint with the same name, restart the run
-        if f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz' in os.listdir():
-            self.embedder.objects[0].atomcoords = read_xyz(f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz').atomcoords
+        # if f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz' in os.listdir():
+        #     self.embedder.objects[0].atomcoords = read_xyz(f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz').atomcoords
 
-            self.embedder.log(f'\n--> Read checkpoint from TSCoDe_checkpoint_{self.embedder.stamp}.xyz - resuming the run\n')
+        #     self.embedder.log(f'\n--> Read checkpoint from TSCoDe_checkpoint_{self.embedder.stamp}.xyz - resuming the run\n')
 
-        self.embedder.structures = self.embedder.objects[0].atomcoords
-        self.embedder.atomnos = self.embedder.objects[0].atomnos
-        self.embedder.constrained_indexes = _get_monomolecular_reactive_indexes(self.embedder)
-        self.embedder.ids = None
-        self.embedder.energies = np.array([0 for _ in self.embedder.structures])
-        self.embedder.exit_status = np.ones(self.embedder.structures.shape[0], dtype=bool)
-        self.embedder.embed_graph = get_sum_graph([graphize(self.embedder.structures[0], self.embedder.atomnos)], self.embedder.constrained_indexes[0])
+        self.embedder._set_embedder_structures_from_mol()
 
         if self.embedder.options.rmsd is None:
             # set this only if user did not already specify a value

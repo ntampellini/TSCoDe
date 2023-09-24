@@ -32,7 +32,7 @@ from tscode.graph_manipulations import (graphize, is_sigmatropic, is_vicinal,
                                         neighbors)
 from tscode.pt import pt
 from tscode.reactive_atoms_classes import get_atom_type
-from tscode.utils import read_xyz
+from tscode.utils import read_xyz, smi_to_3d
 
 
 def align_structures(structures:np.array, indexes=None):

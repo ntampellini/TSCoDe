@@ -129,3 +129,10 @@
 - Resolved a bug for internal constraints preventing paired embeds to be recognized as correct.
 - Implemented "multiembed" embeds, able to perform bimolecular cyclical embeds systematically on every arrangement of pairs of multiple atoms (see documentation)
 - Fixed dependency requirements (again?)
+
+## 0.3.6 (September 24 2023)
+- Implemented nested operators call ('refine> rsearch> opt> mol.xyz 2a 7a'), executed in reversed order (opt>, then rsearch>, then refine>)
+- Removed checkpoint automatic restart, as it was not compatible with the new nested operator routine
+- To remedy the last point, the last 'checkpoint' ensemble is now not deleted after optimization_refinement
+- The opt> operator is now aware of internal constraints and performs constrained optimizations (moved letter/pairing/dist functions from RunEmbedder to Embedder)
+- Updated README and ReadTheDocs documentations

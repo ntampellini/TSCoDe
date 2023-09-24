@@ -598,7 +598,16 @@ def fitness_check(embedder, coords) -> bool:
                     
     return True
 
-def _refine_structures(structures, atomnos, calculator, method, procs, solvent=None, loadstring='', logfunction=None):
+def _refine_structures(structures,
+                       atomnos,
+                       calculator,
+                       method,
+                       procs,
+                       constrained_indexes=None,
+                       constrained_distances=None,
+                       solvent=None,
+                       loadstring='',
+                       logfunction=None):
     '''
     Refine a set of structures - optimize them and remove similar
     ones and high energy ones (>20 kcal/mol above lowest)
@@ -608,7 +617,19 @@ def _refine_structures(structures, atomnos, calculator, method, procs, solvent=N
 
         loadbar(i, len(structures), f'{loadstring} {i+1}/{len(structures)} ')
 
-        opt_coords, energy, success = optimize(conformer, atomnos, calculator, method=method, procs=procs, solvent=solvent, title=f'Structure_{i+1}', logfunction=logfunction)
+        opt_coords, energy, success = optimize(
+                                                conformer,
+                                                atomnos,
+                                                calculator,
+                                                constrained_indexes=constrained_indexes,
+                                                constrained_distances=constrained_distances,
+                                                method=method,
+                                                procs=procs,
+                                                solvent=solvent,
+                                                title=f'Structure_{i+1}',
+                                                logfunction=logfunction,
+                                                check=False, # a change in bonding topology is possible and should not be prevented
+                                            )
 
         if success:
             structures[i] = opt_coords

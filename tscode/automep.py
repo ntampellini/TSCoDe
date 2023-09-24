@@ -1,13 +1,17 @@
-from tscode.utils import read_xyz, graphize, write_xyz, clean_directory, scramble_check
-from networkx import cycle_basis
 import os
-from tscode.algebra import dihedral, norm, norm_of
-from tscode.graph_manipulations import neighbors
-import numpy as np
-from subprocess import check_call, STDOUT, DEVNULL
-from tscode.calculators._xtb import read_xtb_energy
-from tscode.optimization_methods import optimize
 import time
+from subprocess import DEVNULL, STDOUT, CalledProcessError, check_call
+
+import numpy as np
+from networkx import cycle_basis
+
+from tscode.algebra import dihedral, norm, norm_of
+from tscode.calculators._xtb import read_xtb_energy
+from tscode.graph_manipulations import neighbors
+from tscode.optimization_methods import optimize
+from tscode.utils import (clean_directory, graphize, read_xyz, scramble_check,
+                          write_xyz)
+
 
 def automep(embedder, n_images=7):
 
@@ -101,11 +105,10 @@ def xtb_popt(coords, atomnos, constrained_indexes=None,
     coords: array of shape (n,3) with cartesian coordinates for atoms.
     atomnos: array of atomic numbers for atoms.
     constrained_indexes: array of shape (n,2), with the indexes
-                        of atomic pairs to be constrained.
+    of atomic pairs to be constrained.
     method: string, specifiyng the theory level to be used.
     title: string, used as a file name and job title for the mopac input file.
     read_output: Whether to read the output file and return anything.
-
     '''
 
     if constrained_distances is not None:

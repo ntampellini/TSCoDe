@@ -11,17 +11,49 @@ Prerequisites: before downloading this repository, you should have
 installed at least one calculator. At the moment, TSCoDe supports these
 calculators:
 
--  MOPAC2016
+-  XTB (>=6.3) - recommended
 -  ORCA (>=4.2)
 -  Gaussian (>=9)
--  XTB (>=6.3)
+-  MOPAC2016
 
-An installation of Openbabel is optional, providing an additional
-conformational search tool and Force Field minimizations that can speed
-up the program.
+An additional installation of Openbabel is required, as it provides various i/o utilities.
 
-MOPAC2016
----------
+XTB (recommended for FF/SE)
+---------------------------
+
+This is free software. See the `GitHub
+repository <https://github.com/grimme-lab/xtb>`__ and the
+`documentation <https://xtb-docs.readthedocs.io/en/latest/contents.html>`__
+for how to install it on your machine. The package and its python bindings are available through conda as well.
+
+::
+
+    conda install -c conda-forge xtb xtb-python
+
+It is recommended to optimize the number of
+threads used on you system for maximal computaional efficiency (see xtb readthedocs).
+
+
+ORCA (optional, recommended for DFT)
+------------------------------------
+
+This software is only free for academic use at an academic institution.
+Detailed instructions on how to install and set up ORCA can be found in
+`the official
+website <https://sites.google.com/site/orcainputlibrary/setting-up-orca>`__.
+Make sure to install and set up OpenMPI along with ORCA if you wish to
+exploit multiple cores on your machine **(Note: semiempirical methods
+cannot be parallelized in ORCA!)**
+
+Gaussian (optional)
+-------------------
+
+This is commercial software available at `the official
+website <https://gaussian.com/>`__.
+
+
+MOPAC2016 (optional, deprecated)
+--------------------------------
 
 This software is closed-source but free for academic use. If you qualify
 for this usage, you should `request a licence for
@@ -32,46 +64,20 @@ command ``MOPAC2016.exe`` should return
 `this <https://gist.github.com/ntampellini/82224abb9db1c1880e91ad7e0682e34d>`__
 message.
 
-ORCA
-----
+Openbabel
+---------
 
-This software is only free for academic use at an academic institution.
-Detailed instructions on how to install and set up ORCA can be found in
-`the official
-website <https://sites.google.com/site/orcainputlibrary/setting-up-orca>`__.
-Make sure to install and set up OpenMPI along with ORCA if you wish to
-exploit multiple cores on your machine **(Note: semiempirical methods
-cannot be parallelized in ORCA!)**
-
-Gaussian
---------
-
-This is commercial software available at `the official
-website <https://gaussian.com/>`__.
-
-Openbabel (optional)
---------------------
-
-This is free software you can download from `the official
-website <http://openbabel.org/wiki/Category:Installation>`__. After you
-have installed the software, make sure to install its Python bindings.
-You can manually compile these by following the `website
-guidelines <https://openbabel.org/docs/dev/Installation/install.html#compile-bindings>`__,
-but *by far* the easiest procedure is just using conda inside a conda
-virtual environment:
+This is free software and it is available through conda.
 
 ::
 
     conda install -c conda-forge openbabel
 
-XTB (recommended)
------------------
-
-This is free software. See the `GitHub
-repository <https://github.com/grimme-lab/xtb>`__ and the
-`documentation <https://xtb-docs.readthedocs.io/en/latest/contents.html>`__
-for how to install it on your machine. Be sure to optimize the number of
-threads used on you system for maximal computaional efficiency.
+Alternatively, you can download it from `the official
+website <http://openbabel.org/wiki/Category:Installation>`__. If you
+install the software from the website, make sure to install its Python bindings as well.
+You can manually compile these by following the `website
+guidelines <https://openbabel.org/docs/dev/Installation/install.html#compile-bindings>`__.
 
 TSCoDe
 ------
@@ -91,14 +97,14 @@ After installation, run the guided utility to set up calculation settings (sugge
 
 Defaults:
 
--  OpenBabel FF support is turned off.
--  Calculator is XTB
+-  FF optimization is turned ON.
+-  FF Calculator is XTB
 
-To test the installation, you can run the command:
+.. To test the installation, you can run the command:
 
-::
+.. ::
 
-    python -m tscode --test
+..     python -m tscode --test
 
-This should take less than 10 minutes on a common computer and point out
-if any part of the installation is faulted.
+.. This should take less than 10 minutes on a common computer and point out
+.. if any part of the installation is faulted.

@@ -4,39 +4,41 @@ import numpy as np
 from tscode.optimization_methods import optimize
 from tscode.utils import graphize, read_xyz, time_to_string
 
-data = read_xyz(f'')
-graph = graphize(data.atomcoords[0], data.atomnos)
+if __name__ == '__main__':
 
-def node_wrapper(func, **kwargs):
-    node = socket.gethostname()
-    print(node)
-    return func(**kwargs), node
+    data = read_xyz(f'mol.xyz')
+    graph = graphize(data.atomcoords[0], data.atomnos)
 
-queue = dispy.JobCluster(node_wrapper, depends=[])
-jobs = []
+    def node_wrapper(func, **kwargs):
+        node = socket.gethostname()
+        print(node)
+        return func(**kwargs), node
 
-for i in range(5):
+    queue = dispy.JobCluster(node_wrapper, depends=[])
+    jobs = []
 
-    process = queue.submit(
-                            optimize,
-                                coords=data.atomcoords[0],
-                                atomnos=data.atomnos,
-                                calculator="ORCA",
-                                method="R2SCAN-3C",
-                                maxiter=3,
-                                constrained_indexes=np.array([6,7]),
-                                mols_graphs=graph,
-                                procs=16,
-                                max_newbonds=0,
-                                check=False,
+    for i in range(5):
 
-                                logfunction=print,
-                                title=f'Candidate_{i+1}',)
-    
-    jobs.append(process)
+        process = queue.submit(
+                                optimize,
+                                    coords=data.atomcoords[0],
+                                    atomnos=data.atomnos,
+                                    calculator="ORCA",
+                                    method="R2SCAN-3C",
+                                    maxiter=3,
+                                    constrained_indexes=np.array([6,7]),
+                                    mols_graphs=graph,
+                                    procs=16,
+                                    max_newbonds=0,
+                                    check=False,
 
-for job in jobs:
-    *results, node = job()
-    print(f'Completed job on node {node} in {time_to_string(job.end_time-job.start_time)}')
+                                    logfunction=print,
+                                    title=f'Candidate_{i+1}',)
+        
+        jobs.append(process)
 
-queue.print_status()
+    for job in jobs:
+        *results, node = job()
+        print(f'Completed job on node {node} in {time_to_string(job.end_time-job.start_time)}')
+
+    queue.print_status()

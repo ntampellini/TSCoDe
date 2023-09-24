@@ -14,7 +14,8 @@ Here is a list of the currently available operators:
 
 -  ``opt>`` - Performs an optimization of all conformers of a molecule before
    running TSCoDe. Generates a new ``molecule_opt.xyz`` file with the optimized
-   coordinates.
+   coordinates. This operator is constraint-aware and will perform constrained
+   optimizations obeying the distances provided with DIST.
 
 -  ``csearch>`` - Performs a diversity-based, torsionally-clustered conformational
    search on the specified input structure. Only the bonds that do not brake imposed
@@ -30,9 +31,6 @@ Here is a list of the currently available operators:
    in the input structure and only rotates bonds that keep those hydrogen bonds in place.
    Useful to restrict the conformational space that is explored, and ensures that the final
    poses possess those initial hydrogen bonds.
-
--  ``csearch_opt>`` - Optimizes structures and then runs conformational searches (``opt>``
-   and ``csearch>`` operators, performed in sequence).
 
 -  ``neb>`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
    if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
@@ -51,6 +49,14 @@ Here is a list of the currently available operators:
 -  ``refine>`` - Reads the (multimolecular) input file and treats it as an ensemble generated
    during a TSCoDe embedding. That is the ensemble is pruned removing similar structure, optimized
    at the theory level(s) chosen and again pruned for similarity.
+
+All non-terminating operators can be nested:
+
+::
+
+   refine> rsearch> opt> mol.xyz
+   
+In this case, they are executed from the inner to the outer, i.e. from right to left.
 
 Keywords
 ++++++++
@@ -137,15 +143,15 @@ one is accepted, like in ``DIST``.
 -  **MTD** - Augments the conformational sampling of transition
    state candidates through the `XTB metadynamics
    implementation <https://xtb-docs.readthedocs.io/en/latest/mtd.html>`__
-   (XTB calculator only).
+   (XTB calculator only, experimental).
 
 -  **NCI** - Estimate and print non-covalent interactions present in
-   the generated poses.
+   the generated poses (experimental).
 
 -  **NEB** - Perform an automatical climbing image nudged elastic
    band (CI-NEB) TS search after the partial optimization step,
    inferring reagents and products for each generated TS pose. For dihedral
-   embeds, that is atropisomer rotations, scan points around the energy
+   embeds, (dihedral angle scans), scan points around the energy
    maxima are used. For all other embeds, these are guessed by obtaining
    reagents and products by bonding/distancing reactive atom pairs and
    making use of different constrained optimizations (experimental). For trimolecular
@@ -179,6 +185,10 @@ one is accepted, like in ``DIST``.
    parallel ORCA calculation, overriding the default value in
    ``settings.py``. Syntax: ``PROCS=32``
 
+-  **REFINE** - Same as calling ``refine>`` on a multimolecular file. 
+   The program does not embed structures, but uses the input ensemble
+   as a starting point as if it came out of a TSCoDe embedding.
+
 -  **RIGID** - Only applies to "cyclical"/"chelotropic" embeds.
    Avoid bending structures to better build TSs.
 
@@ -194,10 +204,6 @@ one is accepted, like in ``DIST``.
 -  **ROTRANGE** - Only applies to "cyclical"/"chelotropic" embeds.
    Manually specify the rotation range to be explored around the
    structure pivot. Default is 90. Syntax: ``ROTRANGE=90``
-
--  **REFINE** - Same as calling ``refine>`` on a multimolecular file. 
-   The program does not embed structures, but uses the input ensemble
-   as a starting point as if it came out of a TSCoDe embedding.
 
 -  **SADDLE** - After embed and refinement, optimize structures to the 
    closest first order saddle point using the `Sella <https://github.com/zadorlab/sella>`__ library through ASE.

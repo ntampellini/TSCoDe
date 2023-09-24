@@ -36,7 +36,7 @@ class suppress_stdout_stderr(object):
     A context manager for doing a "deep suppression" of stdout and stderr in 
     Python, i.e. will suppress all print, even if the print originates in a 
     compiled C/Fortran sub-function.
-       This will not suppress raised exceptions, since exceptions are printed
+    This will not suppress raised exceptions, since exceptions are printed
     to stderr just before a script exits, and after the context manager has
     exited (at least, I think that is why it lets exceptions through).      
 
@@ -301,10 +301,10 @@ def get_scan_peak_index(energies, max_thr=50, min_thr=0.1):
     Returns the index of the energies iterable that
     corresponds to the most prominent peak.
     '''
-    l = len(energies)
-    peaks = [i for i in range(l) if (
+    _l = len(energies)
+    peaks = [i for i in range(_l) if (
 
-        energies[i-1] < energies[i] >= energies[(i+1)%l] and
+        energies[i-1] < energies[i] >= energies[(i+1)%_l] and
         max_thr > energies[i] > min_thr
         # discard peaks that are too small or too big
     )]

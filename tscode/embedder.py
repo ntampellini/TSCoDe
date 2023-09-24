@@ -187,7 +187,7 @@ class Embedder:
         with open(filename, 'r') as f:
             lines = f.readlines()
 
-        lines = [line for line in lines if line[0] not in ('#', '\n')]
+        lines = [line.replace(', ',',') for line in lines if line[0] not in ('#', '\n')]
         
         def _remove_internal_constraints(string):
             numbers = [int(re.sub('[^0-9]', '', i)) for i in string]
@@ -204,9 +204,10 @@ class Embedder:
                 self.mol_lines = lines
 
             inp = []
-            for line in self.mol_lines:
+            for _l, line in enumerate(self.mol_lines):
 
                 if '>' in line:
+                    self.options.operators_dict[_l] = [op.rstrip().lstrip() for op in reversed(line.rstrip('\n').split('>')[:-1])]
                     self.options.operators.append(line.rstrip('\n'))
                     line = line.split('>')[-1].lstrip()
                     # record that we will need to perform these operations before the run
@@ -743,38 +744,45 @@ class Embedder:
         # early call to get the self.embed attribute
         self._setup(p=False)
 
-        for input_string in self.options.operators:
+        # for input_string in self.options.operators:
+        for index, operators in self.options.operators_dict.items():
 
-            outname = operate(input_string, self)
-            operator = input_string.split('>')[0]
+            for operator in operators: 
 
-            # these operators do not need molecule substitution
-            if operator not in ('refine', 'pka', 'scan'):
+                input_string = f'{operator}> {self.objects[index].name}'
+                outname = operate(input_string, self)
+                # operator = input_string.split('>')[0]
 
-                names = [mol.name for mol in self.objects]
-                filename = self._extract_filename(input_string)
-                index = names.index(filename)
-                reactive_indexes = self.objects[index].reactive_indexes
+                if operator == 'refine':
+                    self._set_embedder_structures_from_mol()
 
-                # replacing the old molecule with the one post-operators
-                self.objects[index] = Hypermolecule(outname, reactive_indexes)
+                # these operators do not need molecule substitution
+                elif operator not in ('pka', 'scan'):
 
-                # calculating where the new orbitals are
-                self.objects[index].compute_orbitals()
+                    # names = [mol.name for mol in self.objects]
+                    # filename = self._extract_filename(input_string)
+                    # index = names.index(filename)
+                    reactive_indexes = self.objects[index].reactive_indexes
 
-                # updating orbital size if not default
-                if hasattr(self, 'orb_string'):
-                    self._set_custom_orbs(self.orb_string)
+                    # replacing the old molecule with the one post-operators
+                    self.objects[index] = Hypermolecule(outname, reactive_indexes)
 
-                # updating global docker if necessary
-                if operator in ('rsearch', 'csearch') and self.options.noembed and len(self.objects) == 1:
-                    self.structures = self.objects[0].atomcoords
-                    self.atomnos = self.objects[0].atomnos
-                    self.constrained_indexes = _get_monomolecular_reactive_indexes(self)
-                    self.ids = None
-                    self.energies = np.array([0 for _ in self.structures])
-                    self.exit_status = np.ones(self.structures.shape[0], dtype=bool)
-                    self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indexes[0])
+                    # calculating where the new orbitals are
+                    self.objects[index].compute_orbitals()
+
+                    # updating orbital size if not default
+                    if hasattr(self, 'orb_string'):
+                        self._set_custom_orbs(self.orb_string)
+
+                    # updating global docker if necessary
+                    if operator in ('rsearch', 'csearch') and self.options.noembed and len(self.objects) == 1:
+                        self.structures = self.objects[0].atomcoords
+                        self.atomnos = self.objects[0].atomnos
+                        self.constrained_indexes = _get_monomolecular_reactive_indexes(self)
+                        self.ids = None
+                        self.energies = np.array([0 for _ in self.structures])
+                        self.exit_status = np.ones(self.structures.shape[0], dtype=bool)
+                        self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indexes[0])
 
         # updating the orbital cumnums for 
         # all the molecules in the run
@@ -812,6 +820,72 @@ class Embedder:
 
     def scramble(self, array, sequence):
         return np.array([array[s] for s in sequence])
+
+    def _set_embedder_structures_from_mol(self):
+        '''
+        Intended for REFINE runs, set the self.structures variable
+        (and related) to the confomers of a specific molecuele.
+        '''
+        self.structures = self.objects[0].atomcoords
+        self.atomnos = self.objects[0].atomnos
+        self.constrained_indexes = _get_monomolecular_reactive_indexes(self)
+        self.ids = None
+        self.energies = np.array([0 for _ in self.structures])
+        self.exit_status = np.ones(self.structures.shape[0], dtype=bool)
+        self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indexes[0])
+
+    def get_pairing_dist_from_letter(self, letter):
+        '''
+        Get constrained distance between paired reactive
+        atoms, accessed via the associated constraint letter
+        '''
+
+        if hasattr(self, 'pairings_dists') and self.pairings_dists.get(letter) is not None:
+            # if self.options.shrink:
+            #     return self.pairings_dists[letter] * self.options.shrink_multiplier
+            return self.pairings_dists[letter]
+
+        d = 0
+        try:
+            for mol_index, mol_pairing_dict in self.pairings_dict.items():
+                if r_atom_index := mol_pairing_dict.get(letter):
+
+                    # for refine embeds, one letter corresponds to two indexes
+                    # on the same molecule
+                    if isinstance(r_atom_index, tuple):
+                        i1, i2 = r_atom_index
+                        return (self.objects[mol_index].get_orbital_length(i1) +
+                                self.objects[mol_index].get_orbital_length(i2))
+
+                    # for other runs, it is just one atom per molecule per letter
+                    d += self.objects[mol_index].get_orbital_length(r_atom_index)
+
+            return d
+
+        # If no orbitals were built, return None
+        except NoOrbitalError:
+            return None
+
+    def get_pairing_dists_from_constrained_indexes(self, constrained_pair):
+        '''
+        Returns the constrained distance
+        for a specific constrained pair of indexes
+        '''
+        letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
+                                                                           pair[1] == constrained_pair[1]))
+
+        return self.get_pairing_dist_from_letter(letter)
+
+    def get_pairing_dists(self, conf):
+        '''
+        Returns a list with the constrained distances for each embedder constraint
+        '''
+        if self.constrained_indexes[conf].size == 0:
+            return None
+
+        constraints = np.concatenate([self.constrained_indexes[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[conf]
+        return [self.get_pairing_dists_from_constrained_indexes(pair) for pair in constraints]
+
 
     def normal_termination(self):
         clean_directory()

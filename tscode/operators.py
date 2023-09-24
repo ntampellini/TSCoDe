@@ -52,12 +52,6 @@ def operate(input_string, embedder):
                                     embedder.options,
                                     logfunction=embedder.log)
 
-    elif 'csearch_opt>' in input_string:
-        conf_name = csearch_operator(filename, embedder)
-        outname = opt_operator(conf_name,
-                                embedder,
-                                logfunction=embedder.log)
-
     elif 'csearch>' in input_string:
         outname = csearch_operator(filename, embedder)
 
@@ -223,13 +217,22 @@ def opt_operator(filename, embedder, logfunction=None):
     if logfunction is not None:
         logfunction(f'--> Performing {embedder.options.calculator} {embedder.options.theory_level}' + (
                     f'{f"/{embedder.options.solvent}" if embedder.options.solvent is not None else ""} optimization on {filename} ({len(mol.atomcoords)} conformers)'))
-                                
+
+    constrained_indexes = _get_internal_constraints(filename, embedder)
+    constrained_distances = [embedder.get_pairing_dists_from_constrained_indexes(cp) for cp in constrained_indexes]
+
     energies = []
     lowest_calc = _get_lowest_calc(embedder)
 
     t_start = time.perf_counter()
 
-    conformers, energies = _refine_structures(mol.atomcoords, mol.atomnos, *lowest_calc, loadstring='Optimizing conformer', logfunction=lambda s:embedder.log(s, p=False))
+    conformers, energies = _refine_structures(mol.atomcoords,
+                                              mol.atomnos,
+                                              constrained_indexes=constrained_indexes,
+                                              constrained_distances=constrained_distances,
+                                              *lowest_calc,
+                                              loadstring='Optimizing conformer',
+                                              logfunction=lambda s:embedder.log(s, p=False))
 
     energies, conformers = zip(*sorted(zip(energies, conformers), key=lambda x: x[0]))
     energies = np.array(energies) - np.min(energies)
@@ -256,7 +259,6 @@ def opt_operator(filename, embedder, logfunction=None):
 
     logfunction(s+'\n')
     logfunction(f'Wrote {len(conformers)} optimized structures to {optname}\n')
-
 
     return optname
 

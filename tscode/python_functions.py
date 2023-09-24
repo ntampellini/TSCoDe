@@ -55,7 +55,7 @@ def compenetration_check(coords, ids=None, thresh=1.5, max_clashes=0) -> bool:
     '''
     coords: 3D molecule coordinates
     ids: 1D array with the number of atoms for each 
-         molecule (contiguous fragments in array)
+    molecule (contiguous fragments in array)
     thresh: threshold value for when two atoms are considered clashing
     max_clashes: maximum number of clashes to pass a structure
     returns True if the molecule shows less than max_clashes
@@ -182,14 +182,14 @@ def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.5, max_delta=None, ver
             for step in range(int(k)):
             # operating on each of the k subdivisions of the array
                 if step == k-1:
-                    l = len(range(d*step, num_active_str))
+                    _l = len(range(d*step, num_active_str))
                 else:
-                    l = len(range(d*step, int(d*(step+1))))
+                    _l = len(range(d*step, int(d*(step+1))))
 
-                similarity_mat = np.zeros((l, l))
+                similarity_mat = np.zeros((_l, _l))
 
-                for i_rel in range(l):
-                    for j_rel in range(i_rel+1,l):
+                for i_rel in range(_l):
+                    for j_rel in range(i_rel+1,_l):
 
                         i_abs = i_rel+(d*step)
                         j_abs = j_rel+(d*step)
@@ -268,14 +268,14 @@ def prune_conformers_tfd(structures, quadruplets, thresh=10, verbose=False):
             for step in range(int(k)):
             # operating on each of the k subdivisions of the array
                 if step == k-1:
-                    l = len(range(d*step, num_active_str))
+                    _l = len(range(d*step, num_active_str))
                 else:
-                    l = len(range(d*step, int(d*(step+1))))
+                    _l = len(range(d*step, int(d*(step+1))))
 
-                similarity_mat = np.zeros((l, l))
+                similarity_mat = np.zeros((_l, _l))
 
-                for i_rel in range(l):
-                    for j_rel in range(i_rel+1,l):
+                for i_rel in range(_l):
+                    for j_rel in range(i_rel+1,_l):
 
                         i_abs = i_rel+(d*step)
                         j_abs = j_rel+(d*step)
