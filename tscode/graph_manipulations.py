@@ -183,8 +183,8 @@ def get_phenyls(coords, atomnos):
 
     output = []
 
-    c_n_indexes = np.fromiter((i for i, a in enumerate(atomnos) if a in (6,7)), dtype=atomnos.dtype)
-    comb = combinations(c_n_indexes, 6)
+    c_n_indices = np.fromiter((i for i, a in enumerate(atomnos) if a in (6,7)), dtype=atomnos.dtype)
+    comb = combinations(c_n_indices, 6)
 
     for c in comb:
         mask = np.fromiter((i in c for i in range(len(atomnos))), dtype=bool)
@@ -250,9 +250,9 @@ def is_sigmatropic(mol, conf):
                 'sp',
                 'bent carbene'
                 )
-    if len(mol.reactive_indexes) == 2:
+    if len(mol.reactive_indices) == 2:
 
-        i1, i2 = mol.reactive_indexes
+        i1, i2 = mol.reactive_indices
         if norm_of(mol.atomcoords[conf][i1] - mol.atomcoords[conf][i2]) < 3:
 
             if all([str(r_atom) in sp2_types for r_atom in mol.reactive_atoms_classes_dict[conf].values()]):
@@ -287,9 +287,9 @@ def is_vicinal(mol):
                 'Single Bond',
                 )
 
-    if len(mol.reactive_indexes) == 2:
+    if len(mol.reactive_indices) == 2:
 
-        i1, i2 = mol.reactive_indexes
+        i1, i2 = mol.reactive_indices
 
         if all([str(r_atom) in vicinal_types for r_atom in mol.reactive_atoms_classes_dict[0].values()]):
             if i1 in neighbors(mol.graph, i2):

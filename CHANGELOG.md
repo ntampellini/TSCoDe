@@ -66,7 +66,7 @@
 - CSearch now has a random dihedral variant (mode 2) used for faster conformational augmentation
 - Implemented conformational augmentation of TS candidates (random dihedral rotations, for three cycles, max 1000 new conformers generated)
 - Refined molecule reactive atoms/pairings print statements in log
-- Fully implemented the use of constrained indexes in prune>/NOEMBED runs (pairing distance can be specified now)
+- Fully implemented the use of constrained indices in prune>/NOEMBED runs (pairing distance can be specified now)
 - Maximum number of conformers to use in embed can be specified with the CONFS keyword
 - Removed enantiomers pruning for performance reasons
 - RIGID keyword is automatically added for cyclical embeds with >100 conformers (override with LET)
@@ -99,7 +99,7 @@
 ## 0.3.1 (Nov 27 2022)
 - Fixed TFD pruning bug for embeds with no rotable bonds.
 - approach> operator is now called scan> and automatically infers the scan direction (approaching or separating the atoms based on their distance).
-- Fixed bug in specifying indexes without letters (in _remove_internal_constraints)
+- Fixed bug in specifying indices without letters (in _remove_internal_constraints)
 - Minor bug fixes
 - Added flexibility in NEB keyword, allowing optimization of start/end points and specifying the number of images (NEB keyword)
 - NEB calculations now support two, three or a greater odd number of structures as input, to facilitate computational refinement of MEPs
@@ -136,3 +136,14 @@
 - To remedy the last point, the last 'checkpoint' ensemble is now not deleted after optimization_refinement
 - The opt> operator is now aware of internal constraints and performs constrained optimizations (moved letter/pairing/dist functions from RunEmbedder to Embedder)
 - Updated README and ReadTheDocs documentations
+
+## 0.3.7 (September 28 2023)
+- Added energy table at the end of runs that generate energetic data.
+- Fixed bug in force_field_refining
+- Fixed lack of output in optimization_refining when less than 20 structures were optimized
+- Brought back MOI-based pruning, when the ensemble is <200 structures, as it proves fast and beneficial for locally symmetric (dummy) rotations not yet identified by rmsd_rot_corr. Threshold is statically set at 1% (10E-2). In the future, it could be possible to uniform to CREST's approach of dynamically adjusting it from 1 to 2.5 % dynamically based on the anisotropy of moments of inertia.
+- Adjusted defaul threshold for RMSD similarity from 0.5 to 0.25 A (benchmarked to retain all methylcyclohexane conformers)
+- Cleaned residuals of the ENANTIOMERS keyword and related prune_enantiomers (now prune_by_moment_of_inertia)
+- Renamed every "indexes" to "indices", as I should have done long time ago...
+- The function distance_refinement is now just incorporated in force_field_refinement and optimization_refinement as an option (only_fixed_constraints). First, an optimization is done with all specified constraints (fixed and interactions, at loose convergence for force field) and then the interaction constraints are released (tight convergence for FF). This process should be more robust than the one before, as it minimizes scrambling/separation of multimolecular arrangements and avoids the limitations of xtb-python when using XTB as calculator (since everything is now dealt with without ASE). Moreover, energy pruning is only performed after the interaction constraints have been released, so that random fluctuations in interaction distances constraints do not bias conformer selection (imperfect embedding geometries in mind).
+- Rotationally corrected RMSD-based pruning in similarity_refining is now only done for molecules with at least one locally symmetric torsion (saves time)

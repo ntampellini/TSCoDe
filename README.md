@@ -11,6 +11,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tscode)](https://pypi.org/project/tscode/)
 [![Wheel](https://img.shields.io/pypi/wheel/tscode)](https://pypi.org/project/tscode/)
 [![Documentation Status](https://readthedocs.org/projects/tscode/badge/?version=latest)](https://tscode.readthedocs.io/en/latest/?badge=latest)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/tscode)
 
 </div>
 

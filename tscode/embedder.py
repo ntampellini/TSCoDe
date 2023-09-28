@@ -15,12 +15,11 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-import getpass
+from getpass import getuser
 import logging
 import os
 import random
 import re
-import socket
 import time
 from itertools import groupby
 
@@ -29,16 +28,15 @@ import numpy as np
 from tscode.__main__ import __version__
 from tscode.algebra import norm_of
 from tscode.embedder_options import Options, OptionSetter, keywords_list
-from tscode.embeds import _get_monomolecular_reactive_indexes
-from tscode.errors import InputError
+from tscode.embeds import _get_monomolecular_reactive_indices
+from tscode.errors import InputError, NoOrbitalError
 from tscode.graph_manipulations import get_sum_graph
 from tscode.hypermolecule_class import Hypermolecule, Pivot
 from tscode.operators import operate
 from tscode.run import RunEmbedding
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS, THREADS
 from tscode.utils import (ase_view, auto_newline, cartesian_product,
-                          clean_directory, graphize, time_to_string)
-
+                          graphize)
 
 class Embedder:
     '''
@@ -167,7 +165,7 @@ class Embedder:
  .     *  +   ╲╲ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╱╱  .      .
      .      .  ╲╲▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╱╱ .   .    
            '''.format(__version__,
-                      getpass.getuser(),
+                      getuser(),
                       time.ctime()[0:-8],
                       PROCS,
                       THREADS)
@@ -215,11 +213,11 @@ class Embedder:
                 filename, *reactive_atoms = line.split()
 
                 if reactive_atoms:
-                    reactive_indexes = _remove_internal_constraints(reactive_atoms)
+                    reactive_indices = _remove_internal_constraints(reactive_atoms)
                 else:
-                    reactive_indexes = None
+                    reactive_indices = None
 
-                inp.append((filename, reactive_indexes))
+                inp.append((filename, reactive_indices))
 
             return inp
             
@@ -323,7 +321,7 @@ class Embedder:
             for cumulative_pair in pairings:
                 parsed.append(cumulative_pair)
         # parsed looks like [[1, 'a'], [9, 'a']] where numbers are
-        # cumulative indexes for TSs
+        # cumulative indices for TSs
 
         links = {j:[] for j in set([i[1] for i in parsed])}
         for index, tag in parsed:
@@ -363,6 +361,10 @@ class Embedder:
         # Now record the internal constraints, that is the intramolecular
         # distances to freeze and later enforce to the imposed spacings
         self.internal_constraints = []
+
+        # making sure we set the kw_line attribute
+        self.kw_line = self.kw_line if hasattr(self, 'kw_line') else ''
+        
         for letter, pair in self.pairings_table.items():
             for mol_id in self.pairings_dict:
                 if isinstance(self.pairings_dict[mol_id].get(letter), tuple):
@@ -384,11 +386,11 @@ class Embedder:
             if not hasattr(mol, 'reactive_atoms_classes_dict'):
                 mol.compute_orbitals()
 
-        self.pairings_dists = {piece.split('=')[0] : float(piece.split('=')[1]) for piece in orb_string.split(',')}
+        self.pairing_dists = {piece.split('=')[0] : float(piece.split('=')[1]) for piece in orb_string.split(',')}
 
         # Set the new orbital center with imposed distance from the reactive atom. The imposed distance is half the 
         # user-specified one, as the final atomic distances will be given by two halves of this length.
-        for letter, dist in self.pairings_dists.items():
+        for letter, dist in self.pairing_dists.items():
 
             if letter not in self.pairings_table:
                 raise SyntaxError(f'Letter \'{letter}\' is specified in DIST but not present in molecules string.')
@@ -481,11 +483,11 @@ class Embedder:
             if len(mol.reactive_atoms_classes_dict[c]) == 2:
             # most molecules: dienes and alkenes for Diels-Alder, conjugated ketones for acid-bridged additions
 
-                indexes = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict[c].values()])
-                # indexes of vectors in reactive_atom.center. Reactive atoms are 2 and so for one center on atom 0 and 
+                indices = cartesian_product(*[range(len(atom.center)) for atom in mol.reactive_atoms_classes_dict[c].values()])
+                # indices of vectors in reactive_atom.center. Reactive atoms are 2 and so for one center on atom 0 and 
                 # 2 centers on atom 2 we get [[0,0], [0,1], [1,0], [1,1]]
 
-                for i,j in indexes:
+                for i,j in indices:
                     a1, a2 = mol.get_r_atoms(c)
                    
                     c1 = a1.center[i]
@@ -496,12 +498,12 @@ class Embedder:
             elif len(mol.reactive_atoms_classes_dict[c]) == 1:
             # carbenes, oxygen atom in Prilezhaev reaction, SO2 in classic chelotropic reactions
 
-                indexes = cartesian_product(*[range(len(mol.get_r_atoms(c)[0].center)) for _ in range(2)])
-                indexes = [i for i in indexes if i[0] != i[1] and (sorted(i) == i).all()]
-                # indexes of vectors in reactive_atom.center. Reactive atoms is just one, that builds pivots with itself. 
+                indices = cartesian_product(*[range(len(mol.get_r_atoms(c)[0].center)) for _ in range(2)])
+                indices = [i for i in indices if i[0] != i[1] and (sorted(i) == i).all()]
+                # indices of vectors in reactive_atom.center. Reactive atoms is just one, that builds pivots with itself. 
                 # pivots with the same index or inverse order are discarded. 2 centers on one atom 2 yield just [[0,1]]
                 
-                for i,j in indexes:
+                for i,j in indices:
                     a1 = mol.get_r_atoms(c)[0]
                     # chelotropic embeds have pivots that start/end on the same atom
 
@@ -539,9 +541,9 @@ class Embedder:
                 mol.atomcoords = mol.atomcoords[0:self.options.max_confs]
         # remove conformers if there are too many
 
-        if all([len(mol.reactive_indexes) == 0 for mol in self.objects]):
+        if all([len(mol.reactive_indices) == 0 for mol in self.objects]):
             self.embed = None
-            # Flag the embed type as None if no reactive indexes are
+            # Flag the embed type as None if no reactive indices are
             # provided (and the run is not a refine> one)
             return
 
@@ -550,7 +552,7 @@ class Embedder:
 
             mol = self.objects[0]
 
-            if len(mol.reactive_indexes) == 4:
+            if len(mol.reactive_indices) == 4:
                 self.embed = 'dihedral'
                 if 'kcal' not in self.kw_line.lower():
                 # set to 5 if user did not specify a value
@@ -562,7 +564,7 @@ class Embedder:
 
                 return
 
-            if len(mol.reactive_indexes) == 2:
+            if len(mol.reactive_indices) == 2:
 
                 self.embed = 'monomolecular'
                 mol.compute_orbitals()
@@ -581,15 +583,15 @@ class Embedder:
         elif len(self.objects) in (2,3):
         # Setting embed type and calculating the number of conformation combinations based on embed type
 
-            cyclical = all(len(molecule.reactive_indexes) == 2 for molecule in self.objects)
+            cyclical = all(len(molecule.reactive_indices) == 2 for molecule in self.objects)
 
             # chelotropic embed should check that the two atoms on one molecule are bonded
-            chelotropic = sorted(len(molecule.reactive_indexes) for molecule in self.objects) == [1,2]
+            chelotropic = sorted(len(molecule.reactive_indices) for molecule in self.objects) == [1,2]
 
-            string = all(len(molecule.reactive_indexes) == 1 for molecule in self.objects) and len(self.objects) == 2
+            string = all(len(molecule.reactive_indices) == 1 for molecule in self.objects) and len(self.objects) == 2
 
             multiembed = (len(self.objects) == 2 and
-                          all(len(molecule.reactive_indexes) >= 2 for molecule in self.objects) and 
+                          all(len(molecule.reactive_indices) >= 2 for molecule in self.objects) and 
                           not cyclical)
 
             if cyclical or chelotropic or multiembed:
@@ -645,7 +647,7 @@ class Embedder:
             else:
                 raise InputError(('Bad input - The only molecular configurations accepted are:\n' 
                                   '1) One molecule with two reactive centers (monomolecular embed)\n'
-                                  '2) One molecule with four indexes (dihedral embed)\n'
+                                  '2) One molecule with four indices(dihedral embed)\n'
                                   '3) Two or three molecules with two reactive centers each (cyclical embed)\n'
                                   '4) Two molecules with one reactive center each (string embed)\n'
                                   '5) Two molecules, one with a single reactive center and the other with two (chelotropic embed)\n'
@@ -669,10 +671,10 @@ class Embedder:
         # SHRINK - scale orbitals and rebuild pivots
 
         if self.options.rmsd is None:
-            self.options.rmsd = 0.5
+            self.options.rmsd = 0.25
 
-            if sum(self.ids) < 50:
-                self.options.rmsd = 0.3
+            # if sum(self.ids) < 50:
+            #     self.options.rmsd = 0.25
             # small molecules need smaller RMSD threshold
 
         if p:
@@ -723,6 +725,19 @@ class Embedder:
 
         return int(candidates)
 
+    def _set_embedder_structures_from_mol(self):
+        '''
+        Intended for REFINE runs, set the self.structures variable
+        (and related) to the confomers of a specific molecuele.
+        '''
+        self.structures = self.objects[0].atomcoords
+        self.atomnos = self.objects[0].atomnos
+        self.constrained_indices = _get_monomolecular_reactive_indices(self)
+        self.ids = None
+        self.energies = np.array([0 for _ in self.structures])
+        self.exit_status = np.ones(self.structures.shape[0], dtype=bool)
+        self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indices[0])
+
     def _calculator_setup(self):
         '''
         Set up the calculator to be used with default theory levels.
@@ -762,10 +777,10 @@ class Embedder:
                     # names = [mol.name for mol in self.objects]
                     # filename = self._extract_filename(input_string)
                     # index = names.index(filename)
-                    reactive_indexes = self.objects[index].reactive_indexes
+                    reactive_indices = self.objects[index].reactive_indices
 
                     # replacing the old molecule with the one post-operators
-                    self.objects[index] = Hypermolecule(outname, reactive_indexes)
+                    self.objects[index] = Hypermolecule(outname, reactive_indices)
 
                     # calculating where the new orbitals are
                     self.objects[index].compute_orbitals()
@@ -778,11 +793,11 @@ class Embedder:
                     if operator in ('rsearch', 'csearch') and self.options.noembed and len(self.objects) == 1:
                         self.structures = self.objects[0].atomcoords
                         self.atomnos = self.objects[0].atomnos
-                        self.constrained_indexes = _get_monomolecular_reactive_indexes(self)
+                        self.constrained_indices = _get_monomolecular_reactive_indices(self)
                         self.ids = None
                         self.energies = np.array([0 for _ in self.structures])
                         self.exit_status = np.ones(self.structures.shape[0], dtype=bool)
-                        self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indexes[0])
+                        self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indices[0])
 
         # updating the orbital cumnums for 
         # all the molecules in the run
@@ -821,36 +836,23 @@ class Embedder:
     def scramble(self, array, sequence):
         return np.array([array[s] for s in sequence])
 
-    def _set_embedder_structures_from_mol(self):
-        '''
-        Intended for REFINE runs, set the self.structures variable
-        (and related) to the confomers of a specific molecuele.
-        '''
-        self.structures = self.objects[0].atomcoords
-        self.atomnos = self.objects[0].atomnos
-        self.constrained_indexes = _get_monomolecular_reactive_indexes(self)
-        self.ids = None
-        self.energies = np.array([0 for _ in self.structures])
-        self.exit_status = np.ones(self.structures.shape[0], dtype=bool)
-        self.embed_graph = get_sum_graph([graphize(self.structures[0], self.atomnos)], self.constrained_indexes[0])
-
     def get_pairing_dist_from_letter(self, letter):
         '''
         Get constrained distance between paired reactive
         atoms, accessed via the associated constraint letter
         '''
 
-        if hasattr(self, 'pairings_dists') and self.pairings_dists.get(letter) is not None:
+        if hasattr(self, 'pairing_dists') and self.pairing_dists.get(letter) is not None:
             # if self.options.shrink:
-            #     return self.pairings_dists[letter] * self.options.shrink_multiplier
-            return self.pairings_dists[letter]
+            #     return self.pairing_dists[letter] * self.options.shrink_multiplier
+            return self.pairing_dists[letter]
 
         d = 0
         try:
             for mol_index, mol_pairing_dict in self.pairings_dict.items():
                 if r_atom_index := mol_pairing_dict.get(letter):
 
-                    # for refine embeds, one letter corresponds to two indexes
+                    # for refine embeds, one letter corresponds to two indices
                     # on the same molecule
                     if isinstance(r_atom_index, tuple):
                         i1, i2 = r_atom_index
@@ -866,33 +868,28 @@ class Embedder:
         except NoOrbitalError:
             return None
 
-    def get_pairing_dists_from_constrained_indexes(self, constrained_pair):
+    def get_pairing_dists_from_constrained_indices(self, constrained_pair):
         '''
         Returns the constrained distance
-        for a specific constrained pair of indexes
+        for a specific constrained pair of indices
         '''
-        letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
-                                                                           pair[1] == constrained_pair[1]))
+        try:
+            letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
+                                                                                 pair[1] == constrained_pair[1]))
+            return self.get_pairing_dist_from_letter(letter)
 
-        return self.get_pairing_dist_from_letter(letter)
+        except StopIteration:
+            return None
 
     def get_pairing_dists(self, conf):
         '''
         Returns a list with the constrained distances for each embedder constraint
         '''
-        if self.constrained_indexes[conf].size == 0:
+        if self.constrained_indices[conf].size == 0:
             return None
 
-        constraints = np.concatenate([self.constrained_indexes[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[conf]
-        return [self.get_pairing_dists_from_constrained_indexes(pair) for pair in constraints]
-
-
-    def normal_termination(self):
-        clean_directory()
-        self.log(f'\n--> TSCoDe normal termination: total time {time_to_string(time.perf_counter() - self.t_start_run, verbose=True)}.')
-        self.write_quote()
-        self.logfile.close()
-        quit()
+        constraints = np.concatenate([self.constrained_indices[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indices[conf]
+        return [self.get_pairing_dists_from_constrained_indices(pair) for pair in constraints]
 
     def write_quote(self):
         '''
@@ -913,6 +910,6 @@ class Embedder:
         try:
             RunEmbedding(self).run()
 
-        except Exception as e:
-            logging.exception(e)
-            raise e
+        except Exception as _e:
+            logging.exception(_e)
+            raise _e

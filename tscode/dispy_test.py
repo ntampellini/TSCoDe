@@ -26,7 +26,7 @@ if __name__ == '__main__':
                                     calculator="ORCA",
                                     method="R2SCAN-3C",
                                     maxiter=3,
-                                    constrained_indexes=np.array([6,7]),
+                                    constrained_indices=np.array([6,7]),
                                     mols_graphs=graph,
                                     procs=16,
                                     max_newbonds=0,

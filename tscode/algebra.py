@@ -186,7 +186,7 @@ def get_inertia_moments(coords, masses):
     return np.diag(inertia_moment_matrix)
 
 @nb.njit
-def get_moi_similarity_matches(structures, masses, max_deviation=1e-4):
+def get_moi_similarity_matches(structures, masses, max_deviation=1e-2):
     ''''''
     _l = len(structures)
     mat = np.zeros((_l,_l), dtype=nb.boolean)
@@ -379,10 +379,10 @@ def vector_cartesian_product(x, y):
     '''
     Cartesian product, but with vectors instead of indices
     '''
-    indexes = cart_prod_idx(np.asarray((x.shape[0], y.shape[0]), dtype=np.int32))
+    indices = cart_prod_idx(np.asarray((x.shape[0], y.shape[0]), dtype=np.int32))
     dim = x.shape[-1] if len(x.shape) > 1 else 1
-    new_arr = np.zeros((*indexes.shape, dim), dtype=x.dtype)
-    for i, (x_, y_) in enumerate(indexes):
+    new_arr = np.zeros((*indices.shape, dim), dtype=x.dtype)
+    for i, (x_, y_) in enumerate(indices):
         new_arr[i][0] = x[x_]
         new_arr[i][1] = y[y_]
     return np.ascontiguousarray(new_arr)

@@ -23,7 +23,7 @@ if __name__ == '__main__':
     re = RunEmbedding(embedder)
     re.structures = np.array(embedder.objects[0].atomcoords)
     re.atomnos = mol.atomnos
-    re.constrained_indexes = np.array([[] for _ in re.structures])
+    re.constrained_indices = np.array([[] for _ in re.structures])
     re.energies = np.array([0 ,0])
 
     re.structures.shape

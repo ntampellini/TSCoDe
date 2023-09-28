@@ -25,7 +25,7 @@ from tscode.pt import pt
 from tscode.graph_manipulations import is_phenyl
 
 
-def get_nci(coords, atomnos, constrained_indexes, ids):
+def get_nci(coords, atomnos, constrained_indices, ids):
     '''
     Returns a list of guesses for intermolecular non-covalent
     interactions between molecular fragments/atoms. Used to get
@@ -35,9 +35,9 @@ def get_nci(coords, atomnos, constrained_indexes, ids):
     print_list = []
     cum_ids = np.cumsum(ids)
     symbols = [pt[i].symbol for i in atomnos]
-    constrained_indexes = constrained_indexes.ravel()
+    constrained_indices = constrained_indices.ravel()
 
-    print_list, nci = _get_nci_atomic_pairs(coords, symbols, constrained_indexes, ids)
+    print_list, nci = _get_nci_atomic_pairs(coords, symbols, constrained_indices, ids)
     # Initialize with atomic pairs NCIs
 
     # Start checking group contributions
@@ -51,7 +51,7 @@ def get_nci(coords, atomnos, constrained_indexes, ids):
 
     return nci, print_list
 
-def _get_nci_atomic_pairs(coords, symbols, constrained_indexes, ids):
+def _get_nci_atomic_pairs(coords, symbols, constrained_indices, ids):
     '''
     '''
     print_list = []
@@ -68,7 +68,7 @@ def _get_nci_atomic_pairs(coords, symbols, constrained_indexes, ids):
         for i2, _ in enumerate(coords[start_of_next_mol:]):
             i2 += start_of_next_mol
 
-            if (i1 not in constrained_indexes) and (i2 not in constrained_indexes):
+            if (i1 not in constrained_indices) and (i2 not in constrained_indices):
                 # ignore atoms involved in constraints
 
                     s = ''.join(sorted([symbols[i1], symbols[i2]]))
@@ -80,7 +80,7 @@ def _get_nci_atomic_pairs(coords, symbols, constrained_indexes, ids):
 
                         if dist < threshold:
 
-                            print_list.append(nci_type + f' ({round(dist, 2)} A, indexes {i1}/{i2})')
+                            print_list.append(nci_type + f' ({round(dist, 2)} A, indices{i1}/{i2})')
                             # string to be printed in log
 
                             nci.append((nci_type, i1, i2))
@@ -153,12 +153,12 @@ def _get_aromatic_centers(coords, symbols, ids):
             mol_mask = slice(cum_ids[mol-1], cum_ids[mol])
             filler = cum_ids[mol-1]
 
-        aromatics_indexes = np.array([i+filler for i, s in enumerate(symbols[mol_mask]) if s in ('C','N')])
+        aromatics_indices = np.array([i+filler for i, s in enumerate(symbols[mol_mask]) if s in ('C','N')])
 
-        if len(aromatics_indexes) > 5:
+        if len(aromatics_indices) > 5:
         # only check for phenyls in molecules with more than 5 C/N atoms
 
-            masks.append(list(combinations(aromatics_indexes, 6)))
+            masks.append(list(combinations(aromatics_indices, 6)))
             # all possible combinations of picking 6 C/N atoms from this molecule
 
     aromatic_centers = []

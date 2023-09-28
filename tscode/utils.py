@@ -273,10 +273,10 @@ double_bonds_thresholds_dict = {
     'CN':1.3,
 }
 
-def get_double_bonds_indexes(coords, atomnos):
+def get_double_bonds_indices(coords, atomnos):
     '''
     Returns a list containing 2-elements tuples
-    of indexes involved in any double bond
+    of indices involved in any double bond
     '''
     mask = (atomnos != 1)
     numbering = np.arange(len(coords))[mask]
@@ -323,7 +323,7 @@ def get_scan_peak_index(energies, max_thr=50, min_thr=0.1):
 
 def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
     '''
-    Checks if two molecules have the same bonds between the same atomic indexes
+    Checks if two molecules have the same bonds between the same atomic indices
     '''
     old_bonds = {(a, b) for a, b in list(graphize(old_coords, atomnos).edges) if a != b}
     new_bonds = {(a, b) for a, b in list(graphize(new_coords, atomnos).edges) if a != b}
@@ -335,7 +335,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
     return True
 
-def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, max_newbonds=0) -> bool:
+def scramble_check(TS_structure, TS_atomnos, constrained_indices, mols_graphs, max_newbonds=0) -> bool:
     '''
     Check if a multimolecular arrangement has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the
@@ -357,10 +357,10 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, m
 
     new_bonds = {tuple(sorted((a, b))) for a, b in list(graphize(TS_structure, TS_atomnos).edges) if a != b}
     delta_bonds = (bonds | new_bonds) - (bonds & new_bonds)
-    # delta_bonds -= {tuple(sorted(pair)) for pair in constrained_indexes}
+    # delta_bonds -= {tuple(sorted(pair)) for pair in constrained_indices}
 
     for bond in delta_bonds.copy():
-        for a1, a2 in constrained_indexes:
+        for a1, a2 in constrained_indices:
             if (a1 in bond) or (a2 in bond):
                 delta_bonds -= {bond}
     # removing bonds involving constrained atoms: they are not counted as scrambled bonds
@@ -370,11 +370,11 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indexes, mols_graphs, m
 
     return True
 
-def rotate_dihedral(coords, dihedral, angle, mask=None, indexes_to_be_moved=None):
+def rotate_dihedral(coords, dihedral, angle, mask=None, indices_to_be_moved=None):
     '''
     Rotate a molecule around a given bond.
     Atoms that will move are the ones
-    specified by mask or indexes_to_be_moved.
+    specified by mask or indices_to_be_moved.
     If both are None, only the first index of
     the dihedral iterable is moved.
 
@@ -383,8 +383,8 @@ def rotate_dihedral(coords, dihedral, angle, mask=None, indexes_to_be_moved=None
 
     i1, i2, i3 ,_ = dihedral
 
-    if indexes_to_be_moved is not None:
-        mask = np.array([i in indexes_to_be_moved for i, _ in enumerate(coords)])
+    if indices_to_be_moved is not None:
+        mask = np.array([i in indices_to_be_moved for i, _ in enumerate(coords)])
 
     if mask is None:
         mask = i1

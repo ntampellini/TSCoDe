@@ -19,13 +19,13 @@ https://github.com/ntampellini/TSCoDe
 Nicolo' Tampellini - nicolo.tampellini@yale.edu
 
 '''
+import os
+import argparse
 
-__version__ = '0.3.6'
+__version__ = '0.3.7'
 
 if __name__ == '__main__':
 
-    import os
-    import argparse
 
     usage = '''python -m tscode [-h] [-s] [-t] inputfile [-n NAME]
         

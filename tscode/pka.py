@@ -156,9 +156,9 @@ def pka_routine(filename, embedder, search=True):
     mol_index = [m.name for m in embedder.objects].index(filename)
     mol = embedder.objects[mol_index]
 
-    assert len(mol.reactive_indexes) == 1, 'Please only specify one reactive atom for pKa calculations'
+    assert len(mol.reactive_indices) == 1, 'Please only specify one reactive atom for pKa calculations'
 
-    embedder.log(f'--> pKa computation protocol for {mol.name}, index {mol.reactive_indexes}')
+    embedder.log(f'--> pKa computation protocol for {mol.name}, index {mol.reactive_indices}')
 
     if search:
         if len(mol.atomcoords) > 1:
@@ -198,14 +198,14 @@ def pka_routine(filename, embedder, search=True):
         for c, e in zip(conformers, free_energies):
             write_xyz(c, mol.atomnos, f, title=f'G({embedder.options.theory_level}{solvent_string}, charge=0) = {round(e, 3)} kcal/mol')
 
-    if mol.atomnos[mol.reactive_indexes[0]] == 1:
+    if mol.atomnos[mol.reactive_indices[0]] == 1:
     # we have an acid, form and optimize the anions
 
         anions, _, anions_atomnos = _get_anions(
                                                 embedder,
                                                 conformers,
                                                 mol.atomnos,
-                                                mol.reactive_indexes[0],
+                                                mol.reactive_indices[0],
                                                 logfunction=embedder.log
                                             )
 
@@ -229,7 +229,7 @@ def pka_routine(filename, embedder, search=True):
                                                     embedder,
                                                     conformers,
                                                     mol.atomnos,
-                                                    mol.reactive_indexes[0],
+                                                    mol.reactive_indices[0],
                                                     logfunction=embedder.log
                                                 )
 

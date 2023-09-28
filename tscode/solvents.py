@@ -90,7 +90,7 @@ solvent_synonyms = {
     'etoh':'ethanol',
     'ch3oh':'methanol',
     'meoh':'methanol',
-    'h2o':'water',    
+    'h2o':'water',
 }
 
 new_theory_level = {

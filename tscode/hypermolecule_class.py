@@ -35,24 +35,24 @@ from tscode.reactive_atoms_classes import get_atom_type
 from tscode.utils import read_xyz, smi_to_3d
 
 
-def align_structures(structures:np.array, indexes=None):
+def align_structures(structures:np.array, indices=None):
     '''
     Aligns molecules of a structure array (shape is (n_structures, n_atoms, 3))
-    to the first one, based on the indexes. If not provided, all atoms are used
+    to the first one, based on the indices. If not provided, all atoms are used
     to get the best alignment. Return is the aligned array.
 
     '''
 
     reference = structures[0]
     targets = structures[1:]
-    if isinstance(indexes, (list, tuple)):
-        indexes = np.array(indexes)
+    if isinstance(indices, (list, tuple)):
+        indices = np.array(indices)
 
-    indexes = slice(0,len(reference)) if indexes is None or len(indexes) == 0 else indexes.ravel()
+    indices = slice(0,len(reference)) if indices is None or len(indices) == 0 else indices.ravel()
 
-    reference -= np.mean(reference[indexes], axis=0)
+    reference -= np.mean(reference[indices], axis=0)
     for t, _ in enumerate(targets):
-        targets[t] -= np.mean(targets[t,indexes], axis=0)
+        targets[t] -= np.mean(targets[t,indices], axis=0)
 
     output = np.zeros(structures.shape)
     output[0] = reference
@@ -60,7 +60,7 @@ def align_structures(structures:np.array, indexes=None):
     for t, target in enumerate(targets):
 
         try:
-            matrix = kabsch(reference[indexes], target[indexes])
+            matrix = kabsch(reference[indices], target[indices])
 
         except LinAlgError:
         # it is actually possible for the kabsch alg not to converge
@@ -82,13 +82,13 @@ class Hypermolecule:
             r += f' {[str(atom) for atom in self.reactive_atoms_classes_dict[0].values()]}'
         return r
 
-    def __init__(self, filename, reactive_indexes=None, debug=False):
+    def __init__(self, filename, reactive_indices=None, debug=False):
         '''
         Initializing class properties: reading conformational ensemble file, aligning
         conformers to first and centering them in origin.
 
         :params filename:           Input file name. Can be anything, .xyz preferred
-        :params reactive_indexes:     Index of atoms that will link during the desired reaction.
+        :params reactive_indices:     Index of atoms that will link during the desired reaction.
                                     May be either int or list of int.
 
         :params hyper:              bool, whether to calculate orbitals positions
@@ -109,10 +109,10 @@ class Hypermolecule:
         self.name = filename
         self.debug = debug
 
-        if isinstance(reactive_indexes, np.ndarray):
-            self.reactive_indexes = reactive_indexes
+        if isinstance(reactive_indices, np.ndarray):
+            self.reactive_indices = reactive_indices
         else:
-            self.reactive_indexes = np.array(reactive_indexes) if isinstance(reactive_indexes, (tuple, list)) else ()
+            self.reactive_indices = np.array(reactive_indices) if isinstance(reactive_indices, (tuple, list)) else ()
 
         ccread_object = read_xyz(filename)
 
@@ -151,7 +151,7 @@ class Hypermolecule:
         Computes orbital positions for atoms in self.reactive_atoms
         '''
 
-        if self.reactive_indexes is None:
+        if self.reactive_indices is None:
             return
 
         self.sp3_sigmastar, self.sigmatropic = None, None
@@ -159,7 +159,7 @@ class Hypermolecule:
         self._inspect_reactive_atoms(manual=manual)
         # sets reactive atoms properties
 
-        # self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indexes())
+        # self.atomcoords = align_structures(self.atomcoords, self.get_alignment_indices())
         self.sigmatropic = [is_sigmatropic(self, c) for c, _ in enumerate(self.atomcoords)]
         self.sp3_sigmastar = is_vicinal(self)
 
@@ -170,7 +170,7 @@ class Hypermolecule:
                 # Since now we have mol.sigmatropic and mol.sigmastar,
                 # We can update, that is set the reactive_atom.center attribute
 
-    def _set_reactive_indexes(self, filename):
+    def _set_reactive_indices(self, filename):
         '''
         Manually set the molecule reactive atoms from the ASE GUI, imposing
         constraints on the desired atoms.
@@ -195,23 +195,23 @@ class Hypermolecule:
 
         return list(atoms.constraints[0].get_indices())
     
-    def get_alignment_indexes(self):
+    def get_alignment_indices(self):
         '''
-        Return the indexes to align the molecule to, given a list of
+        Return the indices to align the molecule to, given a list of
         atoms that should be reacting. List is composed by reactive atoms
         plus adjacent atoms.
         :param coords: coordinates of a single molecule
         :param reactive atoms: int or list of ints
-        :return: list of indexes
+        :return: list of indices
         '''
-        if len(self.reactive_indexes) == 0:
+        if len(self.reactive_indices) == 0:
             return None
 
-        indexes = set()
-        for atom in self.reactive_indexes:
-            indexes |= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
-        if self.debug: print('DEBUG--> Alignment indexes are', list(indexes))
-        return list(indexes)
+        indices = set()
+        for atom in self.reactive_indices:
+            indices|= set(list([(a, b) for a, b in self.graph.adjacency()][atom][1].keys()))
+        if self.debug: print('DEBUG--> Alignment indices are', list(indices))
+        return list(indices)
 
     def _inspect_reactive_atoms(self, manual=None):
         '''
@@ -220,7 +220,7 @@ class Hypermolecule:
         self.reactive_atoms_classes_dict = {c:{} for c, _ in enumerate(self.atomcoords)}
         
         for c, _ in enumerate(self.atomcoords):
-            for index in self.reactive_indexes:
+            for index in self.reactive_indices:
                 symbol = pt[self.atomnos[index]].symbol
 
                 if manual is None:
@@ -312,7 +312,7 @@ class Hypermolecule:
         with open(hyp_name, 'w') as f:
             for c, _ in enumerate(self.atomcoords):
                 f.write(str(sum([len(atom.center) for atom in self.reactive_atoms_classes_dict[c].values()]) + len(self.atomcoords[0])))
-                f.write(f'\nTSCoDe Hypermolecule {c} for {self.rootname} - reactive indexes {self.reactive_indexes}\n')
+                f.write(f'\nTSCoDe Hypermolecule {c} for {self.rootname} - reactive indices{self.reactive_indices}\n')
                 orbs =np.vstack([atom_type.center for atom_type in self.reactive_atoms_classes_dict[c].values()]).ravel()
                 orbs = orbs.reshape((int(len(orbs)/3), 3))
                 for i, atom in enumerate(self.atomcoords[c]):
@@ -324,7 +324,7 @@ class Hypermolecule:
         '''
         index: reactive atom index
         '''
-        if index not in self.reactive_indexes:
+        if index not in self.reactive_indices:
             raise NoOrbitalError(f'Index provided must be a molecule reactive index ({index}, {self.name})')
 
         r_atom = self.reactive_atoms_classes_dict[0][index]
@@ -346,7 +346,7 @@ class Pivot:
         '''
         c: centers (orbital centers)
         v: vectors (orbital vectors, non-normalized)
-        i: indexes (of coordinates, in mol.center)
+        i: indices (of coordinates, in mol.center)
         '''
         self.start = c1
         self.end = c2

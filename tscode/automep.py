@@ -20,7 +20,7 @@ def automep(embedder, n_images=7):
     mol = embedder.objects[0]
     coords = mol.atomcoords[0]
 
-    # Get cycle indexes bigger than 6
+    # Get cycle indices bigger than 6
     graph = graphize(coords, mol.atomnos)
     cycles = [l for l in cycle_basis(graph) if len(l) == 7]
     assert len(cycles) == 1, "Automep only works for 7-membered ring flips at the moment"
@@ -95,7 +95,7 @@ def cycle_to_dihedrals(cycle):
         dihedrals.append([a, b, c, d])
     return dihedrals
 
-def xtb_popt(coords, atomnos, constrained_indexes=None,
+def xtb_popt(coords, atomnos, constrained_indices=None,
             constrained_distances=None, constrained_dihedrals=None, angles=None, method='GFN-FF', solvent="CH2Cl2",
             charge=0, title='temp', read_output=True, procs=None, **kwargs):
     '''
@@ -104,7 +104,7 @@ def xtb_popt(coords, atomnos, constrained_indexes=None,
 
     coords: array of shape (n,3) with cartesian coordinates for atoms.
     atomnos: array of atomic numbers for atoms.
-    constrained_indexes: array of shape (n,2), with the indexes
+    constrained_indices: array of shape (n,2), with the indices
     of atomic pairs to be constrained.
     method: string, specifiyng the theory level to be used.
     title: string, used as a file name and job title for the mopac input file.
@@ -112,7 +112,7 @@ def xtb_popt(coords, atomnos, constrained_indexes=None,
     '''
 
     if constrained_distances is not None:
-        for target_d, (a, b) in zip(constrained_distances, constrained_indexes):
+        for target_d, (a, b) in zip(constrained_distances, constrained_indices):
             d = norm_of(coords[b] - coords[a])
             delta = d - target_d
 
@@ -123,7 +123,7 @@ def xtb_popt(coords, atomnos, constrained_indexes=None,
                 coords, _, _ = xtb_opt(
                                         coords,
                                         atomnos,
-                                        constrained_indexes,
+                                        constrained_indices,
                                         constrained_distances=recursive_c_d,
                                         method=method,
                                         title=title,
@@ -140,9 +140,9 @@ def xtb_popt(coords, atomnos, constrained_indexes=None,
 
     s = f'$opt\n   logfile={title}_opt.log\n$end'
         
-    if constrained_indexes is not None:
+    if constrained_indices is not None:
         s += '\n$constrain\n'
-        for a, b in constrained_indexes:
+        for a, b in constrained_indices:
             s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(norm_of(coords[a]-coords[b]), 5))
 
     if constrained_dihedrals is not None:

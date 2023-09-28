@@ -34,7 +34,7 @@ from tscode.optimization_methods import optimize
 from tscode.pt import pt
 from tscode.python_functions import prune_conformers_tfd, torsion_comp_check
 from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC
-from tscode.utils import (cartesian_product, flatten, get_double_bonds_indexes,
+from tscode.utils import (cartesian_product, flatten, get_double_bonds_indices,
                           loadbar, rotate_dihedral, time_to_string, write_xyz)
 
 
@@ -62,7 +62,7 @@ class Torsion:
 
     def is_rotable(self, graph, hydrogen_bonds, keepdummy=False) -> bool:
         '''
-        hydrogen bonds: iterable with pairs of sorted atomic indexes
+        hydrogen bonds: iterable with pairs of sorted atomic indices
         '''
 
         if sorted((self.i2, self.i3)) in hydrogen_bonds:
@@ -117,16 +117,16 @@ class Torsion:
                 6:(0, 60, 120, 180, 240, 300),
                 }[self.n_fold]
 
-    def sort_torsion(self, graph, constrained_indexes) -> None:
+    def sort_torsion(self, graph, constrained_indices) -> None:
         '''
         Acts on the self.torsion tuple leaving it as it is or
         reversing it, so that the first index of it (from which
         rotation will act) is external to the molecule constrained
-        indexes. That is we make sure to rotate external groups
+        indices. That is we make sure to rotate external groups
         and not the whole structure.
         '''
         graph.remove_edge(self.i2, self.i3)
-        for d in constrained_indexes.flatten():
+        for d in constrained_indices.flatten():
             if nx.has_path(graph, self.i2, d):
                 self.torsion = tuple(reversed(self.torsion))
         graph.add_edge(self.i2, self.i3)
@@ -232,7 +232,7 @@ def _is_nondummy(i, root, graph) -> bool:
 
 def _get_hydrogen_bonds(coords, atomnos, graph, d_min=2.5, d_max=3.3, max_angle=45, fragments=None):
     '''
-    Returns a list of tuples with the indexes
+    Returns a list of tuples with the indices
     of hydrogen bonding partners.
 
     An HB is a pair of atoms:
@@ -240,7 +240,7 @@ def _get_hydrogen_bonds(coords, atomnos, graph, d_min=2.5, d_max=3.3, max_angle=
     - with an Y-X distance between d_min and d_max (i.e. N-O, Angstroms)
     - with an Y-H-X angle below max_angle (i.e. N-H-O, degrees)
 
-    If fragments is specified (iterable of iterable of indexes for each fragment)
+    If fragments is specified (iterable of iterable of indices for each fragment)
     the function only returns inter-fragment hydrogen bonds.
     '''
 
@@ -248,7 +248,7 @@ def _get_hydrogen_bonds(coords, atomnos, graph, d_min=2.5, d_max=3.3, max_angle=
     # initializing output list
 
     het_idx = np.array([i for i, a in enumerate(atomnos) if a in (7,8)], dtype=int)
-    # Indexes where N or O atoms are present. Let's ignore F for now.
+    # indices where N or O atoms are present. Let's ignore F for now.
 
     for i, i1 in enumerate(het_idx):
         for i2 in het_idx[i+1:]:
@@ -263,7 +263,7 @@ def _get_hydrogen_bonds(coords, atomnos, graph, d_min=2.5, d_max=3.3, max_angle=
 
                 Hs = [i for i in (neighbors(graph, i1) +
                                   neighbors(graph, i2)) if graph.nodes[i]['atomnos'] == 1]
-                # getting the indexes of all H atoms attached to them
+                # getting the indices of all H atoms attached to them
 
                 versor = norm(coords[i2]-coords[i1])
                 # versor connectring the two Heteroatoms
@@ -304,18 +304,18 @@ def _get_rotation_mask(graph, torsion):
     i1, i2, i3, _ = torsion
 
     graph.remove_edge(i2, i3)
-    reachable_indexes = nx.shortest_path(graph, i1).keys()
-    # get all indexes reachable from i1 not going through i2-i3
+    reachable_indices = nx.shortest_path(graph, i1).keys()
+    # get all indices reachable from i1 not going through i2-i3
 
     graph.add_edge(i2, i3)
     # restore modified graph
 
-    mask = np.array([i in reachable_indexes for i in graph.nodes], dtype=bool)
+    mask = np.array([i in reachable_indices for i in graph.nodes], dtype=bool)
     # generate boolean mask
 
     if np.count_nonzero(mask) > int(len(mask)/2):
         mask = ~mask
-    # if we want to rotate more than half of the indexes,
+    # if we want to rotate more than half of the indices,
     # invert the selection so that we do less math
 
     mask[i2] = False
@@ -332,7 +332,7 @@ def _get_quadruplets(graph):
     allpaths = []
     for node in graph:
         allpaths.extend(findPaths(graph, node, 3))
-    # get all possible continuous indexes quadruplets
+    # get all possible continuous indices quadruplets
 
     quadruplets, q_ids = [], []
     for path in allpaths:
@@ -373,10 +373,10 @@ def _get_torsions(graph, hydrogen_bonds, double_bonds, keepdummy=False):
 def _group_torsions_dbscan(coords, torsions, max_size=5):
     '''
     '''
-    torsions_indexes = [t.torsion for t in torsions]
-    # get torsion indexes
+    torsions_indices = [t.torsion for t in torsions]
+    # get torsion indices
 
-    torsions_centers = np.array([np.mean((coords[i2], coords[i3]), axis=0) for _, i2, i3, _ in torsions_indexes])
+    torsions_centers = np.array([np.mean((coords[i2], coords[i3]), axis=0) for _, i2, i3, _ in torsions_indices])
     # compute spatial distance
 
     for eps in np.arange(10, 1.5, -0.5):
@@ -401,7 +401,7 @@ def random_csearch(
                     atomnos,
                     torsions,
                     graph,
-                    constrained_indexes=None,
+                    constrained_indices=None,
                     n_out=100,
                     max_tries=10000,
                     rotations=None,
@@ -422,7 +422,7 @@ def random_csearch(
 
     ############################################## LOG TORSIONS
 
-    logfunction(f'\n> Torsion list: (indexes : n-fold)')
+    logfunction(f'\n> Torsion list: (indices: n-fold)')
     for i, t in enumerate(torsions):
         logfunction(' {:2s} - {:21s} : {}{}{}{} : {}-fold'.format(
                                                                str(i),
@@ -437,11 +437,11 @@ def random_csearch(
     logfunction(f'\n> Rotable bonds ids: {" ".join([str(i) for i in sorted(central_ids)])}')
 
     if write_torsions:
-        _write_torsion_vmd(coords, atomnos, constrained_indexes, [torsions], title=title)
+        _write_torsion_vmd(coords, atomnos, constrained_indices, [torsions], title=title)
         # logging torsions to file
 
-        torsions_indexes = [t.torsion for t in torsions]
-        torsions_centers = np.array([np.mean((coords[i2], coords[i3]), axis=0) for _, i2, i3, _ in torsions_indexes])
+        torsions_indices = [t.torsion for t in torsions]
+        torsions_centers = np.array([np.mean((coords[i2], coords[i3]), axis=0) for _, i2, i3, _ in torsions_indices])
 
         with open(f'{title}_torsion_centers.xyz', 'w') as f:
             write_xyz(torsions_centers, np.array([3 for _ in torsions_centers]), f)
@@ -523,7 +523,7 @@ def random_csearch(
 def csearch(
             coords,
             atomnos,
-            constrained_indexes=None,
+            constrained_indices=None,
             keep_hb=False,
             ff_opt=False,
             n=100,
@@ -550,17 +550,17 @@ def csearch(
     method = DEFAULT_FF_LEVELS[calc] if method is None else method
     # Set default calculator attributes if user did not specify them
 
-    if constrained_indexes is not None and len(constrained_indexes) > 0:
-        logfunction(f'Constraining {len(constrained_indexes)} distance{"s" if len(constrained_indexes) > 1 else ""} - {constrained_indexes}')
+    if constrained_indices is not None and len(constrained_indices) > 0:
+        logfunction(f'Constraining {len(constrained_indices)} distance{"s" if len(constrained_indices) > 1 else ""} - {constrained_indices}')
     else:
         logfunction(f'Free conformational search: no constraints provided.')
-        constrained_indexes = np.array([])
+        constrained_indices = np.array([])
 
     graph = graphize(coords, atomnos)
-    for i1, i2 in constrained_indexes:
+    for i1, i2 in constrained_indices:
         graph.add_edge(i1, i2)
     # build a molecular graph of the TS
-    # that includes constrained indexes pairs
+    # that includes constrained indices pairs
     
     # ... and hydrogen bonding, if requested
     if keep_hb:
@@ -605,15 +605,15 @@ def csearch(
         # otherwise, add the new HBs linking the pieces
         # and make sure that now we only have one connected component
 
-    double_bonds = get_double_bonds_indexes(coords, atomnos)
+    double_bonds = get_double_bonds_indices(coords, atomnos)
     # get all double bonds - do not rotate these
     
     torsions = _get_torsions(graph, hydrogen_bonds, double_bonds)
     # get all torsions that we should explore
 
     for t in torsions:
-        t.sort_torsion(graph, constrained_indexes)
-    # sort torsion indexes so that first index of each torsion
+        t.sort_torsion(graph, constrained_indices)
+    # sort torsion indices so that first index of each torsion
     # is the half that will move and is external to the structure
 
     if not torsions:
@@ -626,7 +626,7 @@ def csearch(
                                     atomnos,
                                     torsions,
                                     graph,
-                                    constrained_indexes=constrained_indexes,
+                                    constrained_indices=constrained_indices,
                                     ff_opt=ff_opt,
                                     n=n,
                                     n_out=n_out,
@@ -644,7 +644,7 @@ def csearch(
                                     atomnos,
                                     torsions,
                                     graph,
-                                    constrained_indexes=constrained_indexes,
+                                    constrained_indices=constrained_indices,
                                     n_out=n_out,
                                     title=title,
                                     logfunction=logfunction,
@@ -657,7 +657,7 @@ def clustered_csearch(
                         atomnos,
                         torsions,
                         graph,
-                        constrained_indexes=None,
+                        constrained_indices=None,
                         ff_opt=False,
                         n=100,
                         n_out=100,
@@ -696,7 +696,7 @@ def clustered_csearch(
 
     ############################################## LOG TORSIONS
 
-    logfunction(f'\n> Torsion list: (indexes : n-fold)')
+    logfunction(f'\n> Torsion list: (indices: n-fold)')
     for i, t in enumerate(torsions):
         logfunction(' {} - {:21s} : {}-fold'.format(i, str(t.torsion), t.n_fold))
 
@@ -704,11 +704,11 @@ def clustered_csearch(
     logfunction(f'\n> Rotable bonds ids: {" ".join([str(i) for i in sorted(central_ids)])}')
 
     if write_torsions:
-        _write_torsion_vmd(coords, atomnos, constrained_indexes, grouped_torsions, title=title)
+        _write_torsion_vmd(coords, atomnos, constrained_indices, grouped_torsions, title=title)
         # logging torsions to file
 
-        torsions_indexes = [t.torsion for t in torsions]
-        torsions_centers = np.array([np.mean((coords[i2], coords[i3]), axis=0) for _, i2, i3, _ in torsions_indexes])
+        torsions_indices = [t.torsion for t in torsions]
+        torsions_centers = np.array([np.mean((coords[i2], coords[i3]), axis=0) for _, i2, i3, _ in torsions_indices])
 
         with open(f'{title}_torsion_centers.xyz', 'w') as f:
             write_xyz(torsions_centers, np.array([3 for _ in torsions_centers]), f)
@@ -795,7 +795,7 @@ def clustered_csearch(
                                                         atomnos,
                                                         calc,
                                                         method=method,
-                                                        constrained_indexes=constrained_indexes)
+                                                        constrained_indices=constrained_indices)
 
                 if success:
                     new_structures[c] = opt_coords
@@ -861,8 +861,8 @@ def most_diverse_conformers(n, structures, torsion_array, energies=None, interac
     # if we already pruned enough structures to meet the requirement, return them
 
     if n > 300:
-        indexes = np.sort(np.random.choice(len(structures), size=n))
-        return structures[indexes]
+        indices = np.sort(np.random.choice(len(structures), size=n))
+        return structures[indices]
     # For now, the algorithm scales badly with number of clusters.
     # If there are too many to compute, just choose randomly
 
@@ -923,7 +923,7 @@ def most_diverse_conformers(n, structures, torsion_array, energies=None, interac
 
     return np.array(output)
 
-def _write_torsion_vmd(coords, atomnos, constrained_indexes, grouped_torsions, title='test'):
+def _write_torsion_vmd(coords, atomnos, constrained_indices, grouped_torsions, title='test'):
 
     with open(f'{title}.xyz', 'w') as f:
         write_xyz(coords, atomnos, f)
@@ -944,7 +944,7 @@ def _write_torsion_vmd(coords, atomnos, constrained_indexes, grouped_torsions, t
                     'mol material Transparent\n' +
                     'mol addrep top\n')
 
-        for a, b in constrained_indexes:
+        for a, b in constrained_indices:
             s += f'label add Bonds 0/{a} 0/{b}\n'
 
 
@@ -1010,7 +1010,7 @@ def rotationally_corrected_rmsd(ref, coord, atomnos, torsions, graph, angles):
             
     return kabsch_rmsd(ref[(atomnos != 1)], coord[(atomnos != 1)])
 
-def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, verbose=False, logfunction=None):
+def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.25, verbose=False, logfunction=None):
     '''
     Removes similar structures by repeatedly grouping them into k
     subgroups and removing similar ones. A cache is present to avoid
@@ -1031,7 +1031,7 @@ def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, ver
     # get all rotable bonds in the molecule, including dummy rotations
     torsions = _get_torsions(graph,
                             hydrogen_bonds=_get_hydrogen_bonds(ref, atomnos, graph),
-                            double_bonds=get_double_bonds_indexes(ref, atomnos),
+                            double_bonds=get_double_bonds_indices(ref, atomnos),
                             keepdummy=True)
 
     # only keep dummy rotations (checking both directions)
@@ -1051,7 +1051,14 @@ def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, ver
     # Set up final mask and cache
     final_mask = np.ones(structures.shape[0], dtype=bool)
     cache_set = set()
-    
+   
+    # Halt the run if there are too many structures or no subsymmetrical bonds
+    if len(torsions) == 0 or len(structures) > 750:
+        # if logfunction is not None:
+        #     logfunction(f'Skipped symmetry-corrected RMSD refining, too many structures (>750)')
+
+        return structures[final_mask], final_mask
+
     # Print out torsion information
     if logfunction is not None:
         logfunction(f'\n >> Dihedrals considered for subsymmetry corrections:')
@@ -1065,13 +1072,6 @@ def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, ver
                                                                 pt[atomnos[torsion[3]]].symbol,
                                                                 len(angle)))
         logfunction("\n")
-
-    # Halt the run if there are too many structures so that we do not slow down refining
-    if len(structures) > 750:
-        if logfunction is not None:
-            logfunction(f'Skipped symmetry-corrected RMSD refining, too many structures (>750)')
-
-        return structures[final_mask], final_mask
 
     # Start the grouping prcedure
     for k in (5e5, 2e5, 1e5, 5e4, 2e4, 1e4,
@@ -1122,7 +1122,7 @@ def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.5, ver
                     i_abs = i_rel+(d*step)
                     j_abs = j_rel+(d*step)
                     cache_set.add((i_abs, j_abs))
-                    # adding indexes of structures that are considered equal,
+                    # adding indices of structures that are considered equal,
                     # so as not to repeat computing their RMSD
                     # Their index accounts for their position in the initial
                     # array (absolute index)

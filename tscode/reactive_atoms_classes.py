@@ -36,20 +36,20 @@ class Single:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
+        neighbors_indices = neighbors(mol.graph, i)
 
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
         self.coord = mol.atomcoords[conf][i]
-        self.other = mol.atomcoords[conf][neighbors_indexes][0]
+        self.other = mol.atomcoords[conf][neighbors_indices][0]
 
         if not mol.sp3_sigmastar:
             self.orb_vecs = np.array([norm(self.coord - self.other)])
 
         else:
-            other_reactive_indexes = list(mol.reactive_indexes)
-            other_reactive_indexes.remove(i)
-            for index in other_reactive_indexes:
-                    if index in neighbors_indexes:
+            other_reactive_indices = list(mol.reactive_indices)
+            other_reactive_indices.remove(i)
+            for index in other_reactive_indices:
+                    if index in neighbors_indices:
                         parnter_index = index
                         break
             # obtain the reference partner index
@@ -90,13 +90,13 @@ class Sp2:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
+        neighbors_indices = neighbors(mol.graph, i)
         
 
 
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
         self.coord = mol.atomcoords[conf][i]
-        self.others = mol.atomcoords[conf][neighbors_indexes]
+        self.others = mol.atomcoords[conf][neighbors_indices]
 
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
         self.orb_vec = norm(np.mean(np.array([np.cross(norm(self.vectors[0]), norm(self.vectors[1])),
@@ -128,10 +128,10 @@ class Sp3:
 
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        neighbors_indices = neighbors(mol.graph, i)
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
         self.coord = mol.atomcoords[conf][i]
-        self.others = mol.atomcoords[conf][neighbors_indexes]
+        self.others = mol.atomcoords[conf][neighbors_indices]
         
         if not mol.sp3_sigmastar:
 
@@ -146,7 +146,7 @@ class Sp3:
 
             else: # if we cannot infer, ask user if we didn't have already 
                 try:
-                    self.leaving_group_coords = self._set_leaving_group(mol, neighbors_indexes)
+                    self.leaving_group_coords = self._set_leaving_group(mol, neighbors_indices)
 
                 except Exception:
                 # if something goes wrong, we fallback to command line input for reactive atom index collection
@@ -160,31 +160,31 @@ class Sp3:
                             if self.leaving_group_index == '' or self.leaving_group_index.lower().islower():
                                 pass
                             
-                            elif int(self.leaving_group_index) in neighbors_indexes:
+                            elif int(self.leaving_group_index) in neighbors_indices:
                                 self.leaving_group_index = int(self.leaving_group_index)
                                 break
 
                             else:
                                 print(f'Atom {self.leaving_group_index} is not bonded to the sp3 center with index {self.index}.')
                     
-                    self.leaving_group_coords = self.others[neighbors_indexes.index(self.leaving_group_index)]
+                    self.leaving_group_coords = self.others[neighbors_indices.index(self.leaving_group_index)]
 
             self.orb_vecs = np.array([self.coord - self.leaving_group_coords])
             self.orb_vers = norm(self.orb_vecs[0])
 
         else: # Sigma bond type
 
-            other_reactive_indexes = list(mol.reactive_indexes)
-            other_reactive_indexes.remove(i)
-            for index in other_reactive_indexes:
-                    if index in neighbors_indexes:
+            other_reactive_indices = list(mol.reactive_indices)
+            other_reactive_indices.remove(i)
+            for index in other_reactive_indices:
+                    if index in neighbors_indices:
                         parnter_index = index
                         break
             # obtain the reference partner index
 
             pivot = norm(mol.atomcoords[conf][parnter_index] - self.coord)
 
-            other_neighbors = deepcopy(neighbors_indexes)
+            other_neighbors = deepcopy(neighbors_indices)
             other_neighbors.remove(parnter_index)
             orb_vec = norm(mol.atomcoords[conf][other_neighbors[0]] - self.coord)
             orb_vec = orb_vec - orb_vec @ pivot * pivot
@@ -206,7 +206,7 @@ class Sp3:
 
             self.center = np.array([orb_dim * norm(vec) + self.coord for vec in self.orb_vecs])
 
-    def _set_leaving_group(self, mol, neighbors_indexes):
+    def _set_leaving_group(self, mol, neighbors_indices):
         '''
         Manually set the molecule leaving group from the ASE GUI, imposing
         a constraint on the desired atom.
@@ -231,7 +231,7 @@ class Sp3:
                 
                 if atoms.constraints != []:
                     if len(list(atoms.constraints[0].get_indices())) == 1:
-                        if list(atoms.constraints[0].get_indices())[0] in neighbors_indexes:
+                        if list(atoms.constraints[0].get_indices())[0] in neighbors_indices:
                             self.leaving_group_index = list(atoms.constraints[0].get_indices())[0]
                             break
                         else:
@@ -242,7 +242,7 @@ class Sp3:
                         atoms.constraints = []
 
 
-        return self.others[neighbors_indexes.index(self.leaving_group_index)]
+        return self.others[neighbors_indices.index(self.leaving_group_index)]
 
 
 class Ether:
@@ -255,13 +255,13 @@ class Ether:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
+        neighbors_indices = neighbors(mol.graph, i)
         
 
 
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
         self.coord = mol.atomcoords[conf][i]
-        self.others = mol.atomcoords[conf][neighbors_indexes]
+        self.others = mol.atomcoords[conf][neighbors_indices]
 
         self.orb_vecs = self.others - self.coord # vectors connecting center to each of the two substituents
 
@@ -295,12 +295,12 @@ class Ketone:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)       
+        neighbors_indices = neighbors(mol.graph, i)       
 
 
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
         self.coord = mol.atomcoords[conf][i]
-        self.other = mol.atomcoords[conf][neighbors_indexes][0]
+        self.other = mol.atomcoords[conf][neighbors_indices][0]
 
         self.vector = self.other - self.coord # vector connecting center to substituent
 
@@ -313,17 +313,17 @@ class Ketone:
                     orb_dim = orb_dim_dict['Fallback']
                     print(f'ATTENTION: COULD NOT SETUP REACTIVE ATOM ORBITAL FROM PARAMETERS. We have no parameters for {key}. Using {orb_dim} A.')
 
-            neighbors_of_neighbor_indexes = neighbors(mol.graph, neighbors_indexes[0])
-            neighbors_of_neighbor_indexes.remove(i)
+            neighbors_of_neighbor_indices = neighbors(mol.graph, neighbors_indices[0])
+            neighbors_of_neighbor_indices.remove(i)
 
             self.vector = norm(self.vector)*orb_dim
 
-            if len(neighbors_of_neighbor_indexes) == 2:
+            if len(neighbors_of_neighbor_indices) == 2:
             # if it is a normal ketone (or an enolate), n orbital lobes must be coplanar with
             # atoms connecting to ketone C atom, or p lobes must be placed accordingly
 
-                a1 = mol.atomcoords[conf][neighbors_of_neighbor_indexes[0]]
-                a2 = mol.atomcoords[conf][neighbors_of_neighbor_indexes[1]]
+                a1 = mol.atomcoords[conf][neighbors_of_neighbor_indices[0]]
+                a2 = mol.atomcoords[conf][neighbors_of_neighbor_indices[1]]
                 pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
 
                 if mol.sigmatropic[conf]:
@@ -334,14 +334,14 @@ class Ketone:
                     #two n lobes
                     self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
 
-            elif len(neighbors_of_neighbor_indexes) in (1, 3):
+            elif len(neighbors_of_neighbor_indices) in (1, 3):
             # ketene or alkoxide
             
-                ketene_sub_indexes = neighbors(mol.graph, neighbors_of_neighbor_indexes[0])
-                ketene_sub_indexes.remove(neighbors_indexes[0])
+                ketene_sub_indices = neighbors(mol.graph, neighbors_of_neighbor_indices[0])
+                ketene_sub_indices.remove(neighbors_indices[0])
 
-                ketene_sub_coords = mol.atomcoords[conf][ketene_sub_indexes[0]]
-                n_o_n_coords = mol.atomcoords[conf][neighbors_of_neighbor_indexes[0]]
+                ketene_sub_coords = mol.atomcoords[conf][ketene_sub_indices[0]]
+                n_o_n_coords = mol.atomcoords[conf][neighbors_of_neighbor_indices[0]]
 
                 # vector connecting ketene R with C (O=C=C(R)R)
                 v = (ketene_sub_coords - n_o_n_coords)
@@ -370,13 +370,13 @@ class Imine:
         '''
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
+        neighbors_indices = neighbors(mol.graph, i)
         
 
 
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
         self.coord = mol.atomcoords[conf][i]
-        self.others = mol.atomcoords[conf][neighbors_indexes]
+        self.others = mol.atomcoords[conf][neighbors_indices]
 
         self.vectors = self.others - self.coord # vector connecting center to substituent
 
@@ -411,12 +411,12 @@ class Sp_or_carbene:
 
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
+        neighbors_indices = neighbors(mol.graph, i)
         
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
 
         self.coord = mol.atomcoords[conf][i]
-        self.others = mol.atomcoords[conf][neighbors_indexes]
+        self.others = mol.atomcoords[conf][neighbors_indices]
 
         self.vectors = self.others - self.coord # vector connecting center to substituent
 
@@ -434,33 +434,33 @@ class Sp_or_carbene:
         self.ketene = False
         if self.type == 'sp' and all([s == 'C' for s in self.neighbors_symbols]):
 
-            neighbors_of_neighbors_indexes = (neighbors(mol.graph, neighbors_indexes[0]),
-                                              neighbors(mol.graph, neighbors_indexes[1]))
+            neighbors_of_neighbors_indices = (neighbors(mol.graph, neighbors_indices[0]),
+                                              neighbors(mol.graph, neighbors_indices[1]))
 
-            neighbors_of_neighbors_indexes[0].remove(i)
-            neighbors_of_neighbors_indexes[1].remove(i)
+            neighbors_of_neighbors_indices[0].remove(i)
+            neighbors_of_neighbors_indices[1].remove(i)
 
-            if (len(side1) == len(side2) == 2 for side1, side2 in neighbors_of_neighbors_indexes):
+            if (len(side1) == len(side2) == 2 for side1, side2 in neighbors_of_neighbors_indices):
                 self.allene = True
 
         elif self.type == 'sp' and sorted(self.neighbors_symbols) in (['C', 'O'], ['C', 'S']):
 
             self.ketene = True
 
-            neighbors_of_neighbors_indexes = (neighbors(mol.graph, neighbors_indexes[0]),
-                                              neighbors(mol.graph, neighbors_indexes[1]))
+            neighbors_of_neighbors_indices = (neighbors(mol.graph, neighbors_indices[0]),
+                                              neighbors(mol.graph, neighbors_indices[1]))
 
-            neighbors_of_neighbors_indexes[0].remove(i)
-            neighbors_of_neighbors_indexes[1].remove(i)
+            neighbors_of_neighbors_indices[0].remove(i)
+            neighbors_of_neighbors_indices[1].remove(i)
                 
-            if len(neighbors_of_neighbors_indexes[0]) == 2:
-                substituent = mol.atomcoords[conf][neighbors_of_neighbors_indexes[0][0]]
-                ketene_atom = mol.atomcoords[conf][neighbors_indexes[0]]
+            if len(neighbors_of_neighbors_indices[0]) == 2:
+                substituent = mol.atomcoords[conf][neighbors_of_neighbors_indices[0][0]]
+                ketene_atom = mol.atomcoords[conf][neighbors_indices[0]]
                 self.ketene_ref = substituent - ketene_atom
 
-            elif len(neighbors_of_neighbors_indexes[1]) == 2:
-                substituent = mol.atomcoords[conf][neighbors_of_neighbors_indexes[1][0]]
-                ketene_atom = mol.atomcoords[conf][neighbors_indexes[1]]
+            elif len(neighbors_of_neighbors_indices[1]) == 2:
+                substituent = mol.atomcoords[conf][neighbors_of_neighbors_indices[1][0]]
+                ketene_atom = mol.atomcoords[conf][neighbors_indices[1]]
                 self.ketene_ref = substituent - ketene_atom
 
             else:
@@ -489,8 +489,8 @@ class Sp_or_carbene:
                     # versor connecting reactive atom neighbors
                     
                     if self.allene:
-                        ref = (mol.atomcoords[conf][neighbors_of_neighbors_indexes[0][0]] -
-                               mol.atomcoords[conf][neighbors_indexes[0]])
+                        ref = (mol.atomcoords[conf][neighbors_of_neighbors_indices[0][0]] -
+                               mol.atomcoords[conf][neighbors_indices[0]])
                     else:
                         ref = self.ketene_ref
 
@@ -532,18 +532,18 @@ class Metal:
 
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
-        neighbors_indexes = neighbors(mol.graph, i)
+        neighbors_indices = neighbors(mol.graph, i)
         
-        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indexes]
+        self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
         self.coord = mol.atomcoords[conf][i]
-        self.others = mol.atomcoords[conf][neighbors_indexes]
+        self.others = mol.atomcoords[conf][neighbors_indices]
 
         self.vectors = self.others - self.coord # vectors connecting reactive atom with neighbors
 
         v1 = self.vectors[0]
         # v1 connects first bonded atom to the metal itself
 
-        neighbor_of_neighbor_index = neighbors(mol.graph, neighbors_indexes[0])[0]
+        neighbor_of_neighbor_index = neighbors(mol.graph, neighbors_indices[0])[0]
         v2 = mol.atomcoords[conf][neighbor_of_neighbor_index] - self.coord
         # v2 connects first neighbor of the first neighbor to the metal itself
 

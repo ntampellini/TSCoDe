@@ -120,7 +120,7 @@ class Docker:
         Write VMD file with anchors highlighted.
         '''
 
-        indexes = [len(atomnos)+i for i in range(len(labels))]
+        indices = [len(atomnos)+i for i in range(len(labels))]
 
         vmd_name = xyz_name.rstrip('.xyz') + '.vmd'
         # path = os.path.join(os.getcwd() + vmd_name)
@@ -128,9 +128,9 @@ class Docker:
             s = ('display resetview\n' +
                 'mol new {%s}\n' % (os.path.join(os.getcwd(), xyz_name)) +
                 'mol delrep top\n' +
-                'mol selection all not index %s\n' % (' '.join([str(i) for i in indexes])) +
+                'mol selection all not index %s\n' % (' '.join([str(i) for i in indices])) +
                 'mol addrep top\n' +
-                'mol selection index %s\n' % (' '.join([str(i) for i in indexes])) +
+                'mol selection index %s\n' % (' '.join([str(i) for i in indices])) +
                 'mol representation CPK 0.5 0.0 50 50\n' +
                 'mol material Transparent\n' +
                 'mol addrep top\n')
@@ -147,13 +147,13 @@ class Docker:
         mol1, mol2 = self.embedder.objects
 
         conf_number = [len(mol.atomcoords) for mol in self.embedder.objects]
-        conf_indexes = cartesian_product(*[np.array(range(i)) for i in conf_number])
-        # get all conformation combinations indexes
+        conf_indices = cartesian_product(*[np.array(range(i)) for i in conf_number])
+        # get all conformation combinations indices
 
         self.atomnos = np.concatenate((mol1.atomnos, mol2.atomnos))
         structures = []
 
-        for conf1, conf2 in conf_indexes:
+        for conf1, conf2 in conf_indices:
 
             coords1 = mol1.atomcoords[conf1]
             coords2 = mol2.atomcoords[conf2]
@@ -224,7 +224,7 @@ def _dock(coords1, coords2, anchors1, anchors2):
                     # do not pair pivots that do not respect polarity
 
                         al_mat1 = align_vec_pair((p2[0]-p2[1], -directions2[i2]),
-                                                 (p1[0]-p1[1],  directions1[i1]))
+                                                 (p1[0]-p1[1], directions1[i1]))
                         # matrix that applied to coords1, aligns them to coords2
                         # p1 goes to p2
                         # direction1 goes to -direction2

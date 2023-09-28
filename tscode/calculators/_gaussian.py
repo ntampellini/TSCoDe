@@ -22,14 +22,14 @@ from tscode.solvents import get_solvent_line
 from tscode.utils import clean_directory, pt, read_xyz
 
 
-def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=1, solvent=None, title='temp', read_output=True, **kwargs):
+def gaussian_opt(coords, atomnos, constrained_indices=None, method='PM6', procs=1, solvent=None, title='temp', read_output=True, **kwargs):
     '''
     This function writes a Gaussian .inp file, runs it with the subprocess
     module and reads its output.
 
     :params coords: array of shape (n,3) with cartesian coordinates for atoms.
     :params atomnos: array of atomic numbers for atoms.
-    :params constrained_indexes: array of shape (n,2), with the indexes
+    :params constrained_indices: array of shape (n,2), with the indices
                                  of atomic pairs to be constrained.
     :params method: string, specifiyng the first line of keywords for the MOPAC input file.
     :params title: string, used as a file name and job title for the mopac input file.
@@ -47,7 +47,7 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
     if procs > 1:
         s += f'%nprocshared={procs}\n'
 
-    s = '# opt ' if constrained_indexes is not None else '# opt=modredundant '
+    s = '# opt ' if constrained_indices is not None else '# opt=modredundant '
     s += method
     
     if solvent is not None:
@@ -60,9 +60,9 @@ def gaussian_opt(coords, atomnos, constrained_indexes=None, method='PM6', procs=
 
     s += '\n'
 
-    if constrained_indexes is not None:
+    if constrained_indices is not None:
 
-        for a, b in constrained_indexes:
+        for a, b in constrained_indices:
             s += 'B %s %s F\n' % (a+1, b+1) # Gaussian numbering starts at 1
 
     s = ''.join(s)

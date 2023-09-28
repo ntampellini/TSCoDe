@@ -43,7 +43,7 @@ An example with all three is ``opt> butadiene.xyz 6a 8b``.
 TSCoDe can work with all molecular formats read by
 `cclib <https://github.com/cclib/cclib>`__, but best practice is using
 only the ``.xyz`` file format, particularly for multimolecular files
-containing different conformers of the same molecule. **Molecule indexes
+containing different conformers of the same molecule. **Molecule indices
 are counted starting from zero!**
 
 Operators
@@ -128,15 +128,15 @@ is meant to be fast, scalable, and efficient, and is not able to sample ring con
    
 4) Understand what atoms are reacting for each structure and record
 their index (**starting from 0!**). If you are unsure of reactive atomic
-indexes, you can run a test input without indexes, and the program will
+indices, you can run a test input without indices, and the program will
 ask you to manually specify them from the ASE GUI by clicking. This is
 not possible if you are running TSCoDe on STPs with no desktop access.
 When choosing this option of manually picking atoms, it is not
 possible to specify atom pairings. Therefore, I suggest using this
-option only to check the reactive atoms indexes and then building a
+option only to check the reactive atoms indices and then building a
 standard input file.
 
-5) Optionally, after specifying reactive indexes, the ``CHECK`` keyword
+5) Optionally, after specifying reactive indices, the ``CHECK`` keyword
 can be used. A series of pop-up ASE GUI windows will be displayed,
 showing each molecule with a series of red dots around the reactive
 atoms chosen. This can be used to check "orbital" positions or conformer

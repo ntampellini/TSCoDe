@@ -22,27 +22,27 @@ import numpy as np
 from tscode.algebra import norm, norm_of
 from tscode.utils import clean_directory, read_xyz, write_xyz
 
-
-def xtb_opt(coords, atomnos, constrained_indexes=None,
-            constrained_distances=None, method='GFN2-xTB', solvent=None,
-            charge=0, title='temp', read_output=True, procs=None, opt=True,
-            conv_thr="tight", assert_convergence=False, **kwargs):
+def xtb_opt(coords, atomnos, constrained_indices=None,
+            constrained_distances=None, method='GFN2-xTB',
+            maxiter=None,solvent=None, charge=0, title='temp',
+            read_output=True, procs=None, opt=True, conv_thr="tight",
+            assert_convergence=False, **kwargs):
     '''
     This function writes an XTB .inp file, runs it with the subprocess
     module and reads its output.
 
     coords: array of shape (n,3) with cartesian coordinates for atoms.
     atomnos: array of atomic numbers for atoms.
-    constrained_indexes: array of shape (n,2), with the indexes
+    constrained_indices: array of shape (n,2), with the indices
                          of atomic pairs to be constrained.
     method: string, specifiyng the theory level to be used.
     title: string, used as a file name and job title for the mopac input file.
     read_output: Whether to read the output file and return anything.
     '''
     
-    if constrained_indexes is not None:
-        if len(constrained_indexes) == 0:
-            constrained_indexes = None
+    if constrained_indices is not None:
+        if len(constrained_indices) == 0:
+            constrained_indices = None
 
     if constrained_distances is not None:
         if len(constrained_distances) == 0:
@@ -52,7 +52,7 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
 
         try:
 
-            for i, (target_d, ci) in enumerate(zip(constrained_distances, constrained_indexes)):
+            for i, (target_d, ci) in enumerate(zip(constrained_distances, constrained_indices)):
 
                 if target_d == None:
                     continue
@@ -72,7 +72,7 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
                     coords, _, _ = xtb_opt(
                                             coords,
                                             atomnos,
-                                            constrained_indexes,
+                                            constrained_indices,
                                             constrained_distances=recursive_c_d,
                                             method=method,
                                             title=title,
@@ -95,13 +95,13 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
 
     s = f'$opt\n   logfile={title}_opt.log\n$end'
          
-    if constrained_indexes is not None:
+    if constrained_indices is not None:
         # s += '\n$constrain\n'
-        # for a, b in constrained_indexes:
+        # for a, b in constrained_indices:
         #     s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(norm_of(coords[a]-coords[b]), 5))
     
         s += '\n$fix\n   atoms: '
-        for i in np.unique(np.array(constrained_indexes).flatten()):
+        for i in np.unique(np.array(constrained_indices).flatten()):
             s += f"{i+1},"
         s = s[:-1] + "\n"
 
@@ -186,8 +186,6 @@ def xtb_opt(coords, atomnos, constrained_indexes=None,
 
         return coords, energy, True
         
-    
-
 def read_xtb_energy(filename):
     '''
     returns energy in kcal/mol from an XTB
@@ -358,7 +356,7 @@ def read_xtb_free_energy(filename):
             if not line:
                 raise Exception()
 
-def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_structures:int=5, title=0, debug=False):
+def xtb_metadyn_augmentation(coords, atomnos, constrained_indices=None, new_structures:int=5, title=0, debug=False):
     '''
     Runs a metadynamics simulation (MTD) through
     the XTB program to obtain new conformations.
@@ -378,9 +376,9 @@ def xtb_metadyn_augmentation(coords, atomnos, constrained_indexes=None, new_stru
         '$end'
         )
          
-    if constrained_indexes is not None:
+    if constrained_indices is not None:
         s += '\n$constrain\n'
-        for a, b in constrained_indexes:
+        for a, b in constrained_indices:
             s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(norm_of(coords[a]-coords[b]), 5))
 
     s = ''.join(s)

@@ -20,6 +20,7 @@ import time
 from copy import deepcopy
 
 import numpy as np
+from rmsd import kabsch_rmsd
 
 from tscode.algebra import norm_of
 from tscode.ase_manipulations import ase_adjust_spacings, ase_saddle
@@ -32,7 +33,7 @@ from tscode.errors import (MopacReadError, NoOrbitalError, SegmentedGraphError,
 from tscode.hypermolecule_class import align_structures
 from tscode.nci import get_nci
 from tscode.optimization_methods import (fitness_check, hyperNEB, opt_iscans,
-                                         optimize)
+                                         optimize, prune_by_moment_of_inertia)
 from tscode.parameters import orb_dim_dict
 from tscode.pt import pt
 from tscode.python_functions import (compenetration_check,
@@ -57,58 +58,6 @@ class RunEmbedding:
         for attr in dir(embedder):
             if attr[0:2] != '__' and attr != 'run':
                 setattr(self, attr, getattr(embedder, attr))
-
-    # def get_pairing_dist_from_letter(self, letter):
-    #     '''
-    #     Get constrained distance between paired reactive
-    #     atoms, accessed via the associated constraint letter
-    #     '''
-
-    #     if hasattr(self, 'pairings_dists') and self.pairings_dists.get(letter) is not None:
-    #         # if self.options.shrink:
-    #         #     return self.pairings_dists[letter] * self.options.shrink_multiplier
-    #         return self.pairings_dists[letter]
-
-    #     d = 0
-    #     try:
-    #         for mol_index, mol_pairing_dict in self.pairings_dict.items():
-    #             if r_atom_index := mol_pairing_dict.get(letter):
-
-    #                 # for refine embeds, one letter corresponds to two indexes
-    #                 # on the same molecule
-    #                 if isinstance(r_atom_index, tuple):
-    #                     i1, i2 = r_atom_index
-    #                     return (self.objects[mol_index].get_orbital_length(i1) +
-    #                             self.objects[mol_index].get_orbital_length(i2))
-
-    #                 # for other runs, it is just one atom per molecule per letter
-    #                 d += self.objects[mol_index].get_orbital_length(r_atom_index)
-
-    #         return d
-
-    #     # If no orbitals were built, return None
-    #     except NoOrbitalError:
-    #         return None
-
-    # def get_pairing_dists_from_constrained_indexes(self, constrained_pair):
-    #     '''
-    #     Returns the constrained distance
-    #     for a specific constrained pair of indexes
-    #     '''
-    #     letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
-    #                                                                        pair[1] == constrained_pair[1]))
-
-    #     return self.get_pairing_dist_from_letter(letter)
-
-    # def get_pairing_dists(self, conf):
-    #     '''
-    #     Returns a list with the constrained distances for each embedder constraint
-    #     '''
-    #     if self.constrained_indexes[conf].size == 0:
-    #         return None
-
-    #     constraints = np.concatenate([self.constrained_indexes[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[conf]
-    #     return [self.get_pairing_dists_from_constrained_indexes(pair) for pair in constraints]
 
     def rel_energies(self):
         return self.energies - np.min(self.energies)
@@ -154,12 +103,12 @@ class RunEmbedding:
         self.atomnos = np.concatenate([molecule.atomnos for molecule in self.objects])
 
         # Build the embed graph. This will be used as a future reference.
-        # Note that the use of the first constrained_indexes pair is irrelevant
+        # Note that the use of the first constrained_indices pair is irrelevant
         # for the torsion fingerprint outcome, but other future features might
         # rely on the embed_graph to be accurate if conformers have different
-        # constrained indexes.
+        # constrained indices.
 
-        additional_bonds = self.constrained_indexes[0]
+        additional_bonds = self.constrained_indices[0]
         if len(self.internal_constraints) > 0:
             additional_bonds = np.concatenate((self.internal_constraints, additional_bonds))
 
@@ -192,7 +141,7 @@ class RunEmbedding:
 
             # loadbar(1, 1, prefix=f'Checking structure {len(self.structures)}/{len(self.structures)} ')
 
-            self.apply_mask(('structures', 'constrained_indexes'), mask)
+            self.apply_mask(('structures', 'constrained_indices'), mask)
             t_end = time.perf_counter()
 
             if False in mask:
@@ -225,7 +174,7 @@ class RunEmbedding:
         attr = (
             'structures',
             'energies',
-            'constrained_indexes',
+            'constrained_indices',
             'exit_status',
         )
 
@@ -239,7 +188,7 @@ class RunEmbedding:
 
         self.zero_candidates_check()
 
-    def similarity_refining(self, tfd=True, rmsd=True, verbose=False):
+    def similarity_refining(self, tfd=True, rmsd=True, moi=True, verbose=False):
         '''
         If possible, removes structures with similar torsional profile (TFD-based).
         Removes structures that are too similar to each other (RMSD-based).
@@ -249,7 +198,7 @@ class RunEmbedding:
             self.log('--> Similarity Processing')
 
         before = len(self.structures)
-        attr = ('constrained_indexes', 'energies', 'exit_status')
+        attr = ('constrained_indices', 'energies', 'exit_status')
 
         if hasattr(self, 'embed_graph') and tfd:
 
@@ -278,15 +227,33 @@ class RunEmbedding:
 
             ### Second step: again but symmetry-corrected (unless we have too many structures)
 
-            before2 = len(self.structures)
+            if len(self.structures) <= 500:
 
-            t_start = time.perf_counter()
-            self.structures, mask = prune_conformers_rmsd_rot_corr(self.structures, self.atomnos, self.embed_graph, max_rmsd=self.options.rmsd, verbose=verbose, logfunction=(self.log if verbose else None))
+                before2 = len(self.structures)
 
-            self.apply_mask(attr, mask)
+                t_start = time.perf_counter()
+                self.structures, mask = prune_conformers_rmsd_rot_corr(self.structures, self.atomnos, self.embed_graph, max_rmsd=self.options.rmsd, verbose=verbose, logfunction=(self.log if verbose else None))
 
-            if before2 > len(self.structures):
-                self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for symmetry-corrected RMSD similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
+                self.apply_mask(attr, mask)
+
+                if before2 > len(self.structures):
+                    self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for symmetry-corrected RMSD similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
+
+        if moi:
+
+            if len(self.structures) <= 200:
+
+                ### Now again, based on the moment of inertia
+
+                before3 = len(self.structures)
+
+                t_start = time.perf_counter()
+                self.structures, mask = prune_by_moment_of_inertia(self.structures, self.atomnos)
+
+                self.apply_mask(attr, mask)
+
+                if before3 > len(self.structures):
+                    self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for MOI similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
 
 
         if verbose and len(self.structures) == before:
@@ -294,7 +261,7 @@ class RunEmbedding:
 
         self.log()
 
-    def force_field_refining(self, conv_thr="tight"):
+    def force_field_refining(self, conv_thr="tight", only_fixed_constraints=False):
         '''
         Performs structural optimizations with the embedder force field caculator.
         Only structures that do not scramble during FF optimization are updated,
@@ -303,22 +270,30 @@ class RunEmbedding:
 
         ################################################# CHECKPOINT BEFORE FF OPTIMIZATION
 
-        self.outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
-        with open(self.outname, 'w') as f:        
-            for i, structure in enumerate(align_structures(self.structures)):
-                write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - Checkpoint before FF optimization')
-        self.log(f'\n--> Checkpoint output - Wrote {len(self.structures)} TS structures to {self.outname} file before FF optimization.\n')
+        if not only_fixed_constraints:
+            self.outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
+            with open(self.outname, 'w') as f:        
+                for i, structure in enumerate(align_structures(self.structures)):
+                    write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - Checkpoint before FF optimization')
+            self.log(f'\n--> Checkpoint output - Wrote {len(self.structures)} unoptimized structures to {self.outname} file before FF optimization.\n')
 
         ################################################# GEOMETRY OPTIMIZATION - FORCE FIELD
 
-        self.log(f'--> Structure optimization ({self.options.ff_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.ff_calc})')
+        task = 'Distance refining' if only_fixed_constraints else 'Structure optimization'
+        self.log(f'--> {task} ({self.options.ff_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.ff_calc})')
 
         t_start_ff_opt = time.perf_counter()
 
         for i, structure in enumerate(deepcopy(self.structures)):
             loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
 
-            constraints = np.concatenate([self.constrained_indexes[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[i]
+            if only_fixed_constraints:
+                constraints = np.array([value for key, value in self.pairings_table.items() if key in ('a', 'b', 'c')])
+            
+            else:
+                constraints = np.concatenate([self.constrained_indices[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indices[i]
+
+            pairing_dists = tuple(self.get_pairing_dists_from_constrained_indices(_c) for _c in constraints)
 
             try:
                 new_structure, new_energy, self.exit_status[i] = optimize(
@@ -328,8 +303,8 @@ class RunEmbedding:
                                                                             method=self.options.ff_level,
                                                                             maxiter=200,
                                                                             conv_thr=conv_thr,
-                                                                            constrained_indexes=constraints,
-                                                                            constrained_distances=self.get_pairing_dists(i, structure),
+                                                                            constrained_indices=constraints,
+                                                                            constrained_distances=pairing_dists,
                                                                             mols_graphs=self.graphs if self.embed != 'monomolecular' else None,
                                                                             check=True,
 
@@ -379,14 +354,14 @@ class RunEmbedding:
         _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
         self.energies = self.scramble(self.energies, sequence)
         self.structures = self.scramble(self.structures, sequence)
-        self.constrained_indexes = self.scramble(self.constrained_indexes, sequence)
+        self.constrained_indices = self.scramble(self.constrained_indices, sequence)
         # sorting structures based on energy
 
-        if self.options.kcal_thresh is not None:
+        if self.options.kcal_thresh is not None and only_fixed_constraints:
     
             mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
 
-            self.apply_mask(('structures', 'constrained_indexes', 'energies', 'exit_status'), mask)
+            self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
 
             if False in mask:
                 self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
@@ -398,7 +373,7 @@ class RunEmbedding:
 
         ################################################# CHECKPOINT AFTER FF OPTIMIZATION
         
-        s = f'--> Checkpoint output - Updated {len(self.structures)} TS structures to {self.outname} file'
+        s = f'--> Checkpoint output - Updated {len(self.structures)} optimized structures to {self.outname} file'
 
         if self.options.optimization and (self.options.ff_level != self.options.theory_level) and conv_thr != "tight":
             s += f' before {self.options.calculator} optimization.'
@@ -436,21 +411,21 @@ class RunEmbedding:
                 if letter not in ("x", "y", "z"):
                     r_atoms[cumnum] = r_atom
 
-        pairings = self.constrained_indexes.ravel()
+        pairings = self.constrained_indices.ravel()
         pairings = pairings.reshape(int(pairings.shape[0]/2), 2)
         pairings = {tuple(sorted((a,b))) for a, b in pairings}
 
-        active_pairs = [indexes for letter, indexes in self.pairings_table.items() if letter not in ("x", "y", "z")]
+        active_pairs = [indices for letter, indices in self.pairings_table.items() if letter not in ("x", "y", "z")]
 
         for index1, index2 in pairings:
 
             if [index1, index2] in active_pairs:
 
-                if hasattr(self, 'pairings_dists'):
+                if hasattr(self, 'pairing_dists'):
                     letter = list(self.pairings_table.keys())[active_pairs.index([index1, index2])]
 
-                    if letter in self.pairings_dists:
-                        self.target_distances[(index1, index2)] = self.pairings_dists[letter]
+                    if letter in self.pairing_dists:
+                        self.target_distances[(index1, index2)] = self.pairing_dists[letter]
                         continue
                 # if target distance has been specified by user, read that, otherwise compute it
 
@@ -461,23 +436,82 @@ class RunEmbedding:
                 dist2 = orb_dim_dict.get(r_atom2.symbol + ' ' + str(r_atom2), orb_dim_dict['Fallback'])
 
                 self.target_distances[(index1, index2)] = dist1 + dist2
+ 
+    def get_pairing_dist_from_letter(self, letter):
+        '''
+        Get constrained distance between paired reactive
+        atoms, accessed via the associated constraint letter
+        '''
 
-    def optimization_refining(self, maxiter=None):
+        if hasattr(self, 'pairing_dists') and self.pairing_dists.get(letter) is not None:
+            # if self.options.shrink:
+            #     return self.pairing_dists[letter] * self.options.shrink_multiplier
+            return self.pairing_dists[letter]
+
+        d = 0
+        try:
+            for mol_index, mol_pairing_dict in self.pairings_dict.items():
+                if r_atom_index := mol_pairing_dict.get(letter):
+
+                    # for refine embeds, one letter corresponds to two indices
+                    # on the same molecule
+                    if isinstance(r_atom_index, tuple):
+                        i1, i2 = r_atom_index
+                        return (self.objects[mol_index].get_orbital_length(i1) +
+                                self.objects[mol_index].get_orbital_length(i2))
+
+                    # for other runs, it is just one atom per molecule per letter
+                    d += self.objects[mol_index].get_orbital_length(r_atom_index)
+
+            return d
+
+        # If no orbitals were built, return None
+        except NoOrbitalError:
+            return None
+
+    def get_pairing_dists_from_constrained_indices(self, constrained_pair):
+        '''
+        Returns the constrained distance
+        for a specific constrained pair of indices
+        '''
+        try:
+            letter = next(lett for lett, pair in self.pairings_table.items() if (pair[0] == constrained_pair[0] and      
+                                                                                 pair[1] == constrained_pair[1]))
+            return self.get_pairing_dist_from_letter(letter)
+
+        except StopIteration:
+            return None
+
+    def get_pairing_dists(self, conf):
+        '''
+        Returns a list with the constrained distances for each embedder constraint
+        '''
+        if self.constrained_indices[conf].size == 0:
+            return None
+
+        constraints = np.concatenate([self.constrained_indices[conf], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indices[conf]
+        return [self.get_pairing_dists_from_constrained_indices(pair) for pair in constraints]
+
+    def optimization_refining(self, maxiter=None, only_fixed_constraints=False):
         '''
         Refines structures by constrained optimizations with the active calculator,
         discarding similar ones and scrambled ones.
+        maxiter - int, number of max iterations for the optimization
+        constraints - 'all' or 'fixed'. The latter only considers (a,b,c) and not (x,y,z)
+
         '''
 
         self.outname = f'TSCoDe_poses_{self.stamp}.xyz'
 
         if self.options.threads > 1:
-            self.optimization_refining_parallel(maxiter=maxiter)
+            self.optimization_refining_parallel(maxiter=maxiter, only_fixed_constraints=only_fixed_constraints)
 
         else:
 
             t_start = time.perf_counter()
 
-            self.log(f'--> Structure optimization ({self.options.theory_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.calculator})')
+            task = 'Distance refining' if only_fixed_constraints else 'Structure optimization'
+            self.log(f'--> {task} ({self.options.theory_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.calculator})')
 
             self.energies.fill(0)
             # Resetting all energies since we changed theory level
@@ -491,23 +525,32 @@ class RunEmbedding:
             for i, structure in enumerate(deepcopy(self.structures)):
                 loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
 
-                constraints = np.concatenate([self.constrained_indexes[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[i]
+                if only_fixed_constraints:
+                    constraints = np.array([value for key, value in self.pairings_table.items() if key in ('a', 'b', 'c')])
+                
+                else:
+                    constraints = np.concatenate([self.constrained_indices[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indices[i]
+
+                pairing_dists = tuple(self.get_pairing_dists_from_constrained_indices(_c) for _c in constraints)
 
                 try:
 
-                    new_structure, new_energy, self.exit_status[i] = optimize(structure,
+                    new_structure, new_energy, self.exit_status[i] = optimize(
+                                                                                structure,
                                                                                 self.atomnos,
                                                                                 self.options.calculator,
                                                                                 method=method,
                                                                                 maxiter=maxiter,
-                                                                                constrained_indexes=constraints,
+                                                                                constrained_indices=constraints,
+                                                                                constrained_distances=pairing_dists,
                                                                                 mols_graphs=self.graphs if self.embed != 'monomolecular' else None,
                                                                                 procs=self.options.procs,
                                                                                 max_newbonds=self.options.max_newbonds,
                                                                                 check=(self.embed != 'refine'),
 
                                                                                 logfunction=lambda s: self.log(s, p=False),
-                                                                                title=f'Candidate_{i+1}',)
+                                                                                title=f'Candidate_{i+1}',
+                                                                            )
 
                     if self.exit_status[i]:
                         self.energies[i] = new_energy
@@ -549,14 +592,14 @@ class RunEmbedding:
             _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
             self.energies = self.scramble(self.energies, sequence)
             self.structures = self.scramble(self.structures, sequence)
-            self.constrained_indexes = self.scramble(self.constrained_indexes, sequence)
+            self.constrained_indices = self.scramble(self.constrained_indices, sequence)
             # sorting structures based on energy
 
-            if self.options.kcal_thresh is not None:
+            if self.options.kcal_thresh is not None and only_fixed_constraints:
         
                 mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
 
-                self.apply_mask(('structures', 'constrained_indexes', 'energies', 'exit_status'), mask)
+                self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
 
                 if False in mask:
                     self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
@@ -566,9 +609,19 @@ class RunEmbedding:
             self.zero_candidates_check()
             self.similarity_refining()
 
-    def optimization_refining_parallel(self, maxiter=None):
+            with open(self.outname, 'w') as f:        
+                for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
+                                                                    self.exit_status,
+                                                                    self.rel_energies())):
+
+                    kind = 'REFINED - ' if status else 'NOT REFINED - '
+                    write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(energy, 3)} kcal/mol ({self.options.ff_level})')
+
+            self.log(f'--> Wrote {len(self.structures)} optimized structures to {self.outname}')
+
+    def optimization_refining_parallel(self, maxiter=None, only_fixed_constraints=False):
         '''
-        Multithread version of optimization refining
+        Multithread version of optimization refining (unused ATM, WIP)
         '''
 
         from concurrent.futures import ThreadPoolExecutor
@@ -591,7 +644,7 @@ class RunEmbedding:
             processes = []
             for i, structure in enumerate(deepcopy(self.structures)):
 
-                constraints = np.concatenate([self.constrained_indexes[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[i]
+                constraints = np.concatenate([self.constrained_indices[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indices[i]
 
                 try:
 
@@ -602,7 +655,7 @@ class RunEmbedding:
                                                     self.options.calculator,
                                                     method=method,
                                                     maxiter=maxiter,
-                                                    constrained_indexes=constraints,
+                                                    constrained_indices=constraints,
                                                     mols_graphs=self.graphs if self.embed != 'monomolecular' else None,
                                                     procs=self.options.procs,
                                                     max_newbonds=self.options.max_newbonds,
@@ -641,14 +694,14 @@ class RunEmbedding:
         _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
         self.energies = self.scramble(self.energies, sequence)
         self.structures = self.scramble(self.structures, sequence)
-        self.constrained_indexes = self.scramble(self.constrained_indexes, sequence)
+        self.constrained_indices = self.scramble(self.constrained_indices, sequence)
         # sorting structures based on energy
 
         if self.options.kcal_thresh is not None:
     
             mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
 
-            self.apply_mask(('structures', 'constrained_indexes', 'energies', 'exit_status'), mask)
+            self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
 
             if False in mask:
                 self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
@@ -663,10 +716,10 @@ class RunEmbedding:
         Refines constrained distances between active structures, discarding similar ones and scrambled ones.
         '''
 
-        if self.embed != 'refine':
+        if hasattr(self, 'pairing_dists'):
 
             self.write_structures('poses_unrefined', energies=False, p=False)
-            self.log(f'--> Checkpoint output - Updated {len(self.structures)} TS structures before distance refinement.\n')
+            self.log(f'--> Checkpoint output - Updated {len(self.structures)} unrefined structures before distance refinement.\n')
 
             self.log(f'--> Refining bonding distances for TSs ({self.options.theory_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.calculator})')
 
@@ -683,7 +736,7 @@ class RunEmbedding:
             for i, structure in enumerate(deepcopy(self.structures)):
                 loadbar(i, len(self.structures), prefix=f'Refining structure {i+1}/{len(self.structures)} ')
 
-                constraints = np.concatenate([self.constrained_indexes[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indexes[i]
+                constraints = np.concatenate([self.constrained_indices[i], self.internal_constraints]) if len(self.internal_constraints) > 0 else self.constrained_indices[i]
 
                 try:
                     traj = f'refine_{i}.traj' if self.options.debug else None
@@ -691,7 +744,7 @@ class RunEmbedding:
                     new_structure, new_energy, self.exit_status[i] = ase_adjust_spacings(self,
                                                                                             structure,
                                                                                             self.atomnos,
-                                                                                            constrained_indexes=constraints,
+                                                                                            constrained_indices=constraints,
                                                                                             title=f'Structure_{i}',
                                                                                             traj=traj
                                                                                             )
@@ -705,6 +758,7 @@ class RunEmbedding:
                     # This occurs when one or more of them is not defined, that is when the calculation did not end well.
                     # The easiest solution is to reject the structure and go on.
                     self.log(f'    - Structure {i+1} - {repr(e)}', p=False)
+
             
             loadbar(1, 1, prefix=f'Refining structure {i+1}/{len(self.structures)} ')
             t_end = time.perf_counter()
@@ -714,7 +768,7 @@ class RunEmbedding:
             if self.options.only_refined:
 
                 mask = self.exit_status
-                self.apply_mask(('structures', 'energies', 'exit_status', 'constrained_indexes'), mask)
+                self.apply_mask(('structures', 'energies', 'exit_status', 'constrained_indices'), mask)
 
                 s = f'Discarded {len([i for i in mask if not i])} unrefined structures.'
 
@@ -733,41 +787,41 @@ class RunEmbedding:
 
             self.fitness_refining()
 
-        ################################################# PRUNING: ENERGY
+            ################################################# PRUNING: ENERGY
 
-        _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
-        self.energies = self.scramble(self.energies, sequence)
-        self.structures = self.scramble(self.structures, sequence)
-        self.constrained_indexes = self.scramble(self.constrained_indexes, sequence)
-        # sorting structures based on energy
+            _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
+            self.energies = self.scramble(self.energies, sequence)
+            self.structures = self.scramble(self.structures, sequence)
+            self.constrained_indices = self.scramble(self.constrained_indices, sequence)
+            # sorting structures based on energy
 
-        if self.options.kcal_thresh is not None:
-    
-            mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
-
-            self.apply_mask(('structures', 'constrained_indexes', 'energies', 'exit_status'), mask)
-
-            if False in mask:
-                self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
+            if self.options.kcal_thresh is not None:
         
-        ################################################# XYZ GUESSES OUTPUT 
+                mask = (self.energies - np.min(self.energies)) < self.options.kcal_thresh
 
-        self.outname = f'TSCoDe_poses_{self.stamp}.xyz'
-        with open(self.outname, 'w') as f:        
-            for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
-                                                                self.exit_status,
-                                                                self.rel_energies())):
+                self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
 
-                kind = 'REFINED - ' if status else 'NOT REFINED - '
-                write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(energy, 3)} kcal/mol ({self.options.theory_level})')
+                if False in mask:
+                    self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
+            
+            ################################################# XYZ GUESSES OUTPUT 
 
-        try:
-            os.remove(f'TSCoDe_poses_unrefined_{self.stamp}.xyz')
-            # since we have the refined structures, we can get rid of the unrefined ones
-        except FileNotFoundError:
-            pass
+            self.outname = f'TSCoDe_poses_{self.stamp}.xyz'
+            with open(self.outname, 'w') as f:        
+                for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
+                                                                    self.exit_status,
+                                                                    self.rel_energies())):
 
-        self.log(f'Wrote {len(self.structures)} structures to {self.outname} file.\n')
+                    kind = 'REFINED - ' if status else 'NOT REFINED - '
+                    write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - {kind}Rel. E. = {round(energy, 3)} kcal/mol ({self.options.theory_level})')
+
+            try:
+                os.remove(f'TSCoDe_poses_unrefined_{self.stamp}.xyz')
+                # since we have the refined structures, we can get rid of the unrefined ones
+            except FileNotFoundError:
+                pass
+
+            self.log(f'Wrote {len(self.structures)} structures to {self.outname} file.\n')
 
     def metadynamics_augmentation(self):
         '''
@@ -782,20 +836,20 @@ class RunEmbedding:
         before = len(self.structures)
         t_start_run = time.perf_counter()
 
-        for s, (structure, constrained_indexes) in enumerate(zip(deepcopy(self.structures), deepcopy(self.constrained_indexes))):
+        for s, (structure, constrained_indices) in enumerate(zip(deepcopy(self.structures), deepcopy(self.constrained_indices))):
 
             loadbar(s, before, f'Running MTD {s+1}/{before} ')
             t_start = time.perf_counter()
 
             new_structures = xtb_metadyn_augmentation(structure,
                                                       self.atomnos,
-                                                      constrained_indexes=constrained_indexes,
+                                                      constrained_indices=constrained_indices,
                                                       new_structures=5,
                                                       title=s)
 
             self.structures = np.concatenate((self.structures, new_structures))
             self.energies = np.concatenate((self.energies, [0 for _ in new_structures]))
-            self.constrained_indexes = np.concatenate((self.constrained_indexes, [constrained_indexes for _ in new_structures]))
+            self.constrained_indices = np.concatenate((self.constrained_indices, [constrained_indices for _ in new_structures]))
         
             self.log(f'   - Structure {s+1} - {len(new_structures)} new conformers ({time_to_string(time.perf_counter()-t_start)})', p=False)
 
@@ -818,7 +872,7 @@ class RunEmbedding:
         n_out = 100 if len(self.structures)*100 < max_structs else round(max_structs/len(self.structures))
         n_out = max((1, n_out))
 
-        for s, (structure, constrained_indexes) in enumerate(zip(self.structures, self.constrained_indexes)):
+        for s, (structure, constrained_indices) in enumerate(zip(self.structures, self.constrained_indices)):
 
             loadbar(s, before, f'Performing CSearch {s+1}/{before} ', suffix=f'({len(self.structures)-before} generated)')
             t_start = time.perf_counter()
@@ -830,7 +884,7 @@ class RunEmbedding:
                 new_structures = csearch(
                                             structure,
                                             self.atomnos,
-                                            constrained_indexes=constrained_indexes,
+                                            constrained_indices=constrained_indices,
                                             keep_hb=True,
                                             mode=2,
                                             n_out=n_out,
@@ -850,7 +904,7 @@ class RunEmbedding:
             if len(new_structures) != 0: # could be either array or list, so have to check this way
                 self.structures = np.concatenate((self.structures, new_structures))
                 self.energies = np.concatenate((self.energies, [np.inf for _ in new_structures]))
-                self.constrained_indexes = np.concatenate((self.constrained_indexes, [constrained_indexes for _ in new_structures]))
+                self.constrained_indices = np.concatenate((self.constrained_indices, [constrained_indices for _ in new_structures]))
         
             self.log(f'   - Candidate {s+1} - {len(new_structures)} new conformers ({time_to_string(time.perf_counter()-t_start)})', p=False)
 
@@ -875,7 +929,7 @@ class RunEmbedding:
         n_out = 100 if len(self.structures)*100 < max_structs else round(max_structs/len(self.structures))
 
         if self.options.debug:
-            dump = open(f'Candidate_{s+1}_csearch_log.txt', 'w', buffering=1)
+            dump = open(f'Candidate_{text}_csearch_log.txt', 'w', buffering=1)
 
         from concurrent.futures import ProcessPoolExecutor
         new_structures, processes = [], []
@@ -884,13 +938,13 @@ class RunEmbedding:
 
         with ProcessPoolExecutor(max_workers=self.options.threads) as executor:
 
-            for s, (structure, constrained_indexes) in enumerate(zip(self.structures, self.constrained_indexes)):
+            for s, (structure, constrained_indices) in enumerate(zip(self.structures, self.constrained_indices)):
 
                 p = executor.submit(
                                             csearch,
                                             structure,
                                             self.atomnos,
-                                            constrained_indexes=constrained_indexes,
+                                            constrained_indices=constrained_indices,
                                             keep_hb=True,
                                             mode=2,
                                             n_out=n_out,
@@ -912,7 +966,7 @@ class RunEmbedding:
         if new_structures:
             self.structures = np.concatenate((self.structures, new_structures))
             self.energies = np.concatenate((self.energies, [np.inf for _ in new_structures]))
-            self.constrained_indexes = np.concatenate((self.constrained_indexes, [constrained_indexes for _ in new_structures]))
+            self.constrained_indices = np.concatenate((self.constrained_indices, [constrained_indices for _ in new_structures]))
         
         self.exit_status = np.array([True for _ in self.structures], dtype=bool)
 
@@ -974,7 +1028,7 @@ class RunEmbedding:
                                                                                         structure,
                                                                                         self.atomnos,
                                                                                         self.ids,
-                                                                                        self.constrained_indexes[i],
+                                                                                        self.constrained_indices[i],
                                                                                         title=f'structure_{i+1}')
 
                 exit_str = 'COMPLETED' if self.exit_status[i] else 'CRASHED'
@@ -1016,7 +1070,7 @@ class RunEmbedding:
             _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
             self.energies = scramble(self.energies, sequence)
             self.structures = scramble(self.structures, sequence)
-            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+            self.constrained_indices = scramble(self.constrained_indices, sequence)
             # sorting structures based on energy
 
             self.outname = f'TSCoDe_NEB_TSs_{self.stamp}.xyz'
@@ -1024,7 +1078,7 @@ class RunEmbedding:
                 for structure, energy in zip(align_structures(self.structures), self.rel_energies()):
                     write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(energy, 3)} kcal/mol')
 
-            self.log(f'Wrote {len(self.structures)} final TS structures to {self.outname} file\n')
+            self.log(f'Wrote {len(self.structures)} final structures to {self.outname} file\n')
 
     def saddle_refining(self):
         '''
@@ -1042,7 +1096,7 @@ class RunEmbedding:
                 self.structures[i], self.energies[i], self.exit_status[i] = ase_saddle(self,
                                                                             structure,
                                                                             self.atomnos,
-                                                                            self.constrained_indexes[i],
+                                                                            self.constrained_indices[i],
                                                                             mols_graphs=self.graphs if self.embed != 'monomolecular' else None,
                                                                             title=f'Saddle opt - Structure {i+1}',
                                                                             logfile=self.logfile,
@@ -1080,7 +1134,7 @@ class RunEmbedding:
             _, sequence = zip(*sorted(zip(self.energies, range(len(self.energies))), key=lambda x: x[0]))
             self.energies = scramble(self.energies, sequence)
             self.structures = scramble(self.structures, sequence)
-            self.constrained_indexes = scramble(self.constrained_indexes, sequence)
+            self.constrained_indices = scramble(self.constrained_indices, sequence)
             # sorting structures based on energy
 
             self.outname = f'TSCoDe_SADDLE_TSs_{self.stamp}.xyz'
@@ -1153,7 +1207,7 @@ class RunEmbedding:
 
         for i, structure in enumerate(self.structures):
 
-            nci, print_list = get_nci(structure, self.atomnos, self.constrained_indexes[i], self.ids)
+            nci, print_list = get_nci(structure, self.atomnos, self.constrained_indices[i], self.ids)
             self.nci.append(nci)
 
             if nci != []:
@@ -1185,7 +1239,7 @@ class RunEmbedding:
                 self.log(f'--> Differential NCIs found - these might be the source of selectivity:')
                 for nci, shared_by in unshared_nci:
                     nci_type, i1, i2 = nci
-                    self.log(f'    {nci_type} between indexes {i1}/{i2} is present in {len(shared_by)}/{len(self.structures)} structures {tuple([i+1 for i in shared_by])}')
+                    self.log(f'    {nci_type} between indices{i1}/{i2} is present in {len(shared_by)}/{len(self.structures)} structures {tuple([i+1 for i in shared_by])}')
                 self.log()
 
     def write_mol_info(self):
@@ -1205,9 +1259,9 @@ class RunEmbedding:
 
                 else:
 
-                    descs = [pt[mol.atomnos[i]].symbol for i in mol.reactive_indexes]
+                    descs = [pt[mol.atomnos[i]].symbol for i in mol.reactive_indices]
 
-                t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indexes, descs)])
+                t = '\n        '.join([(str(index) + ' ' if len(str(index)) == 1 else str(index)) + ' -> ' + desc for index, desc in zip(mol.reactive_indices, descs)])
                
                 mol_line = f' -> {len(mol.atomcoords[0])} atoms, {len(mol.atomcoords)} conformer{"s" if len(mol.atomcoords) != 1 else ""}'
                 if hasattr(mol, 'pivots'):
@@ -1225,7 +1279,7 @@ class RunEmbedding:
 
                 head += f'\n    {i+1}. {mol.name}{mol_line}\n        {t}\n'
 
-            self.log('--> Input structures & reactive indexes data:\n' + head)
+            self.log('--> Input structures & reactive indices data:\n' + head)
 
     def write_options(self):
         '''
@@ -1235,7 +1289,7 @@ class RunEmbedding:
         ######################################################################################################## PAIRINGS
 
         if not self.pairings_table:
-            if all([len(mol.reactive_indexes) == 2 for mol in self.objects]):
+            if all([len(mol.reactive_indices) == 2 for mol in self.objects]):
                 self.log('--> No atom pairings imposed. Computing all possible dispositions.\n')
                 # only print the no pairings statements if there are multiple regioisomers to be computed
         else:
@@ -1324,20 +1378,20 @@ class RunEmbedding:
 
             self.log(f'    - {line}')
 
-    def write_vmd(self, indexes=None):
+    def write_vmd(self, indices=None):
         '''
         Write VMD file with bonds and reactive atoms highlighted.
         '''
 
-        if indexes is None:
-            indexes = self.constrained_indexes[0].ravel()
+        if indices is None:
+            indices = self.constrained_indices[0].ravel()
 
         self.vmd_name = self.outname.split('.')[0] + '.vmd'
         path = os.path.join(os.getcwd(), self.vmd_name)
         with open(path, 'w') as f:
             s = ('display resetview\n' +
                 'mol new {%s.xyz}\n' % (os.path.join(os.getcwd() + self.vmd_name).rstrip('.vmd')) +
-                'mol selection index %s\n' % (' '.join([str(i) for i in indexes])) +
+                'mol selection index %s\n' % (' '.join([str(i) for i in indices])) +
                 'mol representation CPK 0.7 0.5 50 50\n' +
                 'mol color ColorID 7\n' +
                 'mol material Transparent\n' +
@@ -1350,12 +1404,12 @@ class RunEmbedding:
 
         self.log(f'Wrote VMD {self.vmd_name} file\n')
 
-    def write_structures(self, tag, indexes=None, energies=True, relative=True, extra='', p=True):
+    def write_structures(self, tag, indices=None, energies=True, relative=True, extra='', p=True):
         '''
         '''
 
-        # if indexes is None:
-        #     indexes = self.constrained_indexes[0]
+        # if indices is None:
+        #     indices = self.constrained_indices[0]
 
         if energies:
             rel_e = self.energies
@@ -1372,7 +1426,7 @@ class RunEmbedding:
 
         self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
-            for i, structure in enumerate(align_structures(output_structures, indexes)):
+            for i, structure in enumerate(align_structures(output_structures, indices)):
                 title = f'TS candidate {i+1} - {tag}'
 
                 if energies:
@@ -1383,7 +1437,7 @@ class RunEmbedding:
                 write_xyz(structure, self.atomnos, f, title=title)
 
         if p:
-            self.log(f'Wrote {len(output_structures)} {tag} TS structures to {self.outname} file.\n')
+            self.log(f'Wrote {len(output_structures)} {tag} structures to {self.outname} file.\n')
 
     def run(self):
         '''
@@ -1436,11 +1490,11 @@ class RunEmbedding:
                         if self.options.ff_calc == "XTB":
                         # Perform stepwise pruning of the ensemble
 
-                            self.log("--> Performing XTB FF optimization (loose convergence, step 1/2)\n")
+                            self.log("--> Performing XTB FF optimization (loose convergence, all constraints, step 1/2)\n")
                             self.force_field_refining(conv_thr="loose")
 
-                            self.log("--> Performing XTB FF optimization (tight convergence, step 2/2)\n")
-                            self.force_field_refining(conv_thr="tight")
+                            self.log("--> Performing XTB FF optimization (tight convergence, fixed constraints only, step 2/2)\n")
+                            self.force_field_refining(conv_thr="tight", only_fixed_constraints=True)
 
                         else:
                             self.force_field_refining()
@@ -1463,9 +1517,11 @@ class RunEmbedding:
                             self.log("--> Performing ORCA optimization (convergence, step 3/3)\n")
 
                         self.optimization_refining()
-                        # final uncompromised optimization
+                        # final uncompromised optimization (with fixed constraints and interactions active)
 
-                        self.distance_refining()
+                        self.optimization_refining(only_fixed_constraints=True)
+                        # self.distance_refining()
+                        # final uncompromised optimization (with only fixed constraints active)
 
                 else:
                     self.write_structures('unoptimized', energies=False)
@@ -1473,7 +1529,7 @@ class RunEmbedding:
 
             except ZeroCandidatesError:
                 t_end_run = time.perf_counter()
-                s = ('    Sorry, the program did not find any reasonable TS structure. Are you sure the input indexes and pairings were correct? If so, try these tips:\n'
+                s = ('    Sorry, the program did not find any reasonable embedded structure. Are you sure the input indices and pairings were correct? If so, try these tips:\n'
                      '    - If no structure passes the compenetration check, the SHRINK keyword may help (see documentation).\n'
                      '    - Similarly, enlarging the spacing between atom pairs with the DIST keyword facilitates the embed.\n'
                      '    - If no structure passes the fitness check, try adding a solvent with the SOLVENT keyword.\n'
@@ -1551,7 +1607,7 @@ class RunEmbedding:
         for mol in self.objects:
             if hasattr(mol, 'pka_data'):
                 table.add_row([mol.rootname,
-                               f'{mol.reactive_indexes[0]}({pt[mol.atomnos[mol.reactive_indexes[0]]].symbol})',
+                               f'{mol.reactive_indices[0]}({pt[mol.atomnos[mol.reactive_indices[0]]].symbol})',
                                mol.pka_data[0],
                                mol.pka_data[1]])
 
@@ -1615,3 +1671,33 @@ class RunEmbedding:
         pickle.dump(fig, open(f'{self.stamp}_cumulative_plt.pickle', 'wb'))
         
         self.log(f'\n--> Written cumulative scan plot at {self.stamp}_cumulative_plt.svg')
+
+    def normal_termination(self):
+        '''
+        Terminate the run, printing the total time and the
+        relative energies of the first 50 structures, if possible.
+
+        '''
+        clean_directory()
+        self.log(f'\n--> TSCoDe normal termination: total time {time_to_string(time.perf_counter() - self.t_start_run, verbose=True)}.')
+        
+        if hasattr(self, "structures"):
+            if len(self.structures) > 0 and hasattr(self, "energies"):
+                self.log(f'\n--> Energies of output structures ({self.options.theory_level}/{self.options.calculator}{f"/{self.options.solvent}" if self.options.solvent is not None else ""})\n')
+
+                self.energies = self.energies if len(self.energies) <= 50 else self.energies[0:50]
+
+                self.log(f'> #                Rel. E.           RMSD')
+                self.log('-------------------------------------------')
+                for i, energy in enumerate(self.energies-self.energies[0]):
+
+                    rmsd_value = '(ref)' if i == 0 else str(round(kabsch_rmsd(self.structures[i], self.structures[0], translate=True), 2))+' Å'
+
+                    self.log('> Candidate {:2}  :  {:4} kcal/mol  :  {}'.format(
+                                                                        str(i+1),
+                                                                        round(energy, 2),
+                                                                        rmsd_value))
+
+        self.write_quote()
+        self.logfile.close()
+        quit()

@@ -147,7 +147,7 @@ def fast_score(coords, close=1.3, far=3):
     close_contacts = dist_mat[dist_mat < far]
     return np.sum(close_contacts/(close-far) - far/(close-far))
 
-def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.5, max_delta=None, verbose=False):
+def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.25, max_delta=None, verbose=False):
     '''
     Removes similar structures by repeatedly grouping them into k
     subgroups and removing similar ones. A cache is present to avoid
@@ -165,9 +165,9 @@ def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.5, max_delta=None, ver
     cache_set = set()
     final_mask = np.ones(structures.shape[0], dtype=bool)
     
-    for k in (5e5,  2e5,  1e5,  5e4, 2e4, 1e4,
+    for k in (5e5, 2e5, 1e5, 5e4, 2e4, 1e4,
               5000, 2000, 1000, 500, 200, 100,
-              50,   20,   10,   5,   2,   1):
+              50, 20, 10, 5, 2, 1):
 
         num_active_str = np.count_nonzero(final_mask)
         
@@ -209,7 +209,7 @@ def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.5, max_delta=None, ver
                     i_abs = i_rel+(d*step)
                     j_abs = j_rel+(d*step)
                     cache_set.add((i_abs, j_abs))
-                    # adding indexes of structures that are considered equal,
+                    # adding indices of structures that are considered equal,
                     # so as not to repeat computing their RMSD
                     # Their index accounts for their position in the initial
                     # array (absolute index)
@@ -251,9 +251,9 @@ def prune_conformers_tfd(structures, quadruplets, thresh=10, verbose=False):
     cache_set = set()
     final_mask = np.ones(structures.shape[0], dtype=bool)
     
-    for k in (5e5,  2e5,  1e5,  5e4, 2e4, 1e4,
+    for k in (5e5, 2e5, 1e5, 5e4, 2e4, 1e4,
               5000, 2000, 1000, 500, 200, 100,
-              50,   20,   10,   5,   2,   1):
+              50, 20, 10, 5, 2, 1):
 
         num_active_str = np.count_nonzero(final_mask)
         
@@ -295,7 +295,7 @@ def prune_conformers_tfd(structures, quadruplets, thresh=10, verbose=False):
                     i_abs = i_rel+(d*step)
                     j_abs = j_rel+(d*step)
                     cache_set.add((i_abs, j_abs))
-                    # adding indexes of structures that are considered equal,
+                    # adding indices of structures that are considered equal,
                     # so as not to repeat computing their TFD
                     # Their index accounts for their position in the initial
                     # array (absolute index)

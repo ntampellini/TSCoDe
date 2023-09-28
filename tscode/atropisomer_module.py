@@ -35,7 +35,7 @@ from tscode.utils import (clean_directory, loadbar, molecule_check,
 def ase_torsion_TSs(embedder,
                     coords,
                     atomnos,
-                    indexes,
+                    indices,
                     threshold_kcal=5,
                     title='temp',
                     optimization=True,
@@ -45,27 +45,27 @@ def ase_torsion_TSs(embedder,
     '''
     '''
     
-    assert len(indexes) == 4
+    assert len(indices) == 4
     # cyclical = False
     
     ts_structures, energies = [], []
 
     graph = graphize(coords, atomnos)
-    i1, i2, i3, i4 = indexes
+    i1, i2, i3, i4 = indices
 
-    if all([len(shortest_path(graph, start, end)) == 2 for start, end in zip(indexes[0:-1], indexes[1:])]):
+    if all([len(shortest_path(graph, start, end)) == 2 for start, end in zip(indices[0:-1], indices[1:])]):
         graph.remove_edge(i2, i3)
         subgraphs = connected_components(graph)
 
         for subgraph in subgraphs:
             if i3 in subgraph:
-                indexes_to_be_moved = subgraph - {i3}
+                indices_to_be_moved = subgraph - {i3}
                 break
 
-        if i1 in indexes_to_be_moved:
+        if i1 in indices_to_be_moved:
 
             # cyclical = True
-            indexes_to_be_moved = [i4]
+            indices_to_be_moved = [i4]
             # if molecule is cyclical, just move the fourth atom and
             # let the rest of the structure relax
 
@@ -80,10 +80,10 @@ def ase_torsion_TSs(embedder,
             raise SystemExit('The specified dihedral angle is made up of non-contiguous atoms. To prevent errors, the\n' +
                              'run has been stopped. Override this behavior with the LET keyword.')
 
-        # if user did not provide four contiguous indexes,
+        # if user did not provide four contiguous indices,
         # and did that on purpose, just move the fourth atom and
         # let the rest of the structure relax
-        indexes_to_be_moved = [i4]
+        indices_to_be_moved = [i4]
         # cyclical = True
 
         s = 'The specified dihedral angle is made up of non-contiguous atoms.\nThis might cause some unexpected results.'
@@ -105,11 +105,11 @@ def ase_torsion_TSs(embedder,
         structures, energies = ase_dih_scan(embedder,
                                         coords,
                                         atomnos,
-                                        indexes=indexes,
+                                        indices=indices,
                                         degrees=degrees,
                                         steps=steps,
                                         relaxed=optimization,
-                                        indexes_to_be_moved=indexes_to_be_moved,
+                                        indices_to_be_moved=indices_to_be_moved,
                                         title='Preliminary scan' + ((' (clockwise)' if direction == '_clockwise' \
                                               else ' (counterclockwise)') if direction != '' else ''),
                                         logfile=logfile)
@@ -120,7 +120,7 @@ def ase_torsion_TSs(embedder,
         tag = '_relaxed' if optimization else '_rigid'
         
         with open(title + tag + direction + '_scan.xyz', 'w') as outfile:
-            for s, structure in enumerate(align_structures(np.array(structures), indexes[:-1])):
+            for s, structure in enumerate(align_structures(np.array(structures), indices[:-1])):
                 write_xyz(structure, atomnos, outfile, title=f'Scan point {s+1}/{len(structures)} - Rel. E = {round(rel_energies[s], 3)} kcal/mol')
 
         if plot:
@@ -130,7 +130,7 @@ def ase_torsion_TSs(embedder,
 
             fig = plt.figure()
 
-            x1 = [dihedral(structure[indexes]) for structure in structures]
+            x1 = [dihedral(structure[indices]) for structure in structures]
             y1 = [e-min_e for e in energies]
 
             for i, (x_, y_) in enumerate(get_plot_segments(x1, y1, max_step=abs(degrees)+1)):
@@ -143,35 +143,35 @@ def ase_torsion_TSs(embedder,
                         linewidth=3,
                         alpha=0.50)
 
-        peaks_indexes = atropisomer_peaks(energies, min_thr=min_e+threshold_kcal, max_thr=min_e+75)
+        peaks_indices = atropisomer_peaks(energies, min_thr=min_e+threshold_kcal, max_thr=min_e+75)
 
-        if peaks_indexes:
+        if peaks_indices:
 
-            s = 's' if len(peaks_indexes) > 1 else ''
-            print(f'Found {len(peaks_indexes)} peak{s}. Performing accurate scan{s}.\n')
+            s = 's' if len(peaks_indices) > 1 else ''
+            print(f'Found {len(peaks_indices)} peak{s}. Performing accurate scan{s}.\n')
             if logfile is not None:
-                logfile.write(f'Found {len(peaks_indexes)} peak{s}. Performing accurate scan{s}.\n\n')
+                logfile.write(f'Found {len(peaks_indices)} peak{s}. Performing accurate scan{s}.\n\n')
 
 
-            for p, peak in enumerate(peaks_indexes):
+            for p, peak in enumerate(peaks_indices):
 
                 sub_structures, sub_energies = ase_dih_scan(embedder,
                                                         structures[peak-1],
                                                         atomnos,
-                                                        indexes=indexes,
+                                                        indices=indices,
                                                         degrees=degrees/10, #1° or -1°
                                                         steps=20,
                                                         relaxed=optimization,
                                                         ad_libitum=True, # goes on until the hill is crossed
-                                                        indexes_to_be_moved=indexes_to_be_moved,
-                                                        title=f'Accurate scan {p+1}/{len(peaks_indexes)}',
+                                                        indices_to_be_moved=indices_to_be_moved,
+                                                        title=f'Accurate scan {p+1}/{len(peaks_indices)}',
                                                         logfile=logfile)
 
                 if logfile is not None:
                     logfile.write('\n')
 
                 if plot:
-                    x2 = [dihedral(structure[indexes]) for structure in sub_structures]
+                    x2 = [dihedral(structure[indices]) for structure in sub_structures]
                     y2 = [e-min_e for e in sub_energies]
 
                     for i, (x_, y_) in enumerate(get_plot_segments(x2, y2, max_step=abs(degrees/10)+1)):
@@ -185,12 +185,12 @@ def ase_torsion_TSs(embedder,
                                 linewidth=2,
                                 alpha=0.5)
 
-                sub_peaks_indexes = atropisomer_peaks(sub_energies, min_thr=threshold_kcal+min_e, max_thr=min_e+75)
+                sub_peaks_indices = atropisomer_peaks(sub_energies, min_thr=threshold_kcal+min_e, max_thr=min_e+75)
 
-                if sub_peaks_indexes:
+                if sub_peaks_indices:
 
-                    s = 's' if len(sub_peaks_indexes) > 1 else ''
-                    msg = f'Found {len(sub_peaks_indexes)} sub-peak{s}.'
+                    s = 's' if len(sub_peaks_indices) > 1 else ''
+                    msg = f'Found {len(sub_peaks_indices)} sub-peak{s}.'
                     
                     if embedder.options.saddle or embedder.options.neb:
                         if embedder.options.saddle:
@@ -205,17 +205,17 @@ def ase_torsion_TSs(embedder,
                     if logfile is not None:
                         logfile.write(s+'\n')
 
-                    for s, sub_peak in enumerate(sub_peaks_indexes):
+                    for s, sub_peak in enumerate(sub_peaks_indices):
 
                         if plot:
-                            x = dihedral(sub_structures[sub_peak][indexes])
+                            x = dihedral(sub_structures[sub_peak][indices])
                             y = sub_energies[sub_peak]-min_e
                             plt.plot(x, y, color='gold', marker='o', label='Maxima' if p == 0 else None, markersize=3)
 
                         if embedder.options.saddle:
 
-                            loadbar_title = f'  > Saddle opt on sub-peak {s+1}/{len(sub_peaks_indexes)}'
-                            # loadbar(s+1, len(sub_peaks_indexes), loadbar_title+' '*(29-len(loadbar_title)))
+                            loadbar_title = f'  > Saddle opt on sub-peak {s+1}/{len(sub_peaks_indices)}'
+                            # loadbar(s+1, len(sub_peaks_indices), loadbar_title+' '*(29-len(loadbar_title)))
                             print(loadbar_title)
                         
                             optimized_geom, energy, _ = ase_saddle(embedder,
@@ -231,7 +231,7 @@ def ase_torsion_TSs(embedder,
 
                         elif embedder.options.neb:
 
-                            loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indexes)}, {direction[1:]}'
+                            loadbar_title = f'  > NEB TS opt on sub-peak {s+1}/{len(sub_peaks_indices)}, {direction[1:]}'
                             drctn = 'clkws' if direction == '_clockwise' else 'ccws'
                             
                             print(loadbar_title)
@@ -265,7 +265,7 @@ def ase_torsion_TSs(embedder,
 
         if plot:
             plt.legend()
-            plt.xlabel(f'Dihedral Angle {tuple(indexes)}')
+            plt.xlabel(f'Dihedral Angle {tuple(indices)}')
             plt.ylabel('Energy (kcal/mol)')
             pickle.dump(fig, open(f'{title}{direction}_plt.pickle', 'wb'))
             plt.savefig(f'{title}{direction}_plt.svg')
@@ -281,7 +281,7 @@ def atropisomer_peaks(data, min_thr, max_thr):
     data: iterable
     min_thr: peaks must be values greater than min_thr
     max_thr: peaks must be values smaller than max_thr
-    return: list of peak indexes
+    return: list of peak indices
     '''
     l = len(data)
     peaks = [i for i in range(l-1) if (
@@ -301,19 +301,19 @@ def atropisomer_peaks(data, min_thr, max_thr):
 def ase_dih_scan(embedder,
             coords,
             atomnos,
-            indexes,
+            indices,
             degrees=10,
             steps=36,
             relaxed=True,
             ad_libitum=False,
-            indexes_to_be_moved=None,
+            indices_to_be_moved=None,
             title='temp scan',
             logfile=None):
     '''
     Performs a dihedral scan via the ASE library
     if ad libitum, steps is the minimum number of performed steps
     '''
-    assert len(indexes) == 4
+    assert len(indices) == 4
 
     if ad_libitum:
         if not relaxed:
@@ -324,10 +324,10 @@ def ase_dih_scan(embedder,
 
     atoms.calc = get_ase_calc(embedder)
 
-    if indexes_to_be_moved is None:
-        indexes_to_be_moved = range(len(atomnos))
+    if indices_to_be_moved is None:
+        indices_to_be_moved = range(len(atomnos))
 
-    mask = np.array([i in indexes_to_be_moved for i, _ in enumerate(atomnos)], dtype=bool)
+    mask = np.array([i in indices_to_be_moved for i, _ in enumerate(atomnos)], dtype=bool)
 
     t_start = time()
 
@@ -347,7 +347,7 @@ def ase_dih_scan(embedder,
             t_start_step = time()
 
         if relaxed:
-            atoms.set_constraint(FixInternals(dihedrals_deg=[[atoms.get_dihedral(*indexes), indexes]]))
+            atoms.set_constraint(FixInternals(dihedrals_deg=[[atoms.get_dihedral(*indices), indices]]))
             
             with LBFGS(atoms, maxstep=0.2, logfile=None, trajectory=None) as opt:
                 
@@ -370,7 +370,7 @@ def ase_dih_scan(embedder,
 
         structures.append(atoms.get_positions())
 
-        atoms.rotate_dihedral(*indexes, angle=degrees, mask=mask)
+        atoms.rotate_dihedral(*indices, angle=degrees, mask=mask)
 
         if exit_str == 'crashed':
             break
@@ -401,7 +401,7 @@ def ase_dih_scan(embedder,
         elapsed = time() - t_start
         logfile.write(f'{title} - completed ({time_to_string(elapsed)})\n')
 
-    return align_structures(structures, indexes), energies
+    return align_structures(structures, indices), energies
 
 def get_plot_segments(x, y, max_step=2):
     '''

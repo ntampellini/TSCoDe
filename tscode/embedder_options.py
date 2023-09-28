@@ -48,7 +48,7 @@ keywords_list = [
                                 # in Angstroms. Syntax uses parenthesis and commas:
                                 # `DIST(a=2.345,b=3.67,c=2.1)`
 
-            'ENANTIOMERS',    # Do not discard enantiomeric structures.
+            # 'ENANTIOMERS',    # Do not discard enantiomeric structures.
 
             'EZPROT',         # Double bond protection
 
@@ -284,7 +284,7 @@ class OptionSetter:
             raise SystemExit(('The refine> operator can only be used with one multimolecular file per run, '
                              f'in .xyz format. ({len(self.embedder.objects)} files found in input)'))
 
-        from tscode.embeds import _get_monomolecular_reactive_indexes
+        from tscode.embeds import _get_monomolecular_reactive_indices
         from tscode.graph_manipulations import get_sum_graph
         from tscode.utils import graphize
 
@@ -298,7 +298,7 @@ class OptionSetter:
 
         if self.embedder.options.rmsd is None:
             # set this only if user did not already specify a value
-            self.embedder.options.rmsd = 0.5 
+            self.embedder.options.rmsd = 0.25 
 
         self.embedder.objects[0].compute_orbitals()
 
@@ -314,7 +314,7 @@ class OptionSetter:
         options.suprafac = True
 
     def deep(self, options, *args):
-        options.options.rmsd = 0.3
+        options.options.rmsd = 0.1
         options.rotation_steps = 72
         options.max_clashes = 1
         options.clash_thresh = 1.4
@@ -452,8 +452,8 @@ class OptionSetter:
         parsed = kw.split('=')
         options.shrink_multiplier = float(parsed[1]) if len(parsed) > 1 else 1.5
 
-    def enantiomers(self, options, *args):
-        options.keep_enantiomers = True
+    # def enantiomers(self, options, *args):
+    #     options.keep_enantiomers = True
 
     def debug(self, options, *args):
         options.debug = True

@@ -168,7 +168,7 @@ def csearch_operator(filename, embedder, keep_hb=False, mode=1):
         conf_batch = csearch(
                                 opt_coords,
                                 data.atomnos,
-                                constrained_indexes=_get_internal_constraints(filename, embedder),
+                                constrained_indices=_get_internal_constraints(filename, embedder),
                                 keep_hb=keep_hb,
                                 mode=mode,
                                 n_out=embedder.options.max_confs//len(data.atomcoords),
@@ -218,8 +218,8 @@ def opt_operator(filename, embedder, logfunction=None):
         logfunction(f'--> Performing {embedder.options.calculator} {embedder.options.theory_level}' + (
                     f'{f"/{embedder.options.solvent}" if embedder.options.solvent is not None else ""} optimization on {filename} ({len(mol.atomcoords)} conformers)'))
 
-    constrained_indexes = _get_internal_constraints(filename, embedder)
-    constrained_distances = [embedder.get_pairing_dists_from_constrained_indexes(cp) for cp in constrained_indexes]
+    constrained_indices = _get_internal_constraints(filename, embedder)
+    constrained_distances = [embedder.get_pairing_dists_from_constrained_indices(cp) for cp in constrained_indices]
 
     energies = []
     lowest_calc = _get_lowest_calc(embedder)
@@ -228,7 +228,7 @@ def opt_operator(filename, embedder, logfunction=None):
 
     conformers, energies = _refine_structures(mol.atomcoords,
                                               mol.atomnos,
-                                              constrained_indexes=constrained_indexes,
+                                              constrained_indices=constrained_indices,
                                               constrained_distances=constrained_distances,
                                               *lowest_calc,
                                               loadstring='Optimizing conformer',
@@ -397,7 +397,7 @@ def saddle_operator(filename, embedder):
                                                 embedder,
                                                 mol.atomcoords[0],
                                                 mol.atomnos,
-                                                constrained_indexes=None,
+                                                constrained_indices=None,
                                                 mols_graphs=None,
                                                 title=mol.rootname,
                                                 logfile=mol.rootname+"_saddle_opt_log.txt",
@@ -423,8 +423,8 @@ def scan_operator(filename, embedder):
     mol_index, mol = next(((i, mol) for i, mol in enumerate(embedder.objects) if mol.name == filename))
 
     assert len(mol.atomcoords) == 1, 'The scan> operator works on a single .xyz geometry.'
-    assert len(mol.reactive_indexes) == 2, 'The scan> operator needs two reactive indexes ' + (
-                                          f'({len(mol.reactive_indexes)} were provided)')
+    assert len(mol.reactive_indices) == 2, 'The scan> operator needs two reactive indices' + (
+                                          f'({len(mol.reactive_indices)} were provided)')
 
     import matplotlib.pyplot as plt
 
@@ -435,10 +435,10 @@ def scan_operator(filename, embedder):
     t_start = time.perf_counter()
 
     # shorthands for clearer code
-    i1, i2 = mol.reactive_indexes
+    i1, i2 = mol.reactive_indices
     coords = mol.atomcoords[0]
 
-    # getting the start distance between scan indexes and start energy
+    # getting the start distance between scan indices and start energy
     d = norm_of(coords[i1]-coords[i2])
 
     # deciding if moving atoms closer or further apart based on distance
@@ -446,7 +446,7 @@ def scan_operator(filename, embedder):
     step = 0.05 if (i1, i2) in bonds else -0.05
 
     # logging to file and terminal
-    embedder.log(f'--> {mol.rootname} - Performing a distance scan {"approaching" if step < 0 else "separating"} indexes {i1} ' +
+    embedder.log(f'--> {mol.rootname} - Performing a distance scan {"approaching" if step < 0 else "separating"} indices{i1} ' +
                  f'and {i2} - step size {round(step, 2)} A\n    Theory level is {embedder.options.theory_level} ' +
                  f'via {embedder.options.calculator}')
 
@@ -477,7 +477,7 @@ def scan_operator(filename, embedder):
         # coords, energy, _ = ase_popt(embedder,
         #                              coords,
         #                              mol.atomnos,
-        #                              constrained_indexes=np.array([mol.reactive_indexes]),
+        #                              constrained_indices=np.array([mol.reactive_indices]),
         #                              targets=(d,),
         #                              safe=embedder.fix_angles_in_deformation if hasattr(embedder, 'fix_angles_in_deformation') else False,
         #                              title=f'Step {i+1}/{max_iterations} - d={round(d, 2)} A -',
@@ -491,7 +491,7 @@ def scan_operator(filename, embedder):
         coords, energy, _ = xtb_opt(
                                     coords,
                                     mol.atomnos,
-                                    constrained_indexes=np.array([mol.reactive_indexes]),
+                                    constrained_indices=np.array([mol.reactive_indices]),
                                     constrained_distances=(d,),
                                     method=embedder.options.theory_level,
                                     solvent=embedder.options.solvent,
@@ -507,7 +507,7 @@ def scan_operator(filename, embedder):
         energies.append(energy - e_0)
         dists.append(d)
         structures.append(coords)
-        # print(f"------> target was {round(d, 3)} A, reached {round(norm_of(coords[mol.reactive_indexes[0]]-coords[mol.reactive_indexes[1]]), 3)} A")
+        # print(f"------> target was {round(d, 3)} A, reached {round(norm_of(coords[mol.reactive_indices[0]]-coords[mol.reactive_indices[1]]), 3)} A")
         # saving the structure, distance and relative energy
 
         embedder.log(f'Step {i+1}/{max_iterations} - d={round(d, 2)} A - {round(energy-e_0, 2)} kcal/mol - {time_to_string(time.perf_counter()-t_start)}')
@@ -550,7 +550,7 @@ def scan_operator(filename, embedder):
     title = mol.rootname + ' distance scan'
     plt.legend()
     plt.title(title)
-    plt.xlabel(f'Indexes {i1}-{i2} distance (A)')
+    plt.xlabel(f'indices{i1}-{i2} distance (A)')
 
     if step > 0:
         plt.gca().invert_xaxis()

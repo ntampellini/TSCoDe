@@ -45,7 +45,7 @@ from tscode.hypermolecule_class import align_structures
 from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
 from tscode.utils import (HiddenPrints, clean_directory,
-                          get_double_bonds_indexes, molecule_check,
+                          get_double_bonds_indices, molecule_check,
                           scramble_check, time_to_string, write_xyz)
 
 
@@ -216,12 +216,12 @@ def get_ase_calc(embedder):
 
             return calc
 
-def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title=0, traj=None):
+def ase_adjust_spacings(embedder, structure, atomnos, constrained_indices, title=0, traj=None):
     '''
     embedder: TSCoDe embedder object
     structure: TS candidate coordinates to be adjusted
     atomnos: 1-d array with element numbering for the TS
-    constrained_indexes: (n,2)-shaped array of indexes to be distance constrained
+    constrained_indices: (n,2)-shaped array of indices to be distance constrained
     mols_graphs: list of NetworkX graphs, ordered as the single molecules in the TS
     title: number to be used for referring to this structure in the embedder log
     traj: if set to a string, traj+'.traj' is used as a filename for the refinement trajectory.
@@ -230,7 +230,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
 
     atoms.calc = get_ase_calc(embedder)
     
-    springs = [Spring(indexes[0], indexes[1], dist) for indexes, dist in embedder.target_distances.items()]
+    springs = [Spring(indices[0], indices[1], dist) for indices, dist in embedder.target_distances.items()]
     # adding springs to adjust the pairings for which we have target distances
 
     # if there are no springs, it is faster (and equivalent) to just do a classical full opitimization
@@ -251,8 +251,8 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
                         title=f'Candidate_{title}'
                     )
 
-    nci_indexes = [indexes for letter, indexes in embedder.pairings_table.items() if letter in ('x', 'y', 'z')]
-    halfsprings = [HalfSpring(i1, i2, 2.5) for i1, i2 in nci_indexes]
+    nci_indices = [indices for letter, indices in embedder.pairings_table.items() if letter in ('x', 'y', 'z')]
+    halfsprings = [HalfSpring(i1, i2, 2.5) for i1, i2 in nci_indices]
     # HalfSprings get atoms involved in NCIs together if they are more than 2.5A apart,
     # but lets them achieve their natural equilibrium distance when closer
 
@@ -286,7 +286,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
 
         new_structure = atoms.get_positions()
 
-        success = scramble_check(new_structure, atomnos, constrained_indexes, embedder.graphs)
+        success = scramble_check(new_structure, atomnos, constrained_indices, embedder.graphs)
         if iterations == 200:
             exit_str = 'MAX ITER'            
         elif success:
@@ -314,7 +314,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indexes, title
 
     return new_structure, energy, success
 
-def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=None, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
+def ase_saddle(embedder, coords, atomnos, constrained_indices=None, mols_graphs=None, title='temp', logfile=None, traj=None, freq=False, maxiterations=200):
     '''
     Runs a first order saddle optimization through the ASE package
     '''
@@ -343,7 +343,7 @@ def ase_saddle(embedder, coords, atomnos, constrained_indexes=None, mols_graphs=
     energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
 
     if mols_graphs is not None:
-        success = scramble_check(new_structure, atomnos, constrained_indexes, mols_graphs, max_newbonds=embedder.options.max_newbonds)
+        success = scramble_check(new_structure, atomnos, constrained_indices, mols_graphs, max_newbonds=embedder.options.max_newbonds)
     else:
         success = molecule_check(coords, new_structure, atomnos, max_newbonds=embedder.options.max_newbonds)
 
@@ -404,14 +404,14 @@ def ase_neb(embedder, reagents, products, atomnos, ts_guess=None, n_images=6, me
     if mep_override is not None:
 
         images = [Atoms(atomnos, positions=coords) for coords in mep_override]
-        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
+        neb = DyNEB(images, fmax=0.05, climb=False, method='eb', scale_fmax=1, allow_shared_calculator=True)
 
     elif ts_guess is None:
         images =  [first]
         images += [first.copy() for _ in range(n_images)]
         images += [last]
 
-        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
+        neb = DyNEB(images, fmax=0.05, climb=False, method='eb', scale_fmax=1, allow_shared_calculator=True)
         neb.interpolate(method='idpp')
 
     else:
@@ -427,7 +427,7 @@ def ase_neb(embedder, reagents, products, atomnos, ts_guess=None, n_images=6, me
 
         images = interp_1.images + interp_2.images[1:]
 
-        neb = DyNEB(images, fmax=0.05, climb=False,  method='eb', scale_fmax=1, allow_shared_calculator=True)
+        neb = DyNEB(images, fmax=0.05, climb=False, method='eb', scale_fmax=1, allow_shared_calculator=True)
 
     if mep_override is None:
         ase_dump(f'{title}_MEP_guess.xyz', images, atomnos)
@@ -548,9 +548,9 @@ class OrbitalSpring:
     Adds a series of forces based on a pair of orbitals, that is
     virtual points "bonded" to a given atom.
 
-    :params i1, i2: indexes of reactive atoms
+    :params i1, i2: indices of reactive atoms
     :params orb1, orb2: 3D coordinates of orbitals
-    :params neighbors_of_1, neighbors_of_2: lists of indexes for atoms bonded to i1/i2
+    :params neighbors_of_1, neighbors_of_2: lists of indices for atoms bonded to i1/i2
     :params d_eq: equilibrium target distance between orbital centers
     '''
     def __init__(self, i1, i2, orb1, orb2, neighbors_of_1, neighbors_of_2, d_eq, k=1000):
@@ -635,7 +635,7 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
 
     dihedrals_deg = None
     if double_bond_protection:
-        double_bonds = get_double_bonds_indexes(atoms.positions, atoms.get_atomic_numbers())
+        double_bonds = get_double_bonds_indices(atoms.positions, atoms.get_atomic_numbers())
         if double_bonds != []:
             dihedrals_deg = []
             for a, b in double_bonds:
@@ -650,14 +650,14 @@ def PreventScramblingConstraint(graph, atoms, double_bond_protection=False, fix_
 
     return FixInternals(dihedrals_deg=dihedrals_deg, angles_deg=angles_deg, bonds=bonds, epsilon=1)
 
-def ase_popt(embedder, coords, atomnos, constrained_indexes=None,
+def ase_popt(embedder, coords, atomnos, constrained_indices=None,
              steps=500, targets=None, safe=False, safe_mask=None,
              traj=None, logfunction=None, title='temp'):
     '''
     embedder: TSCoDe embedder object
     coords: 
     atomnos: 
-    constrained_indexes:
+    constrained_indices:
     safe: if True, adds a potential that prevents atoms from scrambling
     safe_mask: bool array, with False for atoms to be excluded when calculating bonds to preserve
     traj: if set to a string, traj is used as a filename for the bending trajectory.
@@ -667,8 +667,8 @@ def ase_popt(embedder, coords, atomnos, constrained_indexes=None,
     atoms.calc = get_ase_calc(embedder)
     constraints = []
 
-    if constrained_indexes is not None:
-        for i, c in enumerate(constrained_indexes):
+    if constrained_indices is not None:
+        for i, c in enumerate(constrained_indices):
             i1, i2 = c
             tgt_dist = norm_of(coords[i1]-coords[i2]) if targets is None else targets[i]
             constraints.append(Spring(i1, i2, tgt_dist))
@@ -742,7 +742,7 @@ def ase_bend(embedder, original_mol, conf, pivot, threshold, title='temp', traj=
         except FileNotFoundError:
             pass
 
-    i1, i2 = original_mol.reactive_indexes
+    i1, i2 = original_mol.reactive_indices
 
     neighbors_of_1 = neighbors(original_mol.graph, i1)
     neighbors_of_2 = neighbors(original_mol.graph, i2)
@@ -856,8 +856,8 @@ def ase_bend(embedder, original_mol, conf, pivot, threshold, title='temp', traj=
     reference = np.array(reference)
     targets = np.array(targets)
 
-    r = reference - np.mean(reference[final_mol.reactive_indexes], axis=0)
-    ts = np.array([t - np.mean(t[final_mol.reactive_indexes], axis=0) for t in targets])
+    r = reference - np.mean(reference[final_mol.reactive_indices], axis=0)
+    ts = np.array([t - np.mean(t[final_mol.reactive_indices], axis=0) for t in targets])
 
     output = []
     output.append(r)

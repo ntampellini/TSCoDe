@@ -26,7 +26,7 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
     def openbabel_opt(
                         structure,
                         atomnos,
-                        constrained_indexes,
+                        constrained_indices,
                         constrained_distances=None,
                         tight_constraint=True,
                         graphs=None,
@@ -55,7 +55,7 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
         # ending in scrambling.
 
         if constrained_distances is not None and tight_constraint:
-            for target_d, (a, b) in zip(constrained_distances, constrained_indexes):
+            for target_d, (a, b) in zip(constrained_distances, constrained_indices):
                 d = norm_of(structure[b] - structure[a])
                 delta = d - target_d
 
@@ -66,7 +66,7 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
                     structure, _, _ = openbabel_opt(
                                                     structure,
                                                     atomnos,
-                                                    constrained_indexes,
+                                                    constrained_indices,
                                                     constrained_distances=recursive_c_d,
                                                     tight_constraint=True, 
                                                     graphs=graphs,
@@ -98,7 +98,7 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
         # Define constraints
         constraints = ob.OBFFConstraints()
 
-        for i, (a, b) in enumerate(constrained_indexes):
+        for i, (a, b) in enumerate(constrained_indices):
 
             # Adding a distance constraint does not lead to accurate results,
             # so the backup solution is to freeze the atoms in place
@@ -140,7 +140,7 @@ if FF_OPT_BOOL and FF_CALC == 'OB':
         clean_directory((f'{title}_in.xyz', f'{title}_out.xyz'))
         
         if check:
-            success = scramble_check(opt_coords, atomnos, constrained_indexes, graphs)
+            success = scramble_check(opt_coords, atomnos, constrained_indices, graphs)
         else:
             success = True
 

@@ -89,7 +89,9 @@ Ensemble refinement starts with a similarity pruning, evaluated through a sequen
 
  - TFD (torsion fingerprint deviation) pruning
 
- - Rotationally-corrected RMSD pruning (invariant for periodic rotation of subsymmetrical groups, i.e. tBu, Ph)
+ - Rotationally-corrected RMSD pruning (invariant for periodic rotation of locally symmetrical known groups, i.e. tBu, Ph)
+
+ - Moment of Inertia along the principal axes pruning (helps remove enantiomers and rotamers along unknown locally symmetrical groups)
 
 Extra features
 --------------

@@ -25,7 +25,7 @@ from tscode.utils import clean_directory, pt
 
 def orca_opt(coords,
              atomnos,
-             constrained_indexes=None,
+             constrained_indices=None,
              method='PM3',
              charge=0,
              procs=1,
@@ -41,7 +41,7 @@ def orca_opt(coords,
 
     :params coords: array of shape (n,3) with cartesian coordinates for atoms.
     :params atomnos: array of atomic numbers for atoms.
-    :params constrained_indexes: array of shape (n,2), with the indexes
+    :params constrained_indices: array of shape (n,2), with the indices
                                  of atomic pairs to be constrained.
     :params method: string, specifiyng the first line of keywords for the MOPAC input file.
     :params title: string, used as a file name and job title for the mopac input file.
@@ -58,11 +58,11 @@ def orca_opt(coords,
 
     s += f'%maxcore {mem*1000}\n\n'
 
-    if constrained_indexes is not None:
+    if constrained_indices is not None:
         s += f'%{""}geom\nConstraints\n'
         # weird f-string to prevent python misinterpreting %
 
-        for a, b in constrained_indexes:
+        for a, b in constrained_indices:
             s += '  {B %s %s C}\n' % (a, b)
 
         s += '  end\nend\n\n'

@@ -37,7 +37,7 @@ from tscode.utils import (loadbar, molecule_check, pt, scramble_check,
 opt_funcs_dict = {
     'MOPAC':mopac_opt,
     'ORCA':orca_opt,
-    'GAUSSIAN':gaussian_opt,    
+    'GAUSSIAN':gaussian_opt,
     'XTB':xtb_opt,
 }
 
@@ -46,7 +46,7 @@ if FF_CALC in ('OB', 'OPENBABEL'):
     opt_funcs_dict['OB'] = openbabel_opt
     opt_funcs_dict['OPENBABEL'] = openbabel_opt
 
-def optimize(coords, atomnos, calculator,  method=None, maxiter=None, conv_thr="tight", constrained_indexes=None, constrained_distances=None,
+def optimize(coords, atomnos, calculator, method=None, maxiter=None, conv_thr="tight", constrained_indices=None, constrained_distances=None,
              mols_graphs=None, procs=1, solvent=None, charge=0, max_newbonds=0, title='temp', check=True, logfunction=None):
     '''
     Performs a geometry [partial] optimization (OPT/POPT) with MOPAC, ORCA, Gaussian or XTB at $method level, 
@@ -57,7 +57,7 @@ def optimize(coords, atomnos, calculator,  method=None, maxiter=None, conv_thr="
     :params coords: list of coordinates for each atom in the TS
     :params atomnos: list of atomic numbers for each atom in the TS
     :params mols_graphs: list of molecule.graph objects, containing connectivity information for each molecule
-    :params constrained_indexes: indexes of constrained atoms in the TS geometry, if this is one
+    :params constrained_indices: indices of constrained atoms in the TS geometry, if this is one
     :params method: Level of theory to be used in geometry optimization. Default if UFF.
 
     :return opt_coords: optimized structure
@@ -72,9 +72,9 @@ def optimize(coords, atomnos, calculator,  method=None, maxiter=None, conv_thr="
         method = DEFAULT_LEVELS[calculator]
 
     if constrained_distances is not None:
-        assert len(constrained_distances) == len(constrained_indexes), f'len(cd) = {len(constrained_distances)} != len(ci) = {len(constrained_indexes)}'
+        assert len(constrained_distances) == len(constrained_indices), f'len(cd) = {len(constrained_distances)} != len(ci) = {len(constrained_indices)}'
 
-    constrained_indexes = np.array(()) if constrained_indexes is None else constrained_indexes
+    constrained_indices = np.array(()) if constrained_indices is None else constrained_indices
 
     opt_func = opt_funcs_dict[calculator]
 
@@ -82,7 +82,7 @@ def optimize(coords, atomnos, calculator,  method=None, maxiter=None, conv_thr="
 
     opt_coords, energy, success = opt_func(coords,
                                             atomnos,
-                                            constrained_indexes=constrained_indexes,
+                                            constrained_indices=constrained_indices,
                                             constrained_distances=constrained_distances,
                                             method=method,
                                             procs=procs,
@@ -99,7 +99,7 @@ def optimize(coords, atomnos, calculator,  method=None, maxiter=None, conv_thr="
         if check:
         # check boolean ensures that no scrambling occurred during the optimization
             if mols_graphs is not None:
-                success = scramble_check(opt_coords, atomnos, constrained_indexes, mols_graphs, max_newbonds=max_newbonds)
+                success = scramble_check(opt_coords, atomnos, constrained_indices, mols_graphs, max_newbonds=max_newbonds)
             else:
                 success = molecule_check(coords, opt_coords, atomnos, max_newbonds=max_newbonds)
 
@@ -116,14 +116,14 @@ def optimize(coords, atomnos, calculator,  method=None, maxiter=None, conv_thr="
 
     return coords, energy, False
 
-def hyperNEB(embedder, coords, atomnos, ids, constrained_indexes, title='temp'):
+def hyperNEB(embedder, coords, atomnos, ids, constrained_indices, title='temp'):
     '''
     Turn a geometry close to TS to a proper TS by getting
     reagents and products and running a climbing image NEB calculation through ASE.
     '''
 
-    reagents = get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method=embedder.options.theory_level)
-    products = get_product(embedder, coords, atomnos, ids, constrained_indexes, method=embedder.options.theory_level)
+    reagents = get_reagent(embedder, coords, atomnos, ids, constrained_indices, method=embedder.options.theory_level)
+    products = get_product(embedder, coords, atomnos, ids, constrained_indices, method=embedder.options.theory_level)
     # get reagents and products for this reaction
 
     reagents -= np.mean(reagents, axis=0)
@@ -140,7 +140,7 @@ def hyperNEB(embedder, coords, atomnos, ids, constrained_indexes, title='temp'):
 
     return ts_coords, ts_energy, success
 
-def get_product(embedder, coords, atomnos, ids, constrained_indexes, method='PM7'):
+def get_product(embedder, coords, atomnos, ids, constrained_indices, method='PM7'):
     '''
     Part of the automatic NEB implementation.
     Returns a structure that presumably is the association reaction product
@@ -160,33 +160,33 @@ def get_product(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
 
     if len(ids) == 2:
 
-        mol1_center = np.mean([coords[a] for a, _ in constrained_indexes], axis=0)
-        mol2_center = np.mean([coords[b] for _, b in constrained_indexes], axis=0)
+        mol1_center = np.mean([coords[a] for a, _ in constrained_indices], axis=0)
+        mol2_center = np.mean([coords[b] for _, b in constrained_indices], axis=0)
         motion = norm(mol2_center - mol1_center)
         # norm of the motion that, when applied to mol1,
         # superimposes its reactive atoms to the ones of mol2
 
         threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius +
-                                        pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
+                                        pt[atomnos[b]].covalent_radius) for a, b in constrained_indices]
 
-        reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indexes]
+        reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indices]
         # distances between reactive atoms
 
-        while not np.all([reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indexes)]):
+        while not np.all([reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indices)]):
             # print('Reactive distances are', reactive_dists)
 
             coords[:ids[0]] += motion*step_size
 
-            coords, _, _ = opt_func(coords, atomnos, constrained_indexes, method=method)
+            coords, _, _ = opt_func(coords, atomnos, constrained_indices, method=method)
 
-            reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indexes]
+            reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indices]
 
         newcoords, _, _ = opt_func(coords, atomnos, method=method)
         # finally, when structures are close enough, do a free optimization to get the reaction product
 
-        new_reactive_dists = [norm_of(newcoords[a] - newcoords[b]) for a, b in constrained_indexes]
+        new_reactive_dists = [norm_of(newcoords[a] - newcoords[b]) for a, b in constrained_indices]
 
-        if np.all([new_reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indexes)]):
+        if np.all([new_reactive_dists[i] < threshold_dists[i] for i, _ in enumerate(constrained_indices)]):
         # return the freely optimized structure only if the reagents did not repel each other
         # during the optimization, otherwise return the last coords, where partners were close
             return newcoords
@@ -196,13 +196,13 @@ def get_product(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
     # trimolecular TSs: the approach is to bring the first pair of reactive
     # atoms closer until optimization bounds the molecules together
 
-    index_to_be_moved = constrained_indexes[0,0]
-    reference = constrained_indexes[0,1]
+    index_to_be_moved = constrained_indices[0,0]
+    reference = constrained_indices[0,1]
     moving_molecule_index = next(i for i,n in enumerate(np.cumsum(ids)) if index_to_be_moved < n)
     bounds = [0] + [n+1 for n in np.cumsum(ids)]
     moving_molecule_slice = slice(bounds[moving_molecule_index], bounds[moving_molecule_index+1])
-    threshold_dist = bond_factor*(pt[atomnos[constrained_indexes[0,0]]].covalent_radius +
-                                    pt[atomnos[constrained_indexes[0,1]]].covalent_radius)
+    threshold_dist = bond_factor*(pt[atomnos[constrained_indices[0,0]]].covalent_radius +
+                                    pt[atomnos[constrained_indices[0,1]]].covalent_radius)
 
     motion = (coords[reference] - coords[index_to_be_moved])
     # vector from the atom to be moved to the target reactive atom
@@ -219,7 +219,7 @@ def get_product(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
             # the more they are close, the more they are moved
 
         # print('Reactive dist -', norm_of(motion))
-        coords, _, _ = opt_func(coords, atomnos, constrained_indexes, method=method)
+        coords, _, _ = opt_func(coords, atomnos, constrained_indices, method=method)
         # when all atoms are moved, optimize the geometry with the previous constraints
 
         motion = (coords[reference] - coords[index_to_be_moved])
@@ -227,7 +227,7 @@ def get_product(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
     newcoords, _, _ = opt_func(coords, atomnos, method=method)
     # finally, when structures are close enough, do a free optimization to get the reaction product
 
-    new_reactive_dist = norm_of(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
+    new_reactive_dist = norm_of(newcoords[constrained_indices[0,0]] - newcoords[constrained_indices[0,0]])
 
     if new_reactive_dist < threshold_dist:
     # return the freely optimized structure only if the reagents did not repel each other
@@ -236,7 +236,7 @@ def get_product(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
 
     return coords
 
-def get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method='PM7'):
+def get_reagent(embedder, coords, atomnos, ids, constrained_indices, method='PM7'):
     '''
     Part of the automatic NEB implementation.
     Returns a structure that presumably is the association reaction reagent.
@@ -253,21 +253,21 @@ def get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
 
     if len(ids) == 2:
 
-        mol1_center = np.mean([coords[a] for a, _ in constrained_indexes], axis=0)
-        mol2_center = np.mean([coords[b] for _, b in constrained_indexes], axis=0)
+        mol1_center = np.mean([coords[a] for a, _ in constrained_indices], axis=0)
+        mol2_center = np.mean([coords[b] for _, b in constrained_indices], axis=0)
         motion = norm(mol2_center - mol1_center)
         # norm of the motion that, when applied to mol1,
         # superimposes its reactive centers to the ones of mol2
 
-        threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius + pt[atomnos[b]].covalent_radius) for a, b in constrained_indexes]
+        threshold_dists = [bond_factor*(pt[atomnos[a]].covalent_radius + pt[atomnos[b]].covalent_radius) for a, b in constrained_indices]
 
-        reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indexes]
+        reactive_dists = [norm_of(coords[a] - coords[b]) for a, b in constrained_indices]
         # distances between reactive atoms
 
         coords[:ids[0]] -= norm(motion)*(np.mean(threshold_dists) - np.mean(reactive_dists))
         # move reactive atoms away from each other just enough
 
-        coords, _, _ = opt_func(coords, atomnos, constrained_indexes=constrained_indexes, method=method)
+        coords, _, _ = opt_func(coords, atomnos, constrained_indices=constrained_indices, method=method)
         # optimize the structure but keeping the reactive atoms distanced
 
         return coords
@@ -275,13 +275,13 @@ def get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
     # trimolecular TSs: the approach is to bring the first pair of reactive
     # atoms apart just enough to get a good approximation for reagents
 
-    index_to_be_moved = constrained_indexes[0,0]
-    reference = constrained_indexes[0,1]
+    index_to_be_moved = constrained_indices[0,0]
+    reference = constrained_indices[0,1]
     moving_molecule_index = next(i for i,n in enumerate(np.cumsum(ids)) if index_to_be_moved < n)
     bounds = [0] + [n+1 for n in np.cumsum(ids)]
     moving_molecule_slice = slice(bounds[moving_molecule_index], bounds[moving_molecule_index+1])
-    threshold_dist = bond_factor*(pt[atomnos[constrained_indexes[0,0]]].covalent_radius +
-                                    pt[atomnos[constrained_indexes[0,1]]].covalent_radius)
+    threshold_dist = bond_factor*(pt[atomnos[constrained_indices[0,0]]].covalent_radius +
+                                    pt[atomnos[constrained_indices[0,1]]].covalent_radius)
 
     motion = (coords[reference] - coords[index_to_be_moved])
     # vector from the atom to be moved to the target reactive atom
@@ -296,13 +296,13 @@ def get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
         coords[moving_molecule_slice][i] -= displacement*np.exp(-0.5*dist)
         # the closer they are to the reactive atom, the further they are moved
 
-    coords, _, _ = opt_func(coords, atomnos, constrained_indexes=np.array([constrained_indexes[0]]), method=method)
+    coords, _, _ = opt_func(coords, atomnos, constrained_indices=np.array([constrained_indices[0]]), method=method)
     # when all atoms are moved, optimize the geometry with only the first of the previous constraints
 
     newcoords, _, _ = opt_func(coords, atomnos, method=method)
     # finally, when structures are close enough, do a free optimization to get the reaction product
 
-    new_reactive_dist = norm_of(newcoords[constrained_indexes[0,0]] - newcoords[constrained_indexes[0,0]])
+    new_reactive_dist = norm_of(newcoords[constrained_indices[0,0]] - newcoords[constrained_indices[0,0]])
 
     if new_reactive_dist > threshold_dist:
     # return the freely optimized structure only if the reagents did not approached back each other
@@ -311,12 +311,12 @@ def get_reagent(embedder, coords, atomnos, ids, constrained_indexes, method='PM7
     
     return coords
 
-def prune_enantiomers(structures, atomnos, max_deviation=1e-4):
+def prune_by_moment_of_inertia(structures, atomnos, max_deviation=1e-2):
     '''
-    Remove duplicate (enantiomeric) structures based on the
+    Remove duplicate (enantiomeric or rotameric) structures based on the
     moments of inertia on principal axes. If all three MOI
     are within max_deviation percent from another structure,
-    they are classified as enantiomers and therefore only one
+    they are classified as rotamers or enantiomers and therefore only one
     of them is kept.
     '''
 
@@ -325,17 +325,17 @@ def prune_enantiomers(structures, atomnos, max_deviation=1e-4):
 
     matches = get_moi_similarity_matches(heavy_structures, heavy_masses, max_deviation=max_deviation)
 
-    g = nx.Graph(matches)
+    G = nx.Graph(matches)
 
-    subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
+    subgraphs = [G.subgraph(c) for c in nx.connected_components(G)]
     groups = [tuple(graph.nodes) for graph in subgraphs]
 
     best_of_cluster = [group[0] for group in groups]
 
     rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
     rejects = []
-    for s in rejects_sets:
-        for i in s:
+    for _s in rejects_sets:
+        for i in _s:
             rejects.append(i)
 
     mask = np.ones(structures.shape[0], dtype=bool)
@@ -346,7 +346,7 @@ def prune_enantiomers(structures, atomnos, max_deviation=1e-4):
 
 def opt_iscans(embedder, coords, atomnos, title='temp', logfile=None, xyztraj=None):
     '''
-    Runs one or more independent scans along the constrained indexes
+    Runs one or more independent scans along the constrained indices
     specified, one at a time, through the ASE package. Each scan starts
     from the previous maximum in energy. This is done as a low-dimensional
     but effective approach of exploring the PES trying to maximize the
@@ -355,13 +355,13 @@ def opt_iscans(embedder, coords, atomnos, title='temp', logfile=None, xyztraj=No
 
     overall_success = False
 
-    scan_active_indexes = [indexes for letter, indexes in embedder.pairings_table.items() if letter not in ('x', 'y', 'z')]
-    for i, indexes in enumerate(scan_active_indexes):
+    scan_active_indices = [indices for letter, indices in embedder.pairings_table.items() if letter not in ('x', 'y', 'z')]
+    for i, indices in enumerate(scan_active_indices):
         new_coords, energy, success = opt_linear_scan(embedder,
                                                     coords,
                                                     atomnos,
-                                                    indexes,
-                                                    embedder.constrained_indexes[0],
+                                                    indices,
+                                                    embedder.constrained_indices[0],
                                                     # safe=True,
                                                     title=title+f' scan {i+1}',
                                                     logfile=logfile,
@@ -374,12 +374,12 @@ def opt_iscans(embedder, coords, atomnos, title='temp', logfile=None, xyztraj=No
 
     else: # Re-try with safe keyword to prevent scrambling
 
-        for i, indexes in enumerate(scan_active_indexes):
+        for i, indices in enumerate(scan_active_indices):
             new_coords, energy, success = opt_linear_scan(embedder,
                                                         coords,
                                                         atomnos,
-                                                        indexes,
-                                                        embedder.constrained_indexes[0],
+                                                        indices,
+                                                        embedder.constrained_indices[0],
                                                         safe=True,
                                                         title=title+f' scan {i}',
                                                         logfile=logfile,
@@ -392,7 +392,7 @@ def opt_iscans(embedder, coords, atomnos, title='temp', logfile=None, xyztraj=No
 
     return coords, energy, overall_success
 
-def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes, step_size=0.02, safe=False, title='temp', logfile=None, xyztraj=None):
+def opt_linear_scan(embedder, coords, atomnos, scan_indices, constrained_indices, step_size=0.02, safe=False, title='temp', logfile=None, xyztraj=None):
     '''
     Runs a linear scan along the specified linear coordinate.
     The highest energy structure that passes sanity checks is returned.
@@ -400,18 +400,18 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes
     embedder
     coords
     atomnos
-    scan_indexes
-    constrained_indexes
+    scan_indices
+    constrained_indices
     step_size
     safe
     title
     logfile
     xyztraj
     '''
-    assert [i in constrained_indexes.ravel() for i in scan_indexes]
+    assert [i in constrained_indices.ravel() for i in scan_indices]
 
-    i1, i2 = scan_indexes
-    far_thr = 2 * sum([pt[atomnos[i]].covalent_radius for i in scan_indexes])
+    i1, i2 = scan_indices
+    far_thr = 2 * sum([pt[atomnos[i]].covalent_radius for i in scan_indices])
     t_start = time.perf_counter()
     total_iter = 0
 
@@ -419,7 +419,7 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes
                             atomnos,
                             embedder.options.calculator,
                             embedder.options.theory_level,
-                            constrained_indexes=constrained_indexes,
+                            constrained_indices=constrained_indices,
                             mols_graphs=embedder.graphs,
                             procs=embedder.options.procs,
                             max_newbonds=embedder.options.max_newbonds,
@@ -442,14 +442,14 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes
             if safe: # use ASE optimization function - more reliable, but locks all interatomic dists
 
                 targets = [norm_of(active_coords[a]-active_coords[b]) - step_size
-                           if (a in scan_indexes and b in scan_indexes)
+                           if (a in scan_indices and b in scan_indices)
                            else norm_of(active_coords[a]-active_coords[b])
-                           for a, b in constrained_indexes]
+                           for a, b in constrained_indices]
 
                 active_coords, energy, success = ase_popt(embedder,
                                                             active_coords,
                                                             atomnos,
-                                                            constrained_indexes,
+                                                            constrained_indices,
                                                             targets=targets,
                                                             safe=True,
                                                             )
@@ -461,7 +461,7 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes
                                                             atomnos,
                                                             embedder.options.calculator,
                                                             embedder.options.theory_level,
-                                                            constrained_indexes=constrained_indexes,
+                                                            constrained_indices=constrained_indices,
                                                             mols_graphs=embedder.graphs,
                                                             procs=embedder.options.procs,
                                                             max_newbonds=embedder.options.max_newbonds,
@@ -510,7 +510,7 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes
                                             atomnos,
                                             embedder.options.calculator,
                                             embedder.options.theory_level,
-                                            constrained_indexes=constrained_indexes,
+                                            constrained_indices=constrained_indices,
                                             mols_graphs=embedder.graphs,
                                             procs=embedder.options.procs,
                                             max_newbonds=embedder.options.max_newbonds,
@@ -557,7 +557,7 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indexes, constrained_indexes
 
         plt.legend()
         plt.title(title)
-        plt.xlabel(f'Interatomic distance {tuple(scan_indexes)}')
+        plt.xlabel(f'Interatomic distance {tuple(scan_indices)}')
         plt.ylabel('Energy Rel. to starting point (kcal/mol)')
         plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
 
@@ -581,13 +581,13 @@ def fitness_check(embedder, coords) -> bool:
     Returns True if the strucure respects
     the imposed pairings.
     '''
-    if hasattr(embedder, 'pairings_dists'):
+    if hasattr(embedder, 'pairing_dists'):
         for letter, pairing in embedder.pairings_table.items():
             
             if letter in ('a', 'b', 'c'):
                 i1, i2 = pairing
                 dist = norm_of(coords[i1]-coords[i2])
-                target = embedder.pairings_dists.get(letter)
+                target = embedder.pairing_dists.get(letter)
 
                 if target is not None and abs(target-dist) > 0.05:
                     return False
@@ -603,7 +603,7 @@ def _refine_structures(structures,
                        calculator,
                        method,
                        procs,
-                       constrained_indexes=None,
+                       constrained_indices=None,
                        constrained_distances=None,
                        solvent=None,
                        loadstring='',
@@ -621,7 +621,7 @@ def _refine_structures(structures,
                                                 conformer,
                                                 atomnos,
                                                 calculator,
-                                                constrained_indexes=constrained_indexes,
+                                                constrained_indices=constrained_indices,
                                                 constrained_distances=constrained_distances,
                                                 method=method,
                                                 procs=procs,

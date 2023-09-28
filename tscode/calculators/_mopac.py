@@ -46,30 +46,30 @@ def read_mop_out(filename):
                 break
             
             if 'SCF FIELD WAS ACHIEVED' in line:
-                    while True:
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+
+                    if 'FINAL HEAT OF FORMATION' in line:
+                        energy = float(line.split()[5])
+                        # in kcal/mol
+
+                    if 'CARTESIAN COORDINATES' in line:
                         line = f.readline()
-                        if not line:
-                            break
-
-                        if 'FINAL HEAT OF FORMATION' in line:
-                            energy = float(line.split()[5])
-                            # in kcal/mol
-
-                        if 'CARTESIAN COORDINATES' in line:
+                        line = f.readline()
+                        while line != '\n':
+                            splitted = line.split()
+                            # symbols.append(splitted[1])
+                            coords.append([float(splitted[2]),
+                                            float(splitted[3]),
+                                            float(splitted[4])])
+                                        
                             line = f.readline()
-                            line = f.readline()
-                            while line != '\n':
-                                splitted = line.split()
-                                # symbols.append(splitted[1])
-                                coords.append([float(splitted[2]),
-                                               float(splitted[3]),
-                                               float(splitted[4])])
-                                            
-                                line = f.readline()
-                                if not line:
-                                    break
-                            break
-                    break
+                            if not line:
+                                break
+                        break
+                break
 
     coords = np.array(coords)
 
@@ -79,24 +79,24 @@ def read_mop_out(filename):
     
     raise MopacReadError(f'Cannot read file {filename}: maybe a badly specified MOPAC keyword?')
 
-def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=None, title='temp', read_output=True, **kwargs):
+def mopac_opt(coords, atomnos, constrained_indices=None, method='PM7', solvent=None, title='temp', read_output=True, **kwargs):
     '''
     This function writes a MOPAC .mop input, runs it with the subprocess
     module and reads its output. Coordinates used are mixed
     (cartesian and internal) to be able to constrain the reactive atoms
-    distances specified in constrained_indexes.
+    distances specified in constrained_indices.
 
     :params coords: array of shape (n,3) with cartesian coordinates for atoms
     :params atomnos: array of atomic numbers for atoms
-    :params constrained_indexes: array of shape (n,2), with the indexes
+    :params constrained_indices: array of shape (n,2), with the indices
                                  of atomic pairs to be constrained
     :params method: string, specifiyng the first line of keywords for the MOPAC input file.
     :params title: string, used as a file name and job title for the mopac input file.
     :params read_output: Whether to read the output file and return anything.
     '''
 
-    constrained_indexes_list = constrained_indexes.ravel() if constrained_indexes is not None else []
-    constrained_indexes = constrained_indexes if constrained_indexes is not None else []
+    constrained_indices_list = constrained_indices.ravel() if constrained_indices is not None else []
+    constrained_indices = constrained_indices if constrained_indices is not None else []
 
     if solvent is not None:
         method += ' ' + get_solvent_line(solvent, 'MOPAC', method)
@@ -104,25 +104,25 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
     order = []
     s = [method + '\n' + title + '\n\n']
     for i, num in enumerate(atomnos):
-        if i not in constrained_indexes:
+        if i not in constrained_indices:
             order.append(i)
             s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[num].symbol, coords[i][0], coords[i][1], coords[i][2]))
 
-    free_indexes = list(set(range(len(atomnos))) - set(constrained_indexes_list))
-    # print('free indexes are', free_indexes, '\n')
+    free_indices = list(set(range(len(atomnos))) - set(constrained_indices_list))
+    # print('free indices are', free_indices, '\n')
 
-    if len(constrained_indexes_list) == len(set(constrained_indexes_list)):
+    if len(constrained_indices_list) == len(set(constrained_indices_list)):
     # block pairs of atoms if no atom is involved in more than one distance constrain
 
-        for a, b in constrained_indexes:
+        for a, b in constrained_indices:
             
             order.append(b)
             order.append(a)
 
-            c, d = np.random.choice(free_indexes, 2)
+            c, d = np.random.choice(free_indices, 2)
             while c == d:
-                c, d = np.random.choice(free_indexes, 2)
-            # indexes of reference atoms, from unconstraind atoms set
+                c, d = np.random.choice(free_indices, 2)
+            # indices of reference atoms, from unconstraind atoms set
 
             dist = norm_of(coords[a] - coords[b]) # in Angstrom
             # print(f'DIST - {dist} - between {a} {b}')
@@ -139,19 +139,19 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
 
             list_len = len(s)
             s.append(' {} {} 1 {} 1 {} 1\n'.format(pt[atomnos[b]].symbol, coords[b][0], coords[b][1], coords[b][2]))
-            s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[a]].symbol, dist, angle, d_angle, list_len, free_indexes.index(c)+1, free_indexes.index(d)+1))
+            s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[a]].symbol, dist, angle, d_angle, list_len, free_indices.index(c)+1, free_indices.index(d)+1))
             # print(f'Blocked bond between mopac ids {list_len} {list_len+1}\n')
 
-    elif len(set(constrained_indexes_list)) == 3:
+    elif len(set(constrained_indices_list)) == 3:
     # three atoms, the central bound to the other two
     # OTHERS[0]: cartesian
     # CENTRAL: internal (self, others[0], two random)
     # OTHERS[1]: internal (self, central, two random)
         
-        central = max(set(constrained_indexes_list), key=lambda x: list(constrained_indexes_list).count(x))
+        central = max(set(constrained_indices_list), key=lambda x: list(constrained_indices_list).count(x))
         # index of the atom that is constrained to two other
 
-        others = list(set(constrained_indexes_list) - {central})
+        others = list(set(constrained_indices_list) - {central})
 
     # OTHERS[0]
 
@@ -162,10 +162,10 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
     #CENTRAL
 
         order.append(central)
-        c, d = np.random.choice(free_indexes, 2)
+        c, d = np.random.choice(free_indices, 2)
         while c == d:
-            c, d = np.random.choice(free_indexes, 2)
-        # indexes of reference atoms, from unconstraind atoms set
+            c, d = np.random.choice(free_indices, 2)
+        # indices of reference atoms, from unconstraind atoms set
 
         dist = norm_of(coords[central] - coords[others[0]]) # in Angstrom
 
@@ -178,15 +178,15 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
         d_angle += 360 if d_angle < 0 else 0
 
         list_len = len(s)
-        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist, angle, d_angle, list_len-1, free_indexes.index(c)+1, free_indexes.index(d)+1))
+        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[central]].symbol, dist, angle, d_angle, list_len-1, free_indices.index(c)+1, free_indices.index(d)+1))
 
     #OTHERS[1]
 
         order.append(others[1])
-        c1, d1 = np.random.choice(free_indexes, 2)
+        c1, d1 = np.random.choice(free_indices, 2)
         while c1 == d1:
-            c1, d1 = np.random.choice(free_indexes, 2)
-        # indexes of reference atoms, from unconstraind atoms set
+            c1, d1 = np.random.choice(free_indices, 2)
+        # indices of reference atoms, from unconstraind atoms set
 
         dist1 = norm_of(coords[others[1]] - coords[central]) # in Angstrom
 
@@ -199,7 +199,7 @@ def mopac_opt(coords, atomnos, constrained_indexes=None, method='PM7', solvent=N
         d_angle1 += 360 if d_angle < 0 else 0
 
         list_len = len(s)
-        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[others[1]]].symbol, dist1, angle1, d_angle1, list_len-1, free_indexes.index(c1)+1, free_indexes.index(d1)+1))
+        s.append(' {} {} 0 {} 1 {} 1 {} {} {}\n'.format(pt[atomnos[others[1]]].symbol, dist1, angle1, d_angle1, list_len-1, free_indices.index(c1)+1, free_indices.index(d1)+1))
 
     else:
         raise NotImplementedError('The constraints provided for MOPAC optimization are not yet supported')
