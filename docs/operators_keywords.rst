@@ -101,6 +101,10 @@ one is accepted, like in ``DIST``.
    pairs, in Angstroms. Syntax uses parenthesis and commas:
    ``DIST(a=2.345,b=3.67,c=2.1)``
 
+-  **DRYRUN** - Skips lenghty operations (operators, embedding, refining)
+   but retains other functions and printouts. Useful for debugging and
+   checking purposes.
+
 .. -  **ENANTIOMERS** - Do not discard enantiomeric structures.
 
 -  **EZPROT** - Preserve the E or Z configuration of double bonds

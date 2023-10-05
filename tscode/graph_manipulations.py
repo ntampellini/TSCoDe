@@ -297,7 +297,7 @@ def is_vicinal(mol):
 
     return False
 
-def get_sum_graph(graphs, extra_edges):
+def get_sum_graph(graphs, extra_edges=None):
     '''
     Creates a graph containing all graphs, added in 
     sequence, and then adds the specified extra edges
@@ -315,8 +315,9 @@ def get_sum_graph(graphs, extra_edges):
 
         cum_atomnos += list(nx.get_node_attributes(g, "atomnos").values())
 
-    for e1, e2 in extra_edges:
-        out.add_edge(e1, e2)
+    if extra_edges is not None:
+        for e1, e2 in extra_edges:
+            out.add_edge(e1, e2)
 
     nx.set_node_attributes(out, dict(enumerate(cum_atomnos)), 'atomnos')
 

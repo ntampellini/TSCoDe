@@ -44,8 +44,12 @@ def operate(input_string, embedder):
     operator and return the outname of the (new) .xyz
     file to read instead of the input one.
     '''
-   
+
     filename = embedder._extract_filename(input_string)
+   
+    if embedder.options.dryrun:
+        embedder.log(f'--> Dry run requested: skipping operator \"{input_string}\"')
+        return filename
 
     if 'confab>' in input_string:
         outname = confab_operator(filename,
@@ -446,7 +450,7 @@ def scan_operator(filename, embedder):
     step = 0.05 if (i1, i2) in bonds else -0.05
 
     # logging to file and terminal
-    embedder.log(f'--> {mol.rootname} - Performing a distance scan {"approaching" if step < 0 else "separating"} indices{i1} ' +
+    embedder.log(f'--> {mol.rootname} - Performing a distance scan {"approaching" if step < 0 else "separating"} indices {i1} ' +
                  f'and {i2} - step size {round(step, 2)} A\n    Theory level is {embedder.options.theory_level} ' +
                  f'via {embedder.options.calculator}')
 
@@ -550,7 +554,7 @@ def scan_operator(filename, embedder):
     title = mol.rootname + ' distance scan'
     plt.legend()
     plt.title(title)
-    plt.xlabel(f'indices{i1}-{i2} distance (A)')
+    plt.xlabel(f'indices s{i1}-{i2} distance (A)')
 
     if step > 0:
         plt.gca().invert_xaxis()

@@ -80,9 +80,15 @@ def clean_directory(to_remove=None):
 
     for f in os.listdir():
         if f.split('.')[0] == 'temp':
-            os.remove(f)
+            try:
+                os.remove(f)
+            except FileNotFoundError:
+                pass
         elif f.startswith('temp_'):
-            os.remove(f)
+            try:
+                os.remove(f)
+            except FileNotFoundError:
+                pass
 
 def run_command(command:str, p=False):
     if p:
@@ -141,7 +147,7 @@ def time_to_string(total_time: float, verbose=False):
         timestring += f'{int(m)} {names[2]} '
         total_time %= 60
 
-    timestring += f'{round(total_time, 3)} {names[3]}'
+    timestring += f'{round(total_time, 1)} {names[3]}'
 
     return timestring
 

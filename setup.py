@@ -53,11 +53,11 @@ setup(
         'networkx==2.5.1',
         'rmsd==1.4',
         'ase==3.21.1',
-        'sella==1.0.0',
-        'sklearn',
+        'sella==2.3.2',
         'scikit-learn==1.0.1',
         'numba==0.54.1',
-        'prettytable==3.3.0'
+        'prettytable==3.3.0',
+        'typing-extensions==4.8.0',
     ],
 
     url='https://www.github.com/ntampellini/tscode',

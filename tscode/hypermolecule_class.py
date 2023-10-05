@@ -312,7 +312,7 @@ class Hypermolecule:
         with open(hyp_name, 'w') as f:
             for c, _ in enumerate(self.atomcoords):
                 f.write(str(sum([len(atom.center) for atom in self.reactive_atoms_classes_dict[c].values()]) + len(self.atomcoords[0])))
-                f.write(f'\nTSCoDe Hypermolecule {c} for {self.rootname} - reactive indices{self.reactive_indices}\n')
+                f.write(f'\nTSCoDe Hypermolecule {c} for {self.rootname} - reactive indices {self.reactive_indices}\n')
                 orbs =np.vstack([atom_type.center for atom_type in self.reactive_atoms_classes_dict[c].values()]).ravel()
                 orbs = orbs.reshape((int(len(orbs)/3), 3))
                 for i, atom in enumerate(self.atomcoords[c]):

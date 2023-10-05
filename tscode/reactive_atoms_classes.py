@@ -70,7 +70,7 @@ class Single:
 
         if update:
             if orb_dim is None:
-                key = self.symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self).split(' (')[0]
                 orb_dim = orb_dim_dict.get(key)
 
                 if orb_dim is None:
@@ -107,7 +107,7 @@ class Sp2:
 
         if update:
             if orb_dim is None:
-                key = self.symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self).split(' (')[0]
                 orb_dim = orb_dim_dict.get(key)
                 
                 if orb_dim is None:
@@ -197,7 +197,7 @@ class Sp3:
 
         if update:
             if orb_dim is None:
-                key = self.symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self).split(' (')[0]
                 orb_dim = orb_dim_dict.get(key)
                 
                 if orb_dim is None:
@@ -267,7 +267,7 @@ class Ether:
 
         if update:
             if orb_dim is None:
-                key = self.symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self).split(' (')[0]
                 orb_dim = orb_dim_dict.get(key)
                 
                 if orb_dim is None:
@@ -288,7 +288,7 @@ class Ether:
 class Ketone:
     
     def __repr__(self):
-        return 'Ketone'
+        return f'Ketone ({self.subtype})'
 
     def init(self, mol, i, update=False, orb_dim=None, conf=0) -> None:
         '''
@@ -296,6 +296,7 @@ class Ketone:
         self.index = i
         self.symbol = pt[mol.atomnos[i]].symbol
         neighbors_indices = neighbors(mol.graph, i)       
+        self.subtype = 'pre-init'
 
 
         self.neighbors_symbols = [pt[mol.atomnos[i]].symbol for i in neighbors_indices]
@@ -306,7 +307,7 @@ class Ketone:
 
         if update:
             if orb_dim is None:
-                key = self.symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self).split(' (')[0]
                 orb_dim = orb_dim_dict.get(key)
                 
                 if orb_dim is None:
@@ -318,24 +319,8 @@ class Ketone:
 
             self.vector = norm(self.vector)*orb_dim
 
-            if len(neighbors_of_neighbor_indices) == 2:
-            # if it is a normal ketone (or an enolate), n orbital lobes must be coplanar with
-            # atoms connecting to ketone C atom, or p lobes must be placed accordingly
-
-                a1 = mol.atomcoords[conf][neighbors_of_neighbor_indices[0]]
-                a2 = mol.atomcoords[conf][neighbors_of_neighbor_indices[1]]
-                pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
-
-                if mol.sigmatropic[conf]:
-                    # two p lobes
-                    self.center = np.concatenate(([pivot*orb_dim], [-pivot*orb_dim]))
-
-                else:
-                    #two n lobes
-                    self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
-
-            elif len(neighbors_of_neighbor_indices) in (1, 3):
-            # ketene or alkoxide
+            if len(neighbors_of_neighbor_indices) == 1:
+            # ketene
             
                 ketene_sub_indices = neighbors(mol.graph, neighbors_of_neighbor_indices[0])
                 ketene_sub_indices.remove(neighbors_indices[0])
@@ -351,7 +336,37 @@ class Ketone:
                 pointer = norm(pointer) * orb_dim
 
                 self.center = np.array([rot_mat_from_pointer(self.vector, 90*step) @ pointer for step in range(4)])
+
+                self.subtype = 'p+p'
             
+            elif len(neighbors_of_neighbor_indices) == 2:
+            # if it is a normal ketone (or an enolate), n orbital lobes must be coplanar with
+            # atoms connecting to ketone C atom, or p lobes must be placed accordingly
+
+                a1 = mol.atomcoords[conf][neighbors_of_neighbor_indices[0]]
+                a2 = mol.atomcoords[conf][neighbors_of_neighbor_indices[1]]
+                pivot = norm(np.cross(a1 - self.coord, a2 - self.coord))
+
+                if mol.sigmatropic[conf]:
+                    # two p lobes
+                    self.center = np.concatenate(([pivot*orb_dim], [-pivot*orb_dim]))
+                    self.subtype = 'p'
+
+                else:
+                    #two n lobes
+                    self.center = np.array([rot_mat_from_pointer(pivot, angle) @ self.vector for angle in (120,240)])
+                    self.subtype = 'sp2'
+
+            elif len(neighbors_of_neighbor_indices) == 3:
+            # alkoxide, sulfonamide
+
+                v1, v2, v3 = mol.atomcoords[conf][neighbors_of_neighbor_indices] - self.coord
+                v1, v2, v3 = norm(v1), norm(v2), norm(v3)
+                v1, v2, v3 = v1*orb_dim, v2*orb_dim, v3*orb_dim
+                pivot = norm(np.cross(self.vector, v1))
+
+                self.center = np.array([rot_mat_from_pointer(pivot, 180) @ v for v in (v1, v2, v3)])
+                self.subtype = 'trilobe'
         
             self.orb_vecs = np.array([norm(center) for center in self.center])
             # unit vectors connecting reactive atom coord with orbital centers
@@ -382,7 +397,7 @@ class Imine:
 
         if update:
             if orb_dim is None:
-                key = self.symbol + ' ' + str(self)
+                key = self.symbol + ' ' + str(self).split(' (')[0]
                 orb_dim = orb_dim_dict.get(key)
                 
                 if orb_dim is None:

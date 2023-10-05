@@ -80,7 +80,7 @@ def _get_nci_atomic_pairs(coords, symbols, constrained_indices, ids):
 
                         if dist < threshold:
 
-                            print_list.append(nci_type + f' ({round(dist, 2)} A, indices{i1}/{i2})')
+                            print_list.append(nci_type + f' ({round(dist, 2)} A, indices {i1}/{i2})')
                             # string to be printed in log
 
                             nci.append((nci_type, i1, i2))

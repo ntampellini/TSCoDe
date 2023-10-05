@@ -19,14 +19,17 @@ import os
 from subprocess import DEVNULL, STDOUT, CalledProcessError, check_call
 
 import numpy as np
+
 from tscode.algebra import norm, norm_of
+from tscode.graph_manipulations import get_sum_graph
 from tscode.utils import clean_directory, read_xyz, write_xyz
+
 
 def xtb_opt(coords, atomnos, constrained_indices=None,
             constrained_distances=None, method='GFN2-xTB',
             maxiter=None,solvent=None, charge=0, title='temp',
             read_output=True, procs=None, opt=True, conv_thr="tight",
-            assert_convergence=False, **kwargs):
+            assert_convergence=False, constraints_file=None, **kwargs):
     '''
     This function writes an XTB .inp file, runs it with the subprocess
     module and reads its output.
@@ -48,6 +51,7 @@ def xtb_opt(coords, atomnos, constrained_indices=None,
         if len(constrained_distances) == 0:
             constrained_distances = None
 
+    # recursive 
     if constrained_distances is not None:
 
         try:
@@ -76,6 +80,8 @@ def xtb_opt(coords, atomnos, constrained_indices=None,
                                             constrained_distances=recursive_c_d,
                                             method=method,
                                             title=title,
+                                            conv_thr='loose',
+                                            constraints_file=constraints_file,
                                             **kwargs,
                                         )
                 
@@ -93,17 +99,22 @@ def xtb_opt(coords, atomnos, constrained_indices=None,
     with open(f'{title}.xyz', 'w') as f:
         write_xyz(coords, atomnos, f, title=title)
 
-    s = f'$opt\n   logfile={title}_opt.log\n$end'
+
+    # outname = f'{title}_xtbopt.xyz' DOES NOT WORK - XTB ISSUE?
+    outname = 'xtbopt.xyz'
+    trajname = f'{title}_opt_log.xyz'
+    s = f'$opt\n   logfile={trajname}\n   output={outname}\n'
          
-    if constrained_indices is not None:
-        # s += '\n$constrain\n'
-        # for a, b in constrained_indices:
-        #     s += '   distance: %s, %s, %s\n' % (a+1, b+1, round(norm_of(coords[a]-coords[b]), 5))
-    
+    if constrained_indices is not None:  
         s += '\n$fix\n   atoms: '
         for i in np.unique(np.array(constrained_indices).flatten()):
             s += f"{i+1},"
         s = s[:-1] + "\n"
+
+    if constraints_file is not None:
+        with open(constraints_file, 'r') as _f:
+            s += '\n\n'
+            s += ''.join(_f.readlines())
 
     if method.upper() in ('GFN-XTB', 'GFNXTB'):
         s += '\n$gfn\n   method=1\n'
@@ -147,7 +158,7 @@ def xtb_opt(coords, atomnos, constrained_indices=None,
         # if using the GFN-FF force field, add CH2Cl2 solvation for increased accuracy
 
     try:
-        with open("temp.log", "w") as f:
+        with open(f"{title}.out", "w") as f:
             check_call(f'xtb {title}.xyz --input {title}.inp {flags}'.split(), stdout=f, stderr=STDOUT)
 
     # sometimes the SCC does not converge: only raise the error if specified
@@ -163,8 +174,6 @@ def xtb_opt(coords, atomnos, constrained_indices=None,
         
         if opt:
 
-            outname = 'xtbopt.xyz'
-
             if outname in os.listdir():
                 coords = read_xyz(outname).atomcoords[0]
                 energy = read_xtb_energy(outname)
@@ -172,11 +181,11 @@ def xtb_opt(coords, atomnos, constrained_indices=None,
             else:
                 energy = None
 
-            clean_directory((outname, f'{title}.inp', f'{title}.xyz', f'{title}_opt.log'))
+            clean_directory((f'{title}.inp', f'{title}.xyz', trajname, outname))
         
         else:    
-            energy = energy_grepper('temp.log', 'TOTAL ENERGY', 3)
-            clean_directory((f'{title}.inp', f'{title}.xyz', f'{title}.log'))
+            energy = energy_grepper(f"{title}.out", 'TOTAL ENERGY', 3)
+            clean_directory((f'{title}.inp', f'{title}.xyz', trajname, outname))
 
         for filename in ('gfnff_topo', 'charges', 'wbo', 'xtbrestart', 'xtbtopo.mol', '.xtboptok'):
             try:
@@ -186,6 +195,48 @@ def xtb_opt(coords, atomnos, constrained_indices=None,
 
         return coords, energy, True
         
+def xtb_pre_opt(
+                    coords,
+                    atomnos, 
+                    graphs,
+                    constrained_indices=None,
+                    constrained_distances=None, 
+                    **kwargs,
+                ):
+    '''
+    Wrapper for xtb_opt that preserves the distance of
+    every bond present in each subgraph provided.
+    graphs: list of subgraphs that make up coords, in order
+
+    '''
+    sum_graph = get_sum_graph(graphs, extra_edges=constrained_indices)
+
+    with open("constraints.inp", "w") as _f:
+        _f.write("$constrain\n")
+        for constraint in [(a, b) for (a, b) in sum_graph.edges if a!=b]:
+            indices_string = str([i+1 for i in constraint]).strip("[").strip("]")
+
+            if constrained_distances is None:
+                distance = 'auto'
+
+            elif constraint in constrained_indices:
+                distance = constrained_distances[np.argwhere(constrained_indices == constraint)[0][0]]
+
+            else:
+                distance = 'auto'
+
+            _f.write(f"  distance: {indices_string}, {distance}\n")
+        _f.write("\n$end")
+
+    return xtb_opt(
+                    coords,
+                    atomnos,
+                    constrained_indices=constrained_indices,
+                    constrained_distances=constrained_distances,
+                    constraints_file='constraints.inp',
+                    **kwargs,
+                )
+
 def read_xtb_energy(filename):
     '''
     returns energy in kcal/mol from an XTB

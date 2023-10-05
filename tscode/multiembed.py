@@ -69,7 +69,9 @@ def multiembed_bifunctional(embedder):
             f.write(f'{mol1.name} {ix_1}x {iy_1}y\n')
             f.write(f'{mol2.name} {ix_2}x {iy_2}y\n')
 
-        child_embedder = RunEmbedding(Embedder(os.path.join(os.getcwd(), child_name), f'embed{i+1}'))
+        child_name = os.path.join(os.getcwd(), child_name)
+        child_embedder = Embedder(child_name, f'embed{i+1}')
+        child_embedder = RunEmbedding(child_embedder)
 
         for mol in child_embedder.objects:
         #     mol.compute_orbitals(manual=Single)

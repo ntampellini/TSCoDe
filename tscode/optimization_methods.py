@@ -46,8 +46,26 @@ if FF_CALC in ('OB', 'OPENBABEL'):
     opt_funcs_dict['OB'] = openbabel_opt
     opt_funcs_dict['OPENBABEL'] = openbabel_opt
 
-def optimize(coords, atomnos, calculator, method=None, maxiter=None, conv_thr="tight", constrained_indices=None, constrained_distances=None,
-             mols_graphs=None, procs=1, solvent=None, charge=0, max_newbonds=0, title='temp', check=True, logfunction=None):
+def optimize(
+            coords,
+            atomnos,
+            calculator,
+            method=None,
+            maxiter=None,
+            conv_thr="tight",
+            constrained_indices=None,
+            constrained_distances=None,
+            mols_graphs=None,
+            procs=1,
+            solvent=None,
+            charge=0,
+            max_newbonds=0,
+            title='temp',
+            check=True, 
+            logfunction=None,
+            override_func=None,
+            **kwargs,
+            ):
     '''
     Performs a geometry [partial] optimization (OPT/POPT) with MOPAC, ORCA, Gaussian or XTB at $method level, 
     constraining the distance between the specified atom pairs, if any. Moreover, if $check, performs a check on atomic
@@ -76,7 +94,7 @@ def optimize(coords, atomnos, calculator, method=None, maxiter=None, conv_thr="t
 
     constrained_indices = np.array(()) if constrained_indices is None else constrained_indices
 
-    opt_func = opt_funcs_dict[calculator]
+    opt_func = opt_funcs_dict[calculator] if override_func is None else override_func
 
     t_start = time.perf_counter()
 
@@ -90,7 +108,8 @@ def optimize(coords, atomnos, calculator, method=None, maxiter=None, conv_thr="t
                                             maxiter=maxiter,
                                             conv_thr=conv_thr,
                                             title=title,
-                                            charge=charge)
+                                            charge=charge,
+                                            **kwargs)
     # success checks that calculation had a normal termination
 
     elapsed = time.perf_counter() - t_start

@@ -164,7 +164,7 @@ def string_embed_parallel(embedder):
                 if compenetration_check(embedded_structure, ids=embedder.ids, thresh=embedder.options.clash_thresh):
                     poses.append(embedded_structure)
 
-        print(f'Completed string embedding of conf_indices{i}')
+        print(f'Completed string embedding of conf_indices {i}')
 
         return poses
 

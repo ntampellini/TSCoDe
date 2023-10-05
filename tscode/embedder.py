@@ -22,6 +22,7 @@ import random
 import re
 import time
 from itertools import groupby
+from multiprocessing import cpu_count
 
 import numpy as np
 
@@ -44,7 +45,7 @@ class Embedder:
     options and initialize the calculation
     '''
 
-    def __init__(self, filename, stamp=None):
+    def __init__(self, filename, stamp=None, procs=None, threads=None):
         '''
         Initialize the Embedder object by reading the input filename (.txt).
         Sets the Option dataclass properties to default and then updates them
@@ -61,6 +62,9 @@ class Embedder:
 
         else:
             self.stamp = stamp
+
+        self.procs = int(procs) if procs is not None else int(PROCS)
+        self.threads = int(threads) if threads is not None else int(THREADS)
 
         try:
             os.remove(f'TSCoDe_{self.stamp}.log')
@@ -117,7 +121,8 @@ class Embedder:
             if self.options.debug:
                 for mol in self.objects:
                     if hasattr(mol, 'reactive_atoms_classes_dict'):
-                        mol.write_hypermolecule()
+                        if len(mol.reactive_atoms_classes_dict[0]) > 0:
+                            mol.write_hypermolecule()
                 self.log(f'--> DEBUG: written hypermolecule files ({len(self.objects)})\n')
 
             if self.options.check_structures:
@@ -157,7 +162,7 @@ class Embedder:
  ..   ╲╲   ▒░║     Version    >{0:^25}║░▒   ╱╱ .  *                                    
    .   ╲╲  ▒░║      User      >{1:^25}║░▒  ╱╱   .                                     
         ╲╲ ▒░║      Time      >{2:^25}║░▒ ╱╱ *   .                                                      
- ..   *  ╲╲▒░║      Cores     >{3:^25}║░▒╱╱   ..            
+ ..   *  ╲╲▒░║      Procs     >{3:^25}║░▒╱╱   ..            
     .     ╲▒░║     Threads    >{4:^25}║░▒╱  +              
       .    ▒░║                                          ║░▒ .   ..                            
   +  .. .  ▒░╚══════════════════════════════════════════╝░▒  .. .   
@@ -167,12 +172,15 @@ class Embedder:
            '''.format(__version__,
                       getuser(),
                       time.ctime()[0:-8],
-                      PROCS,
-                      THREADS)
+                      self.procs,
+                      self.threads)
 
         # ⏣█▓▒░ banner art adapted from https://fsymbols.com/generators/tarty/
 
         self.log(banner)
+
+        if self.procs * self.threads > cpu_count():
+            self.log(f'--> ATTENTION: Excessive hyperthreading - {cpu_count()} CPUs (w/Hyperthreading) detected, {self.procs}*{self.threads} will be used')
 
     def _parse_input(self, filename):
         '''

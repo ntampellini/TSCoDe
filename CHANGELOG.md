@@ -138,12 +138,20 @@
 - Updated README and ReadTheDocs documentations
 
 ## 0.3.7 (September 28 2023)
-- Added energy table at the end of runs that generate energetic data.
-- Fixed bug in force_field_refining
+- Added energy table at the end of runs that generate energetic data
+- Fixed bug in force_field_refining that runs with no pairings
 - Fixed lack of output in optimization_refining when less than 20 structures were optimized
-- Brought back MOI-based pruning, when the ensemble is <200 structures, as it proves fast and beneficial for locally symmetric (dummy) rotations not yet identified by rmsd_rot_corr. Threshold is statically set at 1% (10E-2). In the future, it could be possible to uniform to CREST's approach of dynamically adjusting it from 1 to 2.5 % dynamically based on the anisotropy of moments of inertia.
+- Brought back MOI-based pruning, when the ensemble is <200 structures, as it proves fast and beneficial for locally symmetric (dummy) rotations not yet identified by rmsd_rot_corr. Threshold is statically set at 1% (10E-2). In the future, it could be possible to uniform to CREST's approach of adjusting it from 1 to 2.5 % dynamically based on the anisotropy of moments of inertia.
 - Adjusted defaul threshold for RMSD similarity from 0.5 to 0.25 A (benchmarked to retain all methylcyclohexane conformers)
 - Cleaned residuals of the ENANTIOMERS keyword and related prune_enantiomers (now prune_by_moment_of_inertia)
 - Renamed every "indexes" to "indices", as I should have done long time ago...
 - The function distance_refinement is now just incorporated in force_field_refinement and optimization_refinement as an option (only_fixed_constraints). First, an optimization is done with all specified constraints (fixed and interactions, at loose convergence for force field) and then the interaction constraints are released (tight convergence for FF). This process should be more robust than the one before, as it minimizes scrambling/separation of multimolecular arrangements and avoids the limitations of xtb-python when using XTB as calculator (since everything is now dealt with without ASE). Moreover, energy pruning is only performed after the interaction constraints have been released, so that random fluctuations in interaction distances constraints do not bias conformer selection (imperfect embedding geometries in mind).
 - Rotationally corrected RMSD-based pruning in similarity_refining is now only done for molecules with at least one locally symmetric torsion (saves time)
+
+## 0.3.8 (October 5 2023)
+- Expanded debug functionality (DEBUG keyword): printouts of RunEmbedding status (dump_status)
+- Added a xtb_pre_opt wrapper for xtb_opt that retains every bond present in the initial set of graphs, in addition to provided constraints. This will greatly increase the quality of structures coming from embeds into force_field_refining. Added before force_field_opt for embed runs (>1 self.objects) that use XTB as FF calculator.
+- Introduced orbital subtypes (atom.subtype) to offer more flexibility for embed types. These do not alter default pairing_dists but allow for specific orbital arrangements around the reactive atom.
+- New Ketone atom subtype: 'trilobe' - three lobes at the opposite end of alkoxide/sulfonamide substituents relative to oxygen.
+- Added the DRYRUN keyword. Skips lenghty operations (operators, embedding, refining) but retains other functions and printouts. Useful for debugging and checking purposes.
+- Compacted output information: individual canditates details only printed with DEBUG keyword, average time per structure and estimate of completion given instead every 20 iterations when saving checkpoints

@@ -22,7 +22,7 @@ Nicolo' Tampellini - nicolo.tampellini@yale.edu
 import os
 import argparse
 
-__version__ = '0.3.7'
+__version__ = '0.3.8'
 
 if __name__ == '__main__':
 
@@ -39,7 +39,10 @@ if __name__ == '__main__':
           -n NAME, --name NAME    Custom name for the run.
           -cl, --command_line     Read instructions from command line instead of from inputfile
           -c, --cite              Print citation links.
-          -p, --profile           Profile the run through cProfiler.\n'''
+          -p, --profile           Profile the run through cProfiler.
+          --procs                 Number of processors to be used by each optimization job.
+          --threads               Number of parallel threads used.
+          '''
 
     parser = argparse.ArgumentParser(usage=usage)
     parser.add_argument("-s", "--setup", help="Guided setup of the calculation settings.", action="store_true")
@@ -49,6 +52,9 @@ if __name__ == '__main__':
     parser.add_argument("-n", "--name", help="Custom name for the run.", action='store', required=False)
     parser.add_argument("-c", "--cite", help="Print the appropriate document links for citation purposes.", action='store_true', required=False)
     parser.add_argument("-p", "--profile", help="Profile the run through cProfiler.", action='store_true', required=False)
+    parser.add_argument("--procs", help="Number of processors to be used by each optimization job.", action='store', required=False, default=None)
+    parser.add_argument("--threads", help="Number of parallel threads used.", action='store', required=False, default=None)
+
     args = parser.parse_args()
 
     if (not (args.test or args.setup or args.command_line)) and args.inputfile is None:
@@ -88,7 +94,7 @@ if __name__ == '__main__':
     # import faulthandler
     # faulthandler.enable()
 
-    embedder = Embedder(filename, stamp=args.name)
+    embedder = Embedder(filename, stamp=args.name, procs=args.procs, threads=args.threads)
     # initialize embedder from input file
 
     embedder.run()

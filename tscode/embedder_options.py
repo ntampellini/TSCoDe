@@ -145,65 +145,68 @@ class Truthy_struct:
 
 class Options:
 
-    rotation_range = 90
-    rotation_steps = None # Set later by the _setup() function, based on embed type
-    rmsd = None # Set later by the _setup() function, based on embed type/atom number
-    rigid = False
-    max_confs = 1000
-    
-    max_clashes = 0
-    clash_thresh = 1.5
+    def __init__(self):
 
-    max_newbonds = 0
+        self.rotation_range = 90
+        self.rotation_steps = None # Set later by the _setup() function, based on embed type
+        self.rmsd = None # Set later by the _setup() function, based on embed type/atom number
+        self.rigid = False
+        self.max_confs = 1000
+        
+        self.max_clashes = 0
+        self.clash_thresh = 1.5
 
-    optimization = True
-    calculator = CALCULATOR
-    theory_level = None        # set later in _calculator_setup()
-    procs = PROCS
-    threads = THREADS
-    solvent = None
-    ff_opt = FF_OPT_BOOL
-    ff_calc = FF_CALC
+        self.max_newbonds = 0
 
-    if ff_opt:
-        ff_level = DEFAULT_FF_LEVELS[FF_CALC]
+        self.optimization = True
+        self.calculator = CALCULATOR
+        self.theory_level = None        # set later in _calculator_setup()
+        self.procs = PROCS
+        self.threads = THREADS
+        self.solvent = None
+        self.ff_opt = FF_OPT_BOOL
+        self.ff_calc = FF_CALC
 
-    neb = False
-    saddle = False
-    ts = False
-    nci = False
-    shrink = False
-    shrink_multiplier = 1
-    metadynamics = False
-    suprafacial = False
-    only_refined = False
-    # keep_enantiomers = False
-    double_bond_protection = False
-    keep_hb = False
-    csearch_aug = False
+        if self.ff_opt:
+            self.ff_level = DEFAULT_FF_LEVELS[FF_CALC]
 
-    fix_angles_in_deformation = False
-    # Not possible to set manually through a keyword.
-    # Monomolecular embeds have it on to prevent
-    # scrambling, but better to leave it off for
-    # less severe deformations, since convergence
-    # is faster
+        self.neb = False
+        self.saddle = False
+        self.ts = False
+        self.nci = False
+        self.shrink = False
+        self.shrink_multiplier = 1
+        self.metadynamics = False
+        self.suprafacial = False
+        self.only_refined = False
+        # self.keep_enantiomers = False
+        self.double_bond_protection = False
+        self.keep_hb = False
+        self.csearch_aug = False
+        self.dryrun = False
 
-    kcal_thresh = 10
-    bypass = False
-    debug = False
-    let = False
-    check_structures = False
-    noembed = False
-    # Default values, updated if _parse_input
-    # finds keywords and calls _set_options
+        self.fix_angles_in_deformation = False
+        # Not possible to set manually through a keyword.
+        # Monomolecular embeds have it on to prevent
+        # scrambling, but better to leave it off for
+        # less severe deformations, since convergence
+        # is faster
 
-    operators = []
-    # this list will be filled with operator strings
-    # that need to be exectured before the run. i.e. ['csearch>mol.xyz']
+        self.kcal_thresh = 10
+        self.bypass = False
+        self.debug = False
+        self.let = False
+        self.check_structures = False
+        self.noembed = False
+        # Default values, updated if _parse_input
+        # finds keywords and calls _set_options
 
-    operators_dict = {}
-    # Analogous dictionary that will contain the seuquences of operators for each molecule
+        self.operators = []
+        # this list will be filled with operator strings
+        # that need to be exectured before the run. i.e. ['csearch>mol.xyz']
+
+        self.operators_dict = {}
+        # Analogous dictionary that will contain the seuquences of operators for each molecule
 
     def __repr__(self):
         d = {var:self.__getattribute__(var) for var in dir(self) if var[0:2] != '__'}
@@ -223,6 +226,7 @@ class Options:
             'keep_hb',
             'operators',
             'keep_hb',
+            'dryrun',
             # 'operators',
         )
         
@@ -309,6 +313,9 @@ class OptionSetter:
     def confs(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('CONFS')]
         options.max_confs = int(kw.split('=')[1])
+
+    def dryrun(self, options, *args):
+        options.dryrun = True
 
     def suprafac(self, options, *args):
         options.suprafac = True
