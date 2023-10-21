@@ -18,7 +18,8 @@ GNU General Public License for more details.
 
 import os
 import sys
-from subprocess import CalledProcessError, run
+import time
+from subprocess import DEVNULL, STDOUT, CalledProcessError, check_call, run
 
 import numpy as np
 from _tkinter import TclError
@@ -28,7 +29,6 @@ from tscode.algebra import norm_of, rot_mat_from_pointer
 from tscode.errors import TriangleError
 from tscode.graph_manipulations import graphize
 from tscode.pt import pt
-from subprocess import check_call, DEVNULL, STDOUT
 
 
 class suppress_stdout_stderr(object):
@@ -119,11 +119,15 @@ def write_xyz(coords:np.array, atomnos:np.array, output, title='temp'):
     output.write(string)
 
 def read_xyz(filename):
+    '''
+    Wrapper for ccread. Raises an error if unsuccessful.
+
+    '''
     mol = ccread(filename)
     assert mol is not None, f'Reading molecule {filename} failed - check its integrity.'
     return mol
 
-def time_to_string(total_time: float, verbose=False):
+def time_to_string(total_time: float, verbose=False, digits=1):
     '''
     Converts totaltime (float) to a timestring
     with hours, minutes and seconds.
@@ -147,7 +151,7 @@ def time_to_string(total_time: float, verbose=False):
         timestring += f'{int(m)} {names[2]} '
         total_time %= 60
 
-    timestring += f'{round(total_time, 1)} {names[3]}'
+    timestring += f'{round(total_time, digits):{2+digits}} {names[3]}'
 
     return timestring
 
@@ -341,7 +345,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
     return True
 
-def scramble_check(TS_structure, TS_atomnos, constrained_indices, mols_graphs, max_newbonds=0) -> bool:
+def scramble_check(TS_structure, TS_atomnos, excluded_atoms, mols_graphs, max_newbonds=0) -> bool:
     '''
     Check if a multimolecular arrangement has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the
@@ -352,11 +356,8 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indices, mols_graphs, m
     bonds = set()
     for i, graph in enumerate(mols_graphs):
 
-        pos = 0
-        while i != 0:
-            pos += len(mols_graphs[i-1].nodes)
-            i -= 1
-
+        pos = sum([len(other_graph.nodes) for j, other_graph in enumerate(mols_graphs) if j < i])
+        
         for bond in [tuple(sorted((a+pos, b+pos))) for a, b in list(graph.edges) if a != b]:
             bonds.add(bond)
     # creating bond set containing all bonds present in the desired transition state
@@ -366,8 +367,8 @@ def scramble_check(TS_structure, TS_atomnos, constrained_indices, mols_graphs, m
     # delta_bonds -= {tuple(sorted(pair)) for pair in constrained_indices}
 
     for bond in delta_bonds.copy():
-        for a1, a2 in constrained_indices:
-            if (a1 in bond) or (a2 in bond):
+        for a in excluded_atoms:
+            if a in bond:
                 delta_bonds -= {bond}
     # removing bonds involving constrained atoms: they are not counted as scrambled bonds
 
@@ -438,3 +439,14 @@ def smi_to_3d(smi, new_filename):
     clean_directory(["temp_smi.txt"])
 
     return new_filename + ".xyz"
+
+def timing_wrapper(function, *args, **kwargs):
+    '''
+    Generic function wrapper that appends the
+    execution time at the end of return.
+    
+    '''
+    start_time = time.perf_counter()
+    func_return = function(*args, **kwargs)
+    elapsed = time.perf_counter() - start_time
+    return func_return, elapsed

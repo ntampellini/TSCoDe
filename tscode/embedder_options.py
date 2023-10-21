@@ -29,6 +29,8 @@ keywords_list = [
 
             'CALC',           # Manually overrides the calculator in "settings.py"
             
+            'CHARGE',         # Specifies charge for the embedding 
+
             'CHECK',          # Visualize the input molecules through the ASE GUI,
                                 # to check orbital positions or reading faults.
 
@@ -59,6 +61,8 @@ keywords_list = [
 
             'FFLEVEL',        # Manually set the theory level to be used.
                                 # . Syntax: `FFLEVEL=UFF
+
+            'IMAGES',         # Number of images to be used in NEB and mep_relax> jobs
 
             'KCAL',           # Trim output structures to a given value of relative energy.
                                 # Syntax: `KCAL=n`, where n can be an integer or float.
@@ -161,9 +165,8 @@ class Options:
         self.optimization = True
         self.calculator = CALCULATOR
         self.theory_level = None        # set later in _calculator_setup()
-        self.procs = PROCS
-        self.threads = THREADS
         self.solvent = None
+        self.charge = 0
         self.ff_opt = FF_OPT_BOOL
         self.ff_calc = FF_CALC
 
@@ -227,11 +230,15 @@ class Options:
             'operators',
             'keep_hb',
             'dryrun',
-            # 'operators',
+            'shrink',
+            'rigid',
+            'suprafacial',
+            'fix_angles_in_deformation',
+            'double_bond_protection',
         )
         
         for name in repr_if_true:
-            if d.get(name,True):
+            if not d.get(name, True):
                 d.pop(name)
 
         repr_if_not_none = (
@@ -245,9 +252,6 @@ class Options:
 
         if not FF_OPT_BOOL:
             d.pop('ff_calc')
-
-        if self.calculator not in ('ORCA', ' GAUSSIAN'):
-            d.pop('procs')
 
         padding = 1 + max([len(var) for var in d])
 
@@ -288,16 +292,6 @@ class OptionSetter:
             raise SystemExit(('The refine> operator can only be used with one multimolecular file per run, '
                              f'in .xyz format. ({len(self.embedder.objects)} files found in input)'))
 
-        from tscode.embeds import _get_monomolecular_reactive_indices
-        from tscode.graph_manipulations import get_sum_graph
-        from tscode.utils import graphize
-
-        # if there is a checkpoint with the same name, restart the run
-        # if f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz' in os.listdir():
-        #     self.embedder.objects[0].atomcoords = read_xyz(f'TSCoDe_checkpoint_{self.embedder.stamp}.xyz').atomcoords
-
-        #     self.embedder.log(f'\n--> Read checkpoint from TSCoDe_checkpoint_{self.embedder.stamp}.xyz - resuming the run\n')
-
         self.embedder._set_embedder_structures_from_mol()
 
         if self.embedder.options.rmsd is None:
@@ -309,6 +303,10 @@ class OptionSetter:
     def bypass(self, options, *args):
         options.bypass = True
         options.optimization = False
+
+    def charge(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('CHARGE')]
+        options.charge = int(kw.split('=')[1])
 
     def confs(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('CONFS')]
@@ -348,6 +346,10 @@ class OptionSetter:
             raise SystemExit('FFOPT keyword can only have value \'ON\' or \'OFF\' (i.e. \'FFOPT=OFF\')')
 
         options.ff_opt = True if value == 'ON' else False
+
+    def images(self, options, *args):
+        kw = self.keywords_simple[self.keywords.index('IMAGES')]
+        options.images = int(kw.split('=')[1])
 
     def bypass(self, options, *args):
         options.bypass = True
@@ -389,36 +391,18 @@ class OptionSetter:
         neb_options_string = kw[4:-1].lower().replace(' ','')
         # neb_options_string now looks like 'images=8,preopt=true' or ''
 
-        for piece in neb_options_string.split(','):
-            s = piece.split('=')
-            if s[0].lower() == 'images':
-                options.neb.images = int(s[1])
-            elif s[0].lower() == 'preopt':
-                if s[1].lower() == 'true':
-                    options.neb.preopt = True
-            else:
-                raise SyntaxError((f'Syntax error in NEB keyword -> NEB({neb_options_string}).' +
-                                    'Correct syntax looks like: NEB(images=8,preopt=true)'))
+        if neb_options_string != '':
+            for piece in neb_options_string.split(','):
+                s = piece.split('=')
+                if s[0].lower() == 'images':
+                    options.neb.images = int(s[1])
+                elif s[0].lower() == 'preopt':
+                    if s[1].lower() == 'true':
+                        options.neb.preopt = True
+                else:
+                    raise SyntaxError((f'Syntax error in NEB keyword -> NEB({neb_options_string}). ' +
+                                        'Correct syntax looks like: NEB(images=8,preopt=true)'))
         
-        options.neb = Truthy_struct()
-        options.neb.images = 6
-        options.neb.preopt = False
-
-        kw = self.keywords_simple[self.keywords.index('NEB')]
-        neb_options_string = kw[4:-1].lower().replace(' ','')
-        # neb_options_string now looks like 'images=8,preopt=true' or ''
-
-        for piece in neb_options_string.split(','):
-            s = piece.split('=')
-            if s[0].lower() == 'images':
-                options.neb.images = int(s[1])
-            elif s[0].lower() == 'preopt':
-                if s[1].lower() == 'true':
-                    options.neb.preopt = True
-            else:
-                raise SyntaxError((f'Syntax error in NEB keyword -> NEB({neb_options_string}).' +
-                                    'Correct syntax looks like: NEB(images=8,preopt=true)'))
-
     def level(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('LEVEL')]
         options.theory_level = kw.split('=')[1].upper().replace('_', ' ')
@@ -467,11 +451,11 @@ class OptionSetter:
 
     def procs(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('PROCS')]
-        options.procs = int(kw.split('=')[1])
+        self.embedder.procs = int(kw.split('=')[1])
 
     def threads(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('THREADS')]
-        options.threads = int(kw.split('=')[1])
+        self.embedder.threads = int(kw.split('=')[1])
 
     def ezprot(self, options, *args):
         options.double_bond_protection = True
@@ -517,8 +501,10 @@ class OptionSetter:
         options.ts = True
 
     def solvent(self, options, *args):
+        from tscode.solvents import solvent_synonyms
         kw = self.keywords_simple[self.keywords.index('SOLVENT')]
-        options.solvent = kw.split('=')[1].lower()
+        solvent = kw.split('=')[1].lower()
+        options.solvent = solvent_synonyms.get(solvent, solvent)
 
     def pka(self, options, *args):
         kw = self.keywords_simple_case_sensitive[self.keywords.index('PKA')]

@@ -155,3 +155,21 @@
 - New Ketone atom subtype: 'trilobe' - three lobes at the opposite end of alkoxide/sulfonamide substituents relative to oxygen.
 - Added the DRYRUN keyword. Skips lenghty operations (operators, embedding, refining) but retains other functions and printouts. Useful for debugging and checking purposes.
 - Compacted output information: individual canditates details only printed with DEBUG keyword, average time per structure and estimate of completion given instead every 20 iterations when saving checkpoints
+
+## 0.4.0 (October 21 2023)
+### CONCURRENT OPTIMIZATIONS AND EMBEDDINGS!
+### Crest metadynamic conformational searches with mtd>
+- xtb_opt now reads output geometry from the trajectory file rather than from xtbopt.xyz. This was needed for multiprocessing capability as it is not possible to override the default name for the optimized geometry (xtbopt.xyz) from the input section.
+- Replaced exit() calls with sys.exit()
+- xtb_opt now creates a new folder and works inside of it, making it easier to transition into a multiprocessing workflow.
+- xtb_pre_opt passes bond constraints to xtb_opt through a string now (constrain_string) instead of a file.
+- Implemented parallel (multiprocess) optimization for force_field_refining (2 cores/thread, as many threads to use all CPUs) and optimization_refining (4 cores/thread, as many threads to use all CPUs). Embedder.threads currently not in use.
+- Added CHARGE keyword (specify charge to be passed to calculator).
+- Removed VMD printout for simple runs (write_vmd) but kept anchor debugging (write_anchor_vmd).
+- Added metadynamic conformational search through CREST (mtd_csearch>, or mtd>).
+- Changed the way xtb_opt deals with distance constraints, now using very stiff springs instead of exact fixing (better when more then one distance constraint is specified).
+- Reinstated fitness_refining after every optimization step, which is now based on a cumulative deviation from the imposed pairing distances.
+
+<!-- - ... mep_relax> BETA
+- ... IMAGES kw, also implement it for neb>
+- ... [OPENBABEL CONTINUED SUPPORT?] -->

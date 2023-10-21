@@ -36,6 +36,8 @@ from tscode.utils import (get_scan_peak_index, read_xyz,
                           suppress_stdout_stderr, time_to_string, write_xyz)
 from tscode.ase_manipulations import ase_saddle
 from tscode.automep import automep
+from tscode.mep_relaxer import ase_mep_relax
+from tscode.calculators._xtb import crest_mtd_csearch
 
 
 def operate(input_string, embedder):
@@ -70,6 +72,13 @@ def operate(input_string, embedder):
     elif 'rsearch>' in input_string:
         outname = csearch_operator(filename, embedder, mode=2)
 
+    elif any(string in input_string for string in ('mtd_csearch>', 
+                                                   'mtd_search>',
+                                                   'mtdsearch>',
+                                                   'mtdcsearch>',
+                                                   'mtd>')):
+        outname = mtd_csearch_operator(filename, embedder)
+
     elif 'saddle>' in input_string:
         saddle_operator(filename, embedder)
         embedder.normal_termination()
@@ -95,6 +104,22 @@ def operate(input_string, embedder):
     elif 'pka>' in input_string:
         pka_routine(filename, embedder)
         outname = filename
+
+    elif 'mep_relax>' in input_string:
+
+        data = read_xyz(filename)
+
+        ase_mep_relax(
+            embedder,
+            data.atomcoords,
+            data.atomnos,
+            title=embedder.stamp,
+            n_images=embedder.options.images if hasattr(embedder.options, 'images') else None,
+            logfunction=embedder.log,
+            write_plot=True,
+            verbose_print=True,
+            )
+        embedder.normal_termination()
 
     else:
         op = input_string.split('>')[0]
@@ -306,7 +331,7 @@ def neb_operator(filename, embedder, attempts=5):
                                             data.atomnos,
                                             embedder.options.calculator,
                                             method=embedder.options.theory_level,
-                                            procs=embedder.options.procs,
+                                            procs=embedder.procs,
                                             solvent=embedder.options.solvent,
                                             title=f'reagents',
                                             logfunction=embedder.log,
@@ -317,7 +342,7 @@ def neb_operator(filename, embedder, attempts=5):
                                             data.atomnos,
                                             embedder.options.calculator,
                                             method=embedder.options.theory_level,
-                                            procs=embedder.options.procs,
+                                            procs=embedder.procs,
                                             solvent=embedder.options.solvent,
                                             title=f'products',
                                             logfunction=embedder.log,
@@ -418,6 +443,44 @@ def saddle_operator(filename, embedder):
             f'Saddle optimization completed, relative energy from start/end points (not barrier heights):\n'
             f'  > E(Saddle_point) : {round(energy, 3)} kcal/mol\n')
 
+def mtd_csearch_operator(filename, embedder):
+    '''
+    Run a CREST metadynamic conformational search and return the output filename.
+    '''
+    mol = next((mol for mol in embedder.objects if mol.name == filename))
+    # load molecule to be optimized from embedder
+
+    assert len(mol.atomcoords) == 1, 'mtd_csearch> operator works with a single structure as input.'
+
+    logfunction = embedder.log
+
+    max_workers = embedder.avail_cpus//2 or 1
+    logfunction(f'--> Performing {embedder.options.calculator} GFN2//GFN-FF' + (
+                    f'{f"/{embedder.options.solvent.upper()}" if embedder.options.solvent is not None else ""} ' +
+                    f'metadynamic conformational search on {filename} via CREST (2 cores, {max_workers} threads)'))
+    
+    t_start = time.perf_counter()
+
+    new_structures = crest_mtd_csearch(
+                                        mol.atomcoords[0],
+                                        mol.atomnos,
+                                        constrained_indices=_get_internal_constraints(filename, embedder),
+                                        solvent=embedder.options.solvent,
+                                        charge=embedder.options.charge,
+                                        title=mol.rootname,
+                                        procs=2,
+                                        threads=max_workers,
+                                    )
+
+    embedder.log(f'--> Generated {len(new_structures)} conformers in {time_to_string(time.perf_counter()-t_start)}')
+
+    with open(f'{mol.rootname}_mtd_confs.xyz', 'w') as f:
+        for i, new_s in enumerate(new_structures):
+            write_xyz(new_s, mol.atomnos, f, title=f'Conformer {i}/{len(new_structures)} from CREST MTD')
+
+    return f'{mol.rootname}_mtd_confs.xyz'
+
+
 def scan_operator(filename, embedder):
     '''
     Thought to approach or separate two reactive atoms, looking for the energy maximum.
@@ -499,10 +562,9 @@ def scan_operator(filename, embedder):
                                     constrained_distances=(d,),
                                     method=embedder.options.theory_level,
                                     solvent=embedder.options.solvent,
-                                    charge=0,
+                                    charge=embedder.options.charge,
                                     title='temp',
-                                    read_output=True,
-                                    procs=embedder.options.procs,
+                                    procs=embedder.procs,
                                     )
 
         if i == 0:
@@ -514,7 +576,7 @@ def scan_operator(filename, embedder):
         # print(f"------> target was {round(d, 3)} A, reached {round(norm_of(coords[mol.reactive_indices[0]]-coords[mol.reactive_indices[1]]), 3)} A")
         # saving the structure, distance and relative energy
 
-        embedder.log(f'Step {i+1}/{max_iterations} - d={round(d, 2)} A - {round(energy-e_0, 2)} kcal/mol - {time_to_string(time.perf_counter()-t_start)}')
+        embedder.log(f'Step {i+1}/{max_iterations} - d={round(d, 2)} A - {round(energy-e_0, 2):4} kcal/mol - {time_to_string(time.perf_counter()-t_start)}')
 
         with open("temp_scan.xyz", "w") as f:
             for i, (s, d, e) in enumerate(zip(structures, dists, energies)):
@@ -561,7 +623,8 @@ def scan_operator(filename, embedder):
         
     plt.ylabel('Rel. E. (kcal/mol)')
     plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
-    pickle.dump(fig, open(f'{title.replace(" ", "_")}_plt.pickle', 'wb'))
+    with open(f'{title.replace(" ", "_")}_plt.pickle', 'wb') as _f:
+        pickle.dump(fig, _f)
 
     ### Start structure writing 
 
@@ -596,8 +659,8 @@ def _get_lowest_calc(embedder=None):
         return (CALCULATOR, DEFAULT_LEVELS[CALCULATOR], PROCS)
 
     if embedder.options.ff_opt:
-        return (embedder.options.ff_calc, embedder.options.ff_level, embedder.options.procs)
-    return (embedder.options.calculator, embedder.options.theory_level, embedder.options.procs)
+        return (embedder.options.ff_calc, embedder.options.ff_level, embedder.procs)
+    return (embedder.options.calculator, embedder.options.theory_level, embedder.procs)
 
 def _get_internal_constraints(filename, embedder):
     '''

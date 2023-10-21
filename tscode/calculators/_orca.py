@@ -15,12 +15,12 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+import sys
 from subprocess import DEVNULL, STDOUT, check_call
 
-from tscode.utils import read_xyz
 from tscode.settings import COMMANDS, MEM_GB
 from tscode.solvents import get_solvent_line
-from tscode.utils import clean_directory, pt
+from tscode.utils import clean_directory, pt, read_xyz
 
 
 def orca_opt(coords,
@@ -88,7 +88,7 @@ def orca_opt(coords,
 
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
+        sys.exit()
 
     if read_output:
 

@@ -15,6 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
+import sys
 from subprocess import DEVNULL, STDOUT, check_call
 
 from tscode.settings import COMMANDS, MEM_GB
@@ -74,7 +75,7 @@ def gaussian_opt(coords, atomnos, constrained_indices=None, method='PM6', procs=
 
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
+        sys.exit()
 
     if read_output:
 

@@ -1,6 +1,9 @@
 import cProfile
+import time
 from pstats import Stats
+
 from tscode.embedder import Embedder
+
 
 def profiled_wrapper(filename, name):
 

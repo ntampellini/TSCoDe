@@ -16,9 +16,11 @@ GNU General Public License for more details.
 
 '''
 import os
+import sys
 from subprocess import DEVNULL, STDOUT, check_call
 
 import numpy as np
+
 from tscode.algebra import dihedral, norm, norm_of, vec_angle
 from tscode.errors import MopacReadError
 from tscode.pt import pt
@@ -40,7 +42,7 @@ def read_mop_out(filename):
 
             if 'Too many variables. By definition, at least one force constant is exactly zero' in line:
                 success = False
-                return None, np.inf, success
+                return None, 1E10, success
 
             if not line:
                 break
@@ -213,7 +215,7 @@ def mopac_opt(coords, atomnos, constrained_indices=None, method='PM7', solvent=N
         check_call(f'{COMMANDS["MOPAC"]} {title}.mop'.split(), stdout=DEVNULL, stderr=STDOUT)
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
-        quit()
+        sys.exit()
 
     os.remove(f'{title}.mop')
     # delete input, we do not need it anymore

@@ -1,70 +1,108 @@
-from concurrent.futures import ProcessPoolExecutor
-from tscode.utils import read_xyz, time_to_string
-from tscode.calculators._xtb import xtb_opt
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from time import perf_counter
-import sys
-from multiprocessing import cpu_count
+
 import plotext as plt
 
+from tscode.calculators._xtb import xtb_opt
+from tscode.utils import flatten, read_xyz, time_to_string, timing_wrapper
+
 procs_set = {
-    'GFN-FF'   : (1, 2, 4, 8, 16),
-    'GFN2-XTB' : (4, 8, 16, 32)
+    'GFN-FF'   : (1, 2, 4, 8),
+    'GFN2-XTB' : (4, 8, 12, 16, 32, 48)
     }
+threads_set = {1, 2, 4, 6, 8, 12, 16, 32, 48}
 
-data = read_xyz(sys.argv[1])
+def run_concurrent_test(filename):
+    '''
+    Run geometry opitmizations on filename with various
+    processors and threads settings to determine the best 
+    configuration to use in productive runs.
 
-cpus = cpu_count()
-print(f'--> Detected {cpus} CPUs (considering hyperthreading)')
+    '''
 
-for method in procs_set.keys():
+    data = read_xyz(filename)
 
-    timings = {p:[] for p in procs_set[method]}
-    thread_info = {p:[] for p in procs_set[method]}
+    cpus = len(os.sched_getaffinity(0))
 
-    for procs in procs_set[method]: 
-        for threads in (1, 2, 4, 8):
+    # In case there are more than 48 CPUs
+    threads_set.add(cpus)
 
-            if procs * threads <= cpus:
+    print(f'--> Detected {cpus} CPUs (considering hyperthreading)')
 
-                results = []
+    for method in procs_set.keys():
+        print(f'\nStarting {method} test...')
 
-                results, processes = [], []
-                with ProcessPoolExecutor(max_workers=threads) as executor:
+        timings = {p:[] for p in procs_set[method]}
+        thread_info = {p:[] for p in procs_set[method]}
+        best_avg_time = 1E8
+        best_settings = None
 
-                    t_start = perf_counter()
-                    
-                    for i in range(8):
+        for procs in procs_set[method]: 
+            for threads in threads_set:
 
-                        p = executor.submit(
-                                xtb_opt,
-                                data.atomcoords[0],
-                                data.atomnos,
-                                method=method,
-                                solvent='THF',
-                                procs=procs,
-                                conv_thr="tight",
-                                title=f'process_temp_{i}',
-                            )
-                        processes.append(p)
+                # only run test if we are using between 50% and 100% of cpu resources
+                if cpus/2 <= procs * threads <= cpus:
 
-                    for p in processes:
-                        results.extend(p.result())
+                    results = []
 
-                    t_end = perf_counter()
-                    timings[procs].append(t_end-t_start)
-                    thread_info[procs].append(threads)
+                    results, processes, = [], []
+                    cum_exec_time = 0
 
-                    print(f'{method} --> {procs:2} cores, {threads:2} threads: {time_to_string(t_end-t_start)}')
+                    with ProcessPoolExecutor(max_workers=threads) as executor:
 
-    plt.theme("pro")
-    plt.title(method)
-    plt.plotsize(100,25)
-    for procs in procs_set[method]:
-        times = timings.get(procs, None)
-        if times is not None:
-            plot = plt.scatter(thread_info[procs], times, label=f'{procs:2} cores')
+                        t_start_batch = perf_counter()
+                        
+                        for i in range(threads):
 
-    plt.xlabel("# Threads")
-    plt.ylabel(f"Time (s)")
-    plt.show()
-    plt.cld()
+                            p = executor.submit(
+                                    timing_wrapper,
+                                    xtb_opt,
+                                    data.atomcoords[0],
+                                    data.atomnos,
+                                    method=method,
+                                    solvent='THF',
+                                    procs=procs,
+                                    conv_thr="tight",
+                                    title=f'Candidate_{i}',
+                                )
+                            processes.append(p)
+
+                        for i, process in enumerate(as_completed(processes)):
+                            results, elapsed = process.result()
+                            cum_exec_time += elapsed
+                            results.extend(results)
+
+                        t_end_batch = perf_counter()
+                        elapsed = t_end_batch-t_start_batch
+                        avg = elapsed/threads
+                        timings[procs].append(avg)
+                        thread_info[procs].append(threads)
+
+                        speedup = cum_exec_time/elapsed
+                        if avg < best_avg_time:
+                            best_avg_time = avg
+                            best_settings = (procs, threads)
+
+                        print(f'{method} --> {procs:2} cores/process, {threads:2} threads ({round(speedup, 2):6}x speedup) : {time_to_string(elapsed/threads, digits=3):10} per structure')
+
+        plt.theme("pro")
+        plt.title(method)
+        # plt.plotsize(75,15)
+        x, y =[], []
+        for procs in procs_set[method]:
+            times = timings.get(procs, None)
+            if times is not None:
+                for thread, time in zip(thread_info[procs], times):
+                    x.append(f'{procs:2}c/{thread}t') # for procs, thread in zip(procs, thread_info[procs])],
+                    y.append(round(time, 3))
+        
+        plt.simple_bar(x, y, width=90, color='red', title=f'{filename}/{method}')
+
+        # plt.xticks(ticks=set(flatten(thread_info.values(), typefunc=int)))
+        plt.xlabel("# Threads")
+        plt.ylabel("Time per structure (s)")
+        plt.show()
+        plt.cld()
+
+        print(f'\n--> Suggested settings for {method}: {best_settings[0]} cores, {best_settings[1]} threads')

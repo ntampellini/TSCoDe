@@ -106,8 +106,8 @@ def run_setup():
 
     #########################################################################################
     
-    properties['PROCS'] = ask(f'How many cores should jobs run on? [{os.cpu_count()}] : ',
-                                accepted=[str(n) for n in range(1,1000)], default=os.cpu_count())
+    properties['PROCS'] = ask(f'How many cores should jobs run on? [{len(os.sched_getaffinity(0))}] : ',
+                                accepted=[str(n) for n in range(1,1000)], default=len(os.sched_getaffinity(0)))
 
     #########################################################################################
 

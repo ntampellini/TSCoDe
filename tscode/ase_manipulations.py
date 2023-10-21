@@ -26,15 +26,12 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import (CalculationFailed,
                                         PropertyNotImplementedError)
-from ase.calculators.calculator import (CalculationFailed,
-                                        PropertyNotImplementedError)
 from ase.calculators.gaussian import Gaussian
 from ase.calculators.mopac import MOPAC
 from ase.calculators.orca import ORCA
 from ase.constraints import FixInternals
 from ase.dyneb import DyNEB
 from ase.optimize import BFGS, LBFGS
-from ase.vibrations import Vibrations
 from ase.vibrations import Vibrations
 from rmsd import kabsch
 from sella import Sella
@@ -137,7 +134,7 @@ def get_ase_calc(embedder):
     else:
         calculator = embedder.options.calculator
         method = embedder.options.theory_level
-        procs = embedder.options.procs
+        procs = embedder.procs
         solvent = embedder.options.solvent
 
     if calculator == 'XTB':
@@ -242,7 +239,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indices, title
                         embedder.options.calculator,
                         method=embedder.options.theory_level,
                         mols_graphs=embedder.graphs if embedder.embed != 'monomolecular' else None,
-                        procs=embedder.options.procs,
+                        procs=embedder.procs,
                         solvent=embedder.options.solvent,
                         max_newbonds=embedder.options.max_newbonds,
                         check=(embedder.embed != 'refine'),
@@ -336,8 +333,7 @@ def ase_saddle(embedder, coords, atomnos, constrained_indices=None, mols_graphs=
         t_end_berny = time.perf_counter()
         elapsed = t_end_berny - t_start
         exit_str = 'converged' if iterations < maxiterations else 'stopped'
-        with open(logfile, 'w') as f:
-            f.write(f'{title} - {exit_str} in {iterations} steps ({time_to_string(elapsed)})\n')
+        logfile.write(f'{title} - {exit_str} in {iterations} steps ({time_to_string(elapsed)})\n')
 
     new_structure = atoms.get_positions()
     energy = atoms.get_total_energy() * 23.06054194532933 #eV to kcal/mol
@@ -471,13 +467,6 @@ def ase_neb(embedder, reagents, products, atomnos, ts_guess=None, n_images=6, me
 
                 opt.run(fmax=0.05, steps=250+opt.nsteps)
 
-                # if verbose_print and logfunction is not None and not opt.converged:
-                #     logfunction(f'--> fmax below 0.3: Very small maxstep activated')
-
-                # if not opt.converged:
-                #     optimizer.maxstep = 0.01
-                #     opt.run(fmax=0.05, steps=500+opt.nsteps)
-
                 iterations = opt.nsteps
                 exit_status = 'CONVERGED' if iterations < 279 else 'MAX ITER'
 
@@ -494,16 +483,10 @@ def ase_neb(embedder, reagents, products, atomnos, ts_guess=None, n_images=6, me
 
     except KeyboardInterrupt:
         exit_status = 'ABORTED BY USER'
-        success = False
-    except KeyboardInterrupt:
-        exit_status = 'ABORTED BY USER'
-        success = False
 
     if logfunction is not None:
         logfunction(f'    - NEB for {title} {exit_status} ({time_to_string(time.perf_counter()-t_start)})\n')
 
-    energies = [image.get_total_energy() * 23.06054194532933 for image in images] # eV to kcal/mol
-    
     energies = [image.get_total_energy() * 23.06054194532933 for image in images] # eV to kcal/mol
     
     ts_id = energies.index(max(energies))
@@ -894,4 +877,4 @@ def ase_dump(filename, images, atomnos, energies=None):
         for i, (image, energy) in enumerate(zip(images, energies)):
             e = f" Rel.E = {round(energy, 3)} kcal/mol" if energy != "" else ""
             coords = image.get_positions()
-            write_xyz(coords, atomnos, f, title=f'{filename[:-4]}_image_{i}{e}')
+            write_xyz(coords, atomnos, f, title=f'STEP {i+1} - {filename[:-4]}_image_{i+1}{e}')

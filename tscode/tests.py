@@ -16,6 +16,8 @@ GNU General Public License for more details.
 
 '''
 
+import sys
+
 def run_tests():
     
     import os
@@ -113,7 +115,7 @@ def run_tests():
 
     tests = []
     for f in os.listdir():
-        if f.endswith('.inp'):
+        if f.endswith('.txt'):
             tests.append(os.path.realpath(f))
 
     # os.chdir(os.path.dirname(os.getcwd()))
@@ -133,7 +135,7 @@ def run_tests():
         except CalledProcessError as error:
             print('\n\n--> An error occurred:\n')
             print(error.stderr.decode("utf-8"))
-            quit()
+            sys.exit()
                     
         t_end = time.perf_counter()
         times.append(t_end-t_start)

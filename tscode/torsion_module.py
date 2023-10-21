@@ -802,7 +802,7 @@ def clustered_csearch(
                     energies[c] = energy
 
                 else:
-                    energies[c] = np.inf
+                    energies[c] = 1E10
 
             logfunction(f'Optimized {len(new_structures)} structures at {method} level ({time_to_string(time.perf_counter()-t_start)})')
 
@@ -976,7 +976,7 @@ def rotationally_corrected_rmsd(ref, coord, atomnos, torsions, graph, angles):
                 graph.add_edge(other_torsion[1],
                                   other_torsion[2])
         
-        best_rmsd = np.inf
+        best_rmsd = 1E10
 
         # Look for the rotational angle that minimizes local RMSD and save it for later
         for angle in angles[i]:

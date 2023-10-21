@@ -19,10 +19,11 @@ https://github.com/ntampellini/TSCoDe
 Nicolo' Tampellini - nicolo.tampellini@yale.edu
 
 '''
-import os
 import argparse
+import os
+import sys
 
-__version__ = '0.3.8'
+__version__ = '0.4.0'
 
 if __name__ == '__main__':
 
@@ -36,10 +37,12 @@ if __name__ == '__main__':
           -h, --help              Show this help message and exit.
           -s, --setup             Guided setup of the calculation settings.
           -t, --test              Perform some tests to check the TSCoDe installation.
-          -n NAME, --name NAME    Custom name for the run.
-          -cl, --command_line     Read instructions from command line instead of from inputfile
+          -n, --name NAME         Custom name for the run.
+          -cl,--command_line      Read instructions from command line instead of from inputfile.
           -c, --cite              Print citation links.
           -p, --profile           Profile the run through cProfiler.
+          -b, --benchmark FILE    Benchmark the geometry optimization of FILE to get the optimal number of procs/threads.
+          -r, --restart PICKLE    Restarts previous run from an embedder.pickle object.
           --procs                 Number of processors to be used by each optimization job.
           --threads               Number of parallel threads used.
           '''
@@ -52,27 +55,35 @@ if __name__ == '__main__':
     parser.add_argument("-n", "--name", help="Custom name for the run.", action='store', required=False)
     parser.add_argument("-c", "--cite", help="Print the appropriate document links for citation purposes.", action='store_true', required=False)
     parser.add_argument("-p", "--profile", help="Profile the run through cProfiler.", action='store_true', required=False)
+    parser.add_argument("-b", "--benchmark", help=("Benchmark the geometry optimization of FILE to get the optimal number " +
+                        "of procs/threads."), action='store', required=False, default=False)
+    parser.add_argument("-r", "--restart", help="Restarts previous run from an embedder.pickle object.", action='store', required=False, default=False)
     parser.add_argument("--procs", help="Number of processors to be used by each optimization job.", action='store', required=False, default=None)
     parser.add_argument("--threads", help="Number of parallel threads used.", action='store', required=False, default=None)
 
     args = parser.parse_args()
 
-    if (not (args.test or args.setup or args.command_line)) and args.inputfile is None:
-        parser.error("One of the following arguments are required: inputfile, -t, -s.")
+    if (not (args.test or args.setup or args.command_line or args.benchmark)) and args.inputfile is None:
+        parser.error("One of the following arguments are required: inputfile, -t, -s, -b.")
+
+    if args.benchmark:
+        from tscode.concurrent_test import run_concurrent_test
+        run_concurrent_test(args.benchmark)
+        sys.exit()
 
     if args.setup:
         from tscode.modify_settings import run_setup
         run_setup()
-        quit()
+        sys.exit()
 
     if args.cite:
         print('No citation link is available for TSCoDe yet. You can link to the code on https://www.github.com/ntampellini/TSCoDe')
-        quit()
+        sys.exit()
 
     if args.test:
         from tscode.tests import run_tests
         run_tests()
-        quit()
+        sys.exit()
 
     if args.command_line:
         
@@ -89,7 +100,16 @@ if __name__ == '__main__':
     if args.profile:
         from tscode.profiler import profiled_wrapper
         profiled_wrapper(filename, args.name)
-        quit()
+        sys.exit()
+
+    if args.restart:
+        import pickle
+        with open(args.restart, 'rb') as _f:
+            embedder = pickle.load(_f)
+        # initialize embedder from pickle file
+
+        embedder.run()
+        # run the program
 
     # import faulthandler
     # faulthandler.enable()

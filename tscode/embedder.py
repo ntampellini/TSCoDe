@@ -15,14 +15,14 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-from getpass import getuser
 import logging
 import os
 import random
 import re
+import sys
 import time
+from getpass import getuser
 from itertools import groupby
-from multiprocessing import cpu_count
 
 import numpy as np
 
@@ -36,8 +36,9 @@ from tscode.hypermolecule_class import Hypermolecule, Pivot
 from tscode.operators import operate
 from tscode.run import RunEmbedding
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS, THREADS
-from tscode.utils import (ase_view, auto_newline, cartesian_product,
-                          graphize)
+from tscode.utils import (ase_view, auto_newline, cartesian_product, graphize,
+                          time_to_string)
+
 
 class Embedder:
     '''
@@ -63,8 +64,9 @@ class Embedder:
         else:
             self.stamp = stamp
 
-        self.procs = int(procs) if procs is not None else int(PROCS)
-        self.threads = int(threads) if threads is not None else int(THREADS)
+        self.avail_cpus = len(os.sched_getaffinity(0))
+        self.threads = int(threads) if threads is not None else THREADS or self.avail_cpus//4 or 1
+        self.procs = int(procs) if procs is not None else PROCS or 4
 
         try:
             os.remove(f'TSCoDe_{self.stamp}.log')
@@ -164,7 +166,7 @@ class Embedder:
         ╲╲ ▒░║      Time      >{2:^25}║░▒ ╱╱ *   .                                                      
  ..   *  ╲╲▒░║      Procs     >{3:^25}║░▒╱╱   ..            
     .     ╲▒░║     Threads    >{4:^25}║░▒╱  +              
-      .    ▒░║                                          ║░▒ .   ..                            
+      .    ▒░║    Avail CPUs  >{5:^25}║░▒ .   ..                            
   +  .. .  ▒░╚══════════════════════════════════════════╝░▒  .. .   
     .       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒     .     
  .     *  +   ╲╲ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╱╱  .      .
@@ -173,14 +175,15 @@ class Embedder:
                       getuser(),
                       time.ctime()[0:-8],
                       self.procs,
-                      self.threads)
+                      self.threads,
+                      self.avail_cpus)
 
         # ⏣█▓▒░ banner art adapted from https://fsymbols.com/generators/tarty/
 
         self.log(banner)
 
-        if self.procs * self.threads > cpu_count():
-            self.log(f'--> ATTENTION: Excessive hyperthreading - {cpu_count()} CPUs (w/Hyperthreading) detected, {self.procs}*{self.threads} will be used')
+        if self.procs * self.threads > self.avail_cpus:
+            self.log(f'--> ATTENTION: Excessive hyperthreading - {self.avail_cpus} CPUs (w/Hyperthreading) detected, {self.procs}*{self.threads} will be used')
 
     def _parse_input(self, filename):
         '''
@@ -435,26 +438,6 @@ class Embedder:
         mol.pivots = self._get_pivots(mol)
 
         for c, _ in enumerate(mol.atomcoords):
-
-            # if len(mol.pivots[c]) == 2:
-            # # reactive atoms have one and two centers,
-            # # respectively. Apply bridging carboxylic acid correction.
-            #     symbols = [atom.symbol for atom in mol.reactive_atoms_classes_dict[c].values()]
-            #     if 'H' in symbols:
-            #         if ('O' in symbols) or ('S' in symbols):
-            #             if max([norm_of(p.pivot)/self.options.shrink_multiplier for p in mol.pivots[c]]) < 4.5:
-            #                 class_types = [str(atom) for atom in mol.reactive_atoms_classes_dict[c].values()]
-            #                 if 'Single Bond' in class_types and 'Ketone' in class_types:
-            #                 # if we have a bridging acid, remove the longest of the two pivots,
-            #                 # as it would lead to weird structures
-            #                     norms = np.linalg.norm([p.pivot for p in mol.pivots[c]], axis=1)
-            #                     for sample in norms:
-            #                         to_keep = [i for i in norms if sample >= i]
-            #                         if len(to_keep) == 1:
-            #                             mask = np.array([i in to_keep for i in norms])
-            #                             mol.pivots[c] = mol.pivots[c][mask]
-            #                             break
-
             if self.options.suprafacial:
                 if len(mol.pivots[c]) == 4:
                 # reactive atoms have two centers each.
@@ -472,7 +455,7 @@ class Embedder:
             # Bond centers) then remove all pivots that are not the shortest. This ensures
             # the "suprafaciality" to the pivots used, preventing the embed of
             # impossible bonding structures
-            if mol.sp3_sigmastar:
+            if hasattr(mol, 'sp3_sigmastar') and mol.sp3_sigmastar:
                 pivots_lengths = [norm_of(pivot.pivot) for pivot in mol.pivots[c]]
                 shortest_length = min(pivots_lengths)
                 mask = np.array([(i - shortest_length) < 1e-5 for i in pivots_lengths])
@@ -484,6 +467,10 @@ class Embedder:
         (Cyclical embed) Function that yields the molecule pivots. Called by _set_pivots
         and in pre-conditioning (deforming, bending) the molecules in ase_bend.
         '''
+
+        if not hasattr(mol, 'reactive_atoms_classes_dict'):
+            return []
+
         pivots_list = [[] for _ in mol.atomcoords]
 
         for c, _ in enumerate(mol.atomcoords):
@@ -669,7 +656,7 @@ class Embedder:
                 # number indexing in the TS context
 
         else:
-            raise InputError('Bad input - too many/few molecules specified (one to three required).')
+            raise InputError('Bad input - could not set up an appropriate embed type (too many structures specified?)')
 
         if self.options.shrink:
             for molecule in self.objects:
@@ -681,13 +668,10 @@ class Embedder:
         if self.options.rmsd is None:
             self.options.rmsd = 0.25
 
-            # if sum(self.ids) < 50:
-            #     self.options.rmsd = 0.25
-            # small molecules need smaller RMSD threshold
-
         if p:
             self.candidates = self._get_number_of_candidates()
-            self.log(f'--> Setup performed correctly. {self.candidates} candidates will be generated.\n')
+            _s = self.candidates or 'Many'
+            self.log(f'--> Setup performed correctly. {_s} candidates will be generated.\n')
 
     def _get_number_of_candidates(self):
         '''
@@ -704,6 +688,9 @@ class Embedder:
                                      for conf, _ in enumerate(mol.atomcoords)]) 
                                 for mol in self.objects]))
                       )
+        
+        if self.embed == 'multiembed':
+            return 0
 
         candidates = 2*len(self.systematic_angles)*np.prod([len(mol.atomcoords) for mol in self.objects])
         
@@ -839,7 +826,7 @@ class Embedder:
         self.logfile.close()
         os.remove(f'TSCoDe_{self.stamp}.log')
 
-        quit()
+        sys.exit()
 
     def scramble(self, array, sequence):
         return np.array([array[s] for s in sequence])
@@ -921,3 +908,14 @@ class Embedder:
         except Exception as _e:
             logging.exception(_e)
             raise _e
+        
+    def normal_termination(self):
+        '''
+        Terminate the run, printing the total time and a quote.
+
+        '''
+        self.log(f'\n--> TSCoDe normal termination: total time {time_to_string(time.perf_counter() - self.t_start_run, verbose=True)}.')
+        
+        self.write_quote()
+        self.logfile.close()
+        sys.exit()

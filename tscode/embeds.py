@@ -172,7 +172,7 @@ def string_embed_parallel(embedder):
 
 
 
-    embedder.log(f'\n--> Performing string embed ({pretty_num(embedder.candidates)} candidates, parallel on up to {embedder.options.procs} cores)')
+    embedder.log(f'\n--> Performing string embed ({pretty_num(embedder.candidates)} candidates, parallel on up to {embedder.procs} cores)')
 
     conf_number = [len(mol.atomcoords) for mol in embedder.objects]
     conf_indices = cartesian_product(*[np.array(range(i)) for i in conf_number])
@@ -965,7 +965,7 @@ def dihedral_embed(embedder):
                                                     mol.atomnos,
                                                     embedder.options.calculator,
                                                     method=embedder.options.theory_level,
-                                                    procs=embedder.options.procs,
+                                                    procs=embedder.procs,
                                                     solvent=embedder.options.solvent
                                                 )
 
@@ -1003,7 +1003,7 @@ def dihedral_embed(embedder):
     embedder.atomnos = mol.atomnos
     embedder.similarity_refining()
     embedder.write_structures('poses', indices=embedder.objects[0].reactive_indices, relative=False, extra='(barrier height)')
-    embedder.write_vmd(indices=embedder.objects[0].reactive_indices)
+    # embedder.write_vmd(indices=embedder.objects[0].reactive_indices)
     embedder.normal_termination()
 
 def get_embed(mols, conf_ids):

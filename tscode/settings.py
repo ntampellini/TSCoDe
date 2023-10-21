@@ -65,12 +65,11 @@ COMMANDS = {
 }
 # Command with which calculators will be called from the command line
 
-PROCS = 8
-# Number of processors (cores) to be used by ORCA and/or Gaussian
+PROCS = 0
+# Number of processors (cores) to be used by XTB, ORCA and/or Gaussian (0 is auto)
 
-THREADS = 1
-# Number of threads for concurrent geometry optimizations
+THREADS = 0
+# Number of threads for concurrent geometry optimizations (0 is auto)
 
 MEM_GB = 8
-# Memory allocated for each job (Gaussian only). If you experience problems
-# in running Gaussian calculation, try setting PROCS to 1 and MEM_GB to 0.5.
+# Memory allocated for each job (Gaussian/ORCA)

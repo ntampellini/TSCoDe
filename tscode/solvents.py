@@ -16,6 +16,8 @@ GNU General Public License for more details.
 
 '''
 
+import sys
+
 xtb_solvents = [
     'acetone',
     'acetonitrile',
@@ -113,6 +115,6 @@ def get_solvent_line(solvent, calculator, theory_level):
         for s in epsilon_dict:
             print('    '+s)
         print('Please note that not all solvents will work with all calculators.')
-        quit()
+        sys.exit()
 
     return new_theory_level[calculator](theory_level, solvent)

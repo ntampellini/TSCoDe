@@ -63,7 +63,6 @@ def optimize(
             title='temp',
             check=True, 
             logfunction=None,
-            override_func=None,
             **kwargs,
             ):
     '''
@@ -94,10 +93,11 @@ def optimize(
 
     constrained_indices = np.array(()) if constrained_indices is None else constrained_indices
 
-    opt_func = opt_funcs_dict[calculator] if override_func is None else override_func
+    opt_func = opt_funcs_dict[calculator]
 
     t_start = time.perf_counter()
 
+    # success checks that calculation had a normal termination
     opt_coords, energy, success = opt_func(coords,
                                             atomnos,
                                             constrained_indices=constrained_indices,
@@ -110,8 +110,7 @@ def optimize(
                                             title=title,
                                             charge=charge,
                                             **kwargs)
-    # success checks that calculation had a normal termination
-
+    
     elapsed = time.perf_counter() - t_start
 
     if success:
@@ -440,7 +439,7 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indices, constrained_indices
                             embedder.options.theory_level,
                             constrained_indices=constrained_indices,
                             mols_graphs=embedder.graphs,
-                            procs=embedder.options.procs,
+                            procs=embedder.procs,
                             max_newbonds=embedder.options.max_newbonds,
                             )
 
@@ -482,7 +481,7 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indices, constrained_indices
                                                             embedder.options.theory_level,
                                                             constrained_indices=constrained_indices,
                                                             mols_graphs=embedder.graphs,
-                                                            procs=embedder.options.procs,
+                                                            procs=embedder.procs,
                                                             max_newbonds=embedder.options.max_newbonds,
                                                             )
 
@@ -531,7 +530,7 @@ def opt_linear_scan(embedder, coords, atomnos, scan_indices, constrained_indices
                                             embedder.options.theory_level,
                                             constrained_indices=constrained_indices,
                                             mols_graphs=embedder.graphs,
-                                            procs=embedder.options.procs,
+                                            procs=embedder.procs,
                                             max_newbonds=embedder.options.max_newbonds,
                                             check=False,
                                             )
@@ -595,27 +594,20 @@ def scan_peak_present(energies) -> bool:
         return True
     return False
 
-def fitness_check(embedder, coords) -> bool:
+def fitness_check(coords, constraints, targets, threshold) -> bool:
     '''
     Returns True if the strucure respects
-    the imposed pairings.
+    the imposed pairings specified in constraints.
+    targets: target distances for each constraint
+    threshold: cumulative threshold to reject a structure (A)
+
     '''
-    if hasattr(embedder, 'pairing_dists'):
-        for letter, pairing in embedder.pairings_table.items():
-            
-            if letter in ('a', 'b', 'c'):
-                i1, i2 = pairing
-                dist = norm_of(coords[i1]-coords[i2])
-                target = embedder.pairing_dists.get(letter)
-
-                if target is not None and abs(target-dist) > 0.05:
-                    return False
-
-            else:
-                if dist > 2.5:
-                    return False
+    error = 0
+    for (a, b), target in zip(constraints, targets):
+        if target is not None:
+            error += (norm_of(coords[a]-coords[b]) - target)
                     
-    return True
+    return error < threshold
 
 def _refine_structures(structures,
                        atomnos,
@@ -654,7 +646,7 @@ def _refine_structures(structures,
             structures[i] = opt_coords
             energies.append(energy)
         else:
-            energies.append(np.inf)
+            energies.append(1E10)
 
     loadbar(len(structures), len(structures), f'{loadstring} {len(structures)}/{len(structures)} ')
     energies = np.array(energies)

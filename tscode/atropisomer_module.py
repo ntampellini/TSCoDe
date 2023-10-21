@@ -267,7 +267,8 @@ def ase_torsion_TSs(embedder,
             plt.legend()
             plt.xlabel(f'Dihedral Angle {tuple(indices)}')
             plt.ylabel('Energy (kcal/mol)')
-            pickle.dump(fig, open(f'{title}{direction}_plt.pickle', 'wb'))
+            with open(f'{title}{direction}_plt.pickle', 'wb') as _f:
+                pickle.dump(fig, _f)
             plt.savefig(f'{title}{direction}_plt.svg')
 
     ts_structures = np.array(ts_structures)

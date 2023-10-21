@@ -63,7 +63,7 @@ def _get_anions(
                                                 coords,
                                                 atomnos,
                                                 calculator=embedder.options.calculator,
-                                                procs=embedder.options.procs,
+                                                procs=embedder.procs,
                                                 solvent=solvent,
                                                 max_newbonds=embedder.options.max_newbonds,
                                                 title=f'temp_anion{s}',
@@ -115,7 +115,7 @@ def _get_cations(
                                                 coords,
                                                 cation_atomnos,
                                                 calculator=embedder.options.calculator,
-                                                procs=embedder.options.procs,
+                                                procs=embedder.procs,
                                                 solvent=solvent,
                                                 max_newbonds=embedder.options.max_newbonds,
                                                 title=f'temp_cation{s}',
@@ -182,7 +182,7 @@ def pka_routine(filename, embedder, search=True):
                                         mol.atomnos, 
                                         calculator=embedder.options.calculator,
                                         method=embedder.options.theory_level,
-                                        procs=embedder.options.procs,
+                                        procs=embedder.procs,
                                         loadstring='Optimizing conformer'
                                     )
 

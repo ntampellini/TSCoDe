@@ -22,15 +22,21 @@ Here is a list of the currently available operators:
    constraints are rotated (see examples). Generates a new ``molecule_confs.xyz``
    file with the unoptimized conformers.
 
--  ``rsearch>`` - Performs a random torsion-based conformational
-   search on the specified input structure. Only the bonds that do not brake imposed
-   constraints are rotated (see examples). Generates a new ``molecule_confs.xyz``
-   file with the unoptimized conformers.
-
 -  ``csearch_hb>`` - Analogous to ``csearch>``, but recognizes the hydrogen bonds present
    in the input structure and only rotates bonds that keep those hydrogen bonds in place.
    Useful to restrict the conformational space that is explored, and ensures that the final
    poses possess those initial hydrogen bonds.
+
+-  ``rsearch>`` - Performs a random torsion-based conformational
+   search on the specified input structure (fast but not the most accurate). Only the bonds that do not brake imposed
+   constraints are rotated (see examples). Generates a new ``molecule_confs.xyz``
+   file with the unoptimized conformers.
+
+- ``rsearch>`` - Performs a metadynamics-based conformational
+   search on the specified input structure through `CREST <https://crest-lab.github.io/crest-docs/>`__
+   (slower but best). It is letter constraints-aware
+   and will constrain the specified distances. Generates a new ``molecule_mtd_confs.xyz``
+   file with the crest-optimized conformers. The default level is GFN2//GFN-FF (see CREST docs).
 
 -  ``neb>`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
    if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
@@ -74,6 +80,8 @@ one is accepted, like in ``DIST``.
 
 -  **CALC** - Overrides default calculator in ``settings.py``.
    (Gaussian, ORCA, XTB, Syntax: ``CALC=ORCA``
+
+-  **CHARGE** - Specify the charge to be used in optimizations.
 
 -  **CHECK** - Visualize the input molecules through the ASE GUI, to
    check orbital positions or conformers reading faults. *(not available
@@ -124,6 +132,8 @@ one is accepted, like in ``DIST``.
 -  **FFOPT** - Manually turn on ``FFOPT=ON`` or off ``FFOPT=OFF`` the force
    field optimization step, overriding the value in ``settings.py``.
 
+-  **IMAGES** - Number of images to be used in NEB, ``neb>`` and ``mep_relax>`` jobs.
+
 -  **KCAL** - Dihedral embed: when looking for energy maxima scan
    points in order to run berny optimization, ignore scan peaks below
    this threshold value (default is 5 kcal/mol). All other embeds: trim
@@ -144,15 +154,15 @@ one is accepted, like in ``DIST``.
    or by manually modifying ``settings.py``.
    .. Here ( should be written as [ in input, or it will crash (temporary fix?)
 
--  **MTD** - Augments the conformational sampling of transition
-   state candidates through the `XTB metadynamics
-   implementation <https://xtb-docs.readthedocs.io/en/latest/mtd.html>`__
-   (XTB calculator only, experimental).
+.. -  **MTD** - Augments the conformational sampling of transition
+..    state candidates through the `XTB metadynamics
+..    implementation <https://xtb-docs.readthedocs.io/en/latest/mtd.html>`__
+..    (XTB calculator only, experimental).
 
--  **NCI** - Estimate and print non-covalent interactions present in
-   the generated poses (experimental).
+.. -  **NCI** - Estimate and print non-covalent interactions present in
+..    the generated poses (experimental).
 
--  **NEB** - Perform an automatical climbing image nudged elastic
+-  **NEB** - Perform an automatic climbing image nudged elastic
    band (CI-NEB) TS search after the partial optimization step,
    inferring reagents and products for each generated TS pose. For dihedral
    embeds, (dihedral angle scans), scan points around the energy
@@ -170,9 +180,9 @@ one is accepted, like in ``DIST``.
    implementation is not always reliable, and it is provided more as
    an experimenting tool than a definitive feature.
 
--  **NEWBONDS** - Manually specify the maximum number of "new bonds"
-   that a TS structure candidate can have to be retained and not to be
-   considered scrambled. Default is 0. Syntax: ``NEWBONDS=0``
+.. -  **NEWBONDS** - Manually specify the maximum number of "new bonds"
+..    that a TS structure candidate can have to be retained and not to be
+..    considered scrambled. Default is 0. Syntax: ``NEWBONDS=0``
 
 -  **NOOPT** - Skip the optimization steps, directly writing
    structures to file after compenetration and similarity pruning.
@@ -185,8 +195,8 @@ one is accepted, like in ``DIST``.
 -  **PKA** - Specify the reference pKa for a compound in multimolecular
    pKa calculation runs. Syntax: ``PKA(mol.xyz)=11``
 
--  **PROCS** - Manually set the number of cores to be used in a
-   parallel ORCA calculation, overriding the default value in
+-  **PROCS** - Manually set the number of cores to be used in each
+   higher level (non-force field) calculation, overriding the value in
    ``settings.py``. Syntax: ``PROCS=32``
 
 -  **REFINE** - Same as calling ``refine>`` on a multimolecular file. 
@@ -236,8 +246,11 @@ one is accepted, like in ``DIST``.
    cyclical TSs. Thought for Diels-Alder and other cycloaddition
    reactions.
 
--  **TS** - Uses various scans/saddle algorithms to locate the TS.
-   Experimental.
+-  **THREADS** - Change the number of concurrent higher level (non-force field)
+   optimizations. Your machine should provide at least PROCS*THREADS cores - if
+   not, a warning message is displayed right after printing the banner.
+   Default value is 1. Force field optimization is parallelized automatically.
+   Syntax: ``THREADS=4``
 
--  **TSCODEPROCS** - Change the number of maximum python parallel
-   processes (default is 4). Syntax: ``TSCODEPROCS=1``
+.. -  **TS** - Uses various scans/saddle algorithms to locate the TS.
+..    Experimental.
