@@ -32,7 +32,7 @@ Here is a list of the currently available operators:
    constraints are rotated (see examples). Generates a new ``molecule_confs.xyz``
    file with the unoptimized conformers.
 
-- ``rsearch>`` - Performs a metadynamics-based conformational
+-  ``mtd_csearch>``/ ``mtd>`` - Performs a metadynamics-based conformational
    search on the specified input structure through `CREST <https://crest-lab.github.io/crest-docs/>`__
    (slower but best). It is letter constraints-aware
    and will constrain the specified distances. Generates a new ``molecule_mtd_confs.xyz``
