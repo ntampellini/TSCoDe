@@ -171,6 +171,7 @@
 - Reinstated fitness_refining after every optimization step, which is now based on a cumulative deviation from the imposed pairing distances.
 
 ## 0.4.1 (October 26 2023)
+### **CHANGED CONSTRAINTS SPECIFICATION (NON-BACKWARDS COMPATIBLE)**
 ### RunEmbedding refactoring, stability improvements, internal cleanup of old code
 ### "Dihedral embeds" are now part of scan>
 - Various small fixes for stability purposes and printout beautification.
@@ -182,6 +183,10 @@
 - Renamed mtd_csearch> to mtd_search> (solves a bug where csearch> was called instead).
 - Moved RunEmbedding back to embedder.py, and cleaned up the class inheritance. This allowed to have less redundant and tidier code at the expense of having a larger embedder.py file (~2300 lines).
 - Expanded dump_status to reflect the different constraints at different steps of optimization (all constraints or just fixed). Also added the target distance for each in the printout.
+- **CHANGED CONSTRAINTS SPECIFICATION (NON-BACKWARDS COMPATIBLE)** - now fixed constraints are specified with UPPERCASE letters instead of a/b/c, and interaction constraints are specified with lowercase letters instead of x/y/z. Expands the number of each type of constraint that is possible to specify (from 3 to 26).
+<!-- 
+## 0.4.2 (WIP)
+- Significatively reduced memory usage of the prune_conformers functions, avoiding using the wasteful similarity_mat for a lighter, faster set() [TESTING] -->
 <!-- - Introduced compatibility of SADDLE and NEB keywords for scan> runs with both 2 indices (distance scans) and 4 indices (distance scans) -->
 
 <!-- - ... mep_relax> BETA
