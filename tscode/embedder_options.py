@@ -122,6 +122,9 @@ keywords_list = [
                                 # reactive atom pairs is achieved as for standard runs by spring constraints
                                 # during MOPAC/ORCA optimization.
 
+            'SIMPLEORBITALS', # Override the automatic orbital assignment, using "Single" type orbitals for
+                                # every reactive atom
+
             'SOLVENT',          # set the solvation model
 
             'STEPS',          # Manually specify the number of steps to be taken in scanning rotations.
@@ -151,8 +154,13 @@ class Options:
 
     def __init__(self):
 
-        self.rotation_range = 90
-        self.rotation_steps = None # Set later by the _setup() function, based on embed type
+        # only used by cyclical embeds, can be set here
+        self.rotation_range = 45
+
+        # Set later by the _setup() function based on embed type,
+        # since it is used by both cyclical and string embeds
+        self.rotation_steps = None
+        
         self.rmsd = 0.25
         self.rigid = False
         self.max_confs = 1000
@@ -181,12 +189,14 @@ class Options:
         self.shrink_multiplier = 1
         self.metadynamics = False
         self.suprafacial = False
+        self.simpleorbitals = False
         self.only_refined = False
         # self.keep_enantiomers = False
         self.double_bond_protection = False
         self.keep_hb = False
         self.csearch_aug = False
         self.dryrun = False
+        self.checkpoint_frequency = 20
 
         self.fix_angles_in_deformation = False
         # Not possible to set manually through a keyword.
@@ -298,7 +308,7 @@ class OptionSetter:
             # set this only if user did not already specify a value
             self.embedder.options.rmsd = 0.25 
 
-        self.embedder.objects[0].compute_orbitals()
+        self.embedder.objects[0].compute_orbitals(override='Single' if self.options.simpleorbitals else None)
 
     def bypass(self, options, *args):
         options.bypass = True
@@ -431,6 +441,9 @@ class OptionSetter:
 
     def check(self, options, *args):
         options.check_structures = True
+
+    def simpleorbitals(self, options, *args):
+        options.simpleorbitals = True
 
     def kcal(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('KCAL')]

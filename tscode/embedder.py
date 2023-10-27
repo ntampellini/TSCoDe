@@ -146,7 +146,8 @@ class Embedder:
                     if hasattr(mol, 'reactive_atoms_classes_dict'):
                         if len(mol.reactive_atoms_classes_dict[0]) > 0:
                             mol.write_hypermolecule()
-                self.log(f'--> DEBUG: written hypermolecule files ({len(self.objects)})\n')
+                            self.log(f'--> DEBUG: written hypermolecule file for ({mol.name})')
+                self.log()
 
             if self.options.check_structures:
                 self._inspect_structures()
@@ -286,7 +287,7 @@ class Embedder:
             for i, mol in enumerate(self.objects):
 
                 if not hasattr(mol, 'reactive_atoms_classes_dict'):
-                    mol.compute_orbitals()
+                    mol.compute_orbitals(override='Single' if self.options.simpleorbitals else None)
 
                 for c, _ in enumerate(mol.atomcoords):
                     for r_atom in mol.reactive_atoms_classes_dict[c].values():
@@ -308,6 +309,21 @@ class Embedder:
 
             fragments = line.split('>')[-1].split()[1:]
             # remove operators (if present) and the molecule name, keeping pairs only ['2a','5b']
+
+            # store custom variables
+            for fragment in fragments:
+                if '=' in fragment:
+                    parts = fragment.split('=')
+
+                    if len(parts) != 2:
+                        raise InputError(f'Error reading attribute \'{fragment}\'. Syntax: \'var=value\'')
+                    
+                    attr_name, attr_value = parts
+                    setattr(self.objects[i], attr_name, attr_value)
+
+                    fragments.remove(fragment)
+
+                    self.log(f'--> Set attribute \'{attr_name}\' of {self.objects[i]} to \'{attr_value}\'.')
 
             unlabeled = []
             pairings = []
@@ -417,7 +433,7 @@ class Embedder:
         '''
         for mol in self.objects:
             if not hasattr(mol, 'reactive_atoms_classes_dict'):
-                mol.compute_orbitals()
+                mol.compute_orbitals(override='Single' if self.options.simpleorbitals else None)
 
         self.pairing_dists = {piece.split('=')[0] : float(piece.split('=')[1]) for piece in orb_string.split(',')}
 
@@ -572,7 +588,7 @@ class Embedder:
             if len(mol.reactive_indices) == 2:
 
                 self.embed = 'monomolecular'
-                mol.compute_orbitals()
+                mol.compute_orbitals(override='Single' if self.options.simpleorbitals else None)
                 self._set_pivots(mol)
 
                 self.options.only_refined = True
@@ -608,7 +624,7 @@ class Embedder:
                 else:
                     self.embed = 'chelotropic'
                     for mol in self.objects:
-                        mol.compute_orbitals()
+                        mol.compute_orbitals(override='Single' if self.options.simpleorbitals else None)
                         for c, _ in enumerate(mol.atomcoords):
                             for index, atom in mol.reactive_atoms_classes_dict[c].items():
                                 orb_dim = norm_of(atom.center[0]-atom.coord)
@@ -616,7 +632,7 @@ class Embedder:
                     # Slightly enlarging orbitals for chelotropic embeds, or they will
                     # be generated a tad too close to each other for how the cyclical embed works          
 
-                self.options.rotation_steps = 9
+                self.options.rotation_steps = 5
 
                 if hasattr(self.options, 'custom_rotation_steps'):
                 # if user specified a custom value, use it.
@@ -637,7 +653,7 @@ class Embedder:
 
                 for mol in self.objects:
                     if not hasattr(mol, 'reactive_atoms_classes_dict'):
-                        mol.compute_orbitals()
+                        mol.compute_orbitals(override='Single' if self.options.simpleorbitals else None)
 
                 if hasattr(self.options, 'custom_rotation_steps'):
                 # if user specified a custom value, use it.
@@ -645,11 +661,16 @@ class Embedder:
 
                 self.systematic_angles = [n * 360 / self.options.rotation_steps for n in range(self.options.rotation_steps)]
 
-            elif multiembed:
-                # Complex, unspecified embed type - will explore many possibilities concurrently
-                self.embed = 'multiembed' 
-   
             else:
+                self.embed = 'error'
+
+            if multiembed:
+                # Complex, unspecified embed type - will explore many possibilities concurrently
+                self.embed = 'multiembed'
+                for mol in self.objects:
+                    mol.compute_orbitals(override='Single' if self.options.simpleorbitals else None)
+
+            if self.embed == 'error':
                 raise InputError(('Bad input - The only molecular configurations accepted are:\n' 
                                   '1) One molecule with two reactive centers (monomolecular embed)\n'
                                   '2) One molecule with four indices(dihedral embed)\n'
@@ -668,17 +689,18 @@ class Embedder:
         else:
             raise InputError('Bad input - could not set up an appropriate embed type (too many structures specified?)')
 
-        if self.options.shrink:
-            for molecule in self.objects:
-                molecule._scale_orbs(self.options.shrink_multiplier)
-                self._set_pivots(molecule)
-            self.options.only_refined = True
-        # SHRINK - scale orbitals and rebuild pivots
-
-        # if self.options.rmsd is None:
-        #     self.options.rmsd = 0.25
-
+        # Only call this part if it is not an early call
         if p:
+            if self.options.shrink:
+                for molecule in self.objects:
+                    molecule._scale_orbs(self.options.shrink_multiplier)
+                    self._set_pivots(molecule)
+                self.options.only_refined = True
+            # SHRINK - scale orbitals and rebuild pivots
+
+            # if self.options.rmsd is None:
+            #     self.options.rmsd = 0.25
+
             self.candidates = self._get_number_of_candidates()
             _s = self.candidates or 'Many'
             self.log(f'--> Setup performed correctly. {_s} candidates will be generated.\n')
@@ -788,7 +810,7 @@ class Embedder:
                     self.objects[index] = Hypermolecule(outname, reactive_indices)
 
                     # calculating where the new orbitals are
-                    self.objects[index].compute_orbitals()
+                    self.objects[index].compute_orbitals(override='Single' if self.options.simpleorbitals else None)
 
                     # updating orbital size if not default
                     if hasattr(self, 'orb_string'):
@@ -844,7 +866,8 @@ class Embedder:
     def get_pairing_dist_from_letter(self, letter):
         '''
         Get constrained distance between paired reactive
-        atoms, accessed via the associated constraint letter
+        atoms, accessed via the associated constraint letter.
+        The distance returned is the final one (not affected by SHRINK)
         '''
 
         if hasattr(self, 'pairing_dists') and self.pairing_dists.get(letter) is not None:
@@ -864,6 +887,9 @@ class Embedder:
 
                     # for other runs, it is just one atom per molecule per letter
                     d += self.objects[mol_index].get_orbital_length(r_atom_index)
+
+            if self.options.shrink:
+                d /= self.options.shrink_multiplier
 
             return d
 
@@ -977,20 +1003,23 @@ class Embedder:
         
         if hasattr(self, "structures"):
             if len(self.structures) > 0 and hasattr(self, "energies"):
-                self.log(f'\n--> Energies of output structures ({self.options.theory_level}/{self.options.calculator}{f"/{self.options.solvent}" if self.options.solvent is not None else ""})\n')
-
                 self.energies = self.energies if len(self.energies) <= 50 else self.energies[0:50]
 
-                self.log(f'> #                Rel. E.           RMSD')
-                self.log('-------------------------------------------')
-                for i, energy in enumerate(self.energies-self.energies[0]):
+                # Don't write structure info if there is only one, or all are zero
+                if np.max(self.energies - np.min(self.energies)) > 0:
 
-                    rmsd_value = '(ref)' if i == 0 else str(round(kabsch_rmsd(self.structures[i], self.structures[0], translate=True), 2))+' Å'
+                    self.log(f'\n--> Energies of output structures ({self.options.theory_level}/{self.options.calculator}{f"/{self.options.solvent}" if self.options.solvent is not None else ""})\n')
 
-                    self.log('> Candidate {:2}  :  {:4} kcal/mol  :  {}'.format(
-                                                                        str(i+1),
-                                                                        round(energy, 2),
-                                                                        rmsd_value))
+                    self.log(f'> #                Rel. E.           RMSD')
+                    self.log('-------------------------------------------')
+                    for i, energy in enumerate(self.energies-self.energies[0]):
+
+                        rmsd_value = '(ref)' if i == 0 else str(round(kabsch_rmsd(self.structures[i], self.structures[0], translate=True), 2))+' Å'
+
+                        self.log('> Candidate {:2}  :  {:4} kcal/mol  :  {}'.format(
+                                                                            str(i+1),
+                                                                            round(energy, 2),
+                                                                            rmsd_value))
 
         self.write_quote()
         self.logfile.close()
@@ -1208,7 +1237,12 @@ class RunEmbedding(Embedder):
         before = len(self.structures)
         attr = ('constrained_indices', 'energies', 'exit_status')
 
-        if tfd and hasattr(self, 'embed_graph'):
+        if (
+            tfd and 
+            len(self.objects) > 1 and 
+            hasattr(self, 'embed_graph') and
+            self.embed_graph.is_single_molecule
+        ):
 
             t_start = time.perf_counter()
 
@@ -1368,9 +1402,9 @@ class RunEmbedding(Embedder):
                 else:
                     self.energies[i] = 1E10
 
-                ### Update checkpoint every 20 optimized structures, and give an estimate of the remaining time
-
-                if i % 20 == 19:
+                ### Update checkpoint every (20*max_workers) optimized structures, and give an estimate of the remaining time
+                chk_freq = int(self.avail_cpus/2) * self.options.checkpoint_frequency
+                if i % chk_freq == chk_freq-1:
 
                     with open(self.outname, 'w') as f:        
                         for j, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
@@ -1520,7 +1554,7 @@ class RunEmbedding(Embedder):
         processes = []
         cum_time = 0
 
-        with ProcessPoolExecutor(max_workers=self.threads) as executor:
+        with ProcessPoolExecutor(max_workers=int(self.avail_cpus/4)) as executor:
 
             opt_func = opt_funcs_dict[self.options.calculator]
 
@@ -1584,9 +1618,9 @@ class RunEmbedding(Embedder):
                 else:
                     self.energies[i] = 1E10
 
-                ### Update checkpoint every 20 optimized structures, and give an estimate of the remaining time
-
-                if i % 20 == 19:
+                ### Update checkpoint every (20*max_workers) optimized structures, and give an estimate of the remaining time
+                chk_freq = int(self.avail_cpus/4) * self.options.checkpoint_frequency
+                if i % chk_freq == chk_freq-1:
 
                     with open(self.outname, 'w') as f:        
                         for j, (structure, status, energy) in enumerate(zip(align_structures(self.structures),

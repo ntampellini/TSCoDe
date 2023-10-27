@@ -37,6 +37,8 @@ Here is a list of the currently available operators:
    (slower but best). It is letter constraints-aware
    and will constrain the specified distances. Generates a new ``molecule_mtd_confs.xyz``
    file with the crest-optimized conformers. The default level is GFN2//GFN-FF (see CREST docs).
+   It is also possible to pass a charge attribute for the molecule via molecule-line 'charge' attribute
+   (mtd> molecule.xyz 4A 8A charge=-1).
 
 -  ``neb>`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
    if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
@@ -198,7 +200,7 @@ one is accepted, like in ``DIST``.
 
 -  **ROTRANGE** - Only applies to "cyclical"/"chelotropic" embeds.
    Manually specify the rotation range to be explored around the
-   structure pivot. Default is 90. Syntax: ``ROTRANGE=90``
+   structure pivot. Default is 45. Syntax: ``ROTRANGE=90``
 
 -  **SADDLE** - After embed and refinement, optimize structures to the 
    closest first order saddle point using the `Sella <https://github.com/zadorlab/sella>`__ library through ASE.
@@ -215,13 +217,18 @@ one is accepted, like in ``DIST``.
    time-consuming the step of distance refinement is going to be. Values
    from 1.5 to 3 are likely to do what this keyword was thought for.
 
--  **STEPS** - Does not apply to "monomolecular" embeds. Manually
+-  **SIMPLEORBITALS** - Override the automatic orbital assignment, using "Single"
+   type orbitals for every reactive atom (faster embeds, less candidates). Ideal
+   in conjuction with SHRINK to make up for the less optimal orbital positions.
+
+-  **STEPS** - Applies to "string", "cyclical" and "chelotropic" embeds. Manually
    specify the number of steps to be taken in scanning rotations. For
    "string" embeds, the range to be explored is the full 360°, and the
    default ``STEPS=24`` will perform 15° turns. For "cyclical" and
    "chelotropic" embeds, the rotation range to be explored is
    +-\ ``ROTRANGE`` degrees. Therefore the default values, equivalent to
-   ``ROTRANGE=90 STEPS=9``, will perform nine 20 degrees turns.
+   ``ROTRANGE=45 STEPS=5``, will sample five equally spaced positions between 
+   +45 and -45 degrees (going through zero).
 
 -  **SUPRAFAC** - Only retain suprafacial orbital configurations in
    cyclical TSs. Thought for Diels-Alder and other cycloaddition

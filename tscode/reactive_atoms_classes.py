@@ -609,6 +609,18 @@ atom_type_dict = {
             'Cl1': Single,
             'Br1': Single,
             'I1' : Single,
+
+            ############### Name associations
+
+            'Single' : Single,
+            'Sp2' : Sp2,
+            'Sp3' : Sp3,
+            'Ether' : Ether,
+            'Ketone' : Ketone,
+            'Imine' : Imine,
+            'Sp_or_carbene' : Sp_or_carbene,
+            'Metal' : Metal,
+
              }
 
 metals = (
@@ -630,10 +642,15 @@ for metal in metals:
         bonds = str(bonds)
         atom_type_dict[metal+bonds] = Metal
 
-def get_atom_type(graph, index):
+def get_atom_type(graph, index, override=None):
     '''
     Returns the appropriate class to represent
-    the atom with the given index on the graph
+    the atom with the given index on the graph.
+    If override is not None, returns the class
+    with that name.
     '''
+    if override is not None:
+        return atom_type_dict[override]
+
     nb = neighbors(graph, index)
     return atom_type_dict[pt[graph.nodes[index]['atomnos']].symbol + str(len(nb))]

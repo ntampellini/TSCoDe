@@ -17,7 +17,7 @@ GNU General Public License for more details.
 '''
 
 import os
-import pickle
+# import pickle
 import time
 from subprocess import DEVNULL, STDOUT, check_call
 
@@ -32,11 +32,13 @@ from tscode.errors import InputError
 from tscode.graph_manipulations import graphize
 from tscode.hypermolecule_class import align_structures
 from tscode.mep_relaxer import ase_mep_relax
-from tscode.optimization_methods import _refine_structures, optimize
+from tscode.optimization_methods import (_refine_structures, optimize,
+                                         prune_by_moment_of_inertia)
 from tscode.pka import pka_routine
+from tscode.python_functions import prune_conformers_rmsd, prune_conformers_tfd
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
-from tscode.torsion_module import csearch
+from tscode.torsion_module import csearch, prune_conformers_rmsd_rot_corr, _get_quadruplets
 from tscode.utils import (get_scan_peak_index, read_xyz,
                           suppress_stdout_stderr, time_to_string, write_xyz)
 
@@ -447,6 +449,9 @@ def mtd_search_operator(filename, embedder):
     mol = next((mol for mol in embedder.objects if mol.name == filename))
     # load molecule to be optimized from embedder
 
+    if not hasattr(mol, 'charge'):
+        mol.charge = 0
+
     assert len(mol.atomcoords) == 1, 'mtd_search> operator works with a single structure as input.'
 
     logfunction = embedder.log
@@ -456,27 +461,60 @@ def mtd_search_operator(filename, embedder):
                     f'{f"/{embedder.options.solvent.upper()}" if embedder.options.solvent is not None else ""} ' +
                     f'metadynamic conformational search on {filename} via CREST (2 cores, {max_workers} threads)'))
     
-    t_start = time.perf_counter()
+    if len(mol.atomcoords) > 1:
+        embedder.log(f'Requested conformational search on multimolecular file - will do\n' +
+                      'an individual search from each conformer (might be time-consuming).')
 
-    new_structures = crest_mtd_search(
-                                        mol.atomcoords[0],
+    t_start = time.perf_counter()
+    conformers = []
+    for i, coords in enumerate(mol.atomcoords):
+
+        t_start_conf = time.perf_counter()
+
+        conf_batch = crest_mtd_search(
+                                        coords,
                                         mol.atomnos,
                                         constrained_indices=_get_internal_constraints(filename, embedder),
                                         solvent=embedder.options.solvent,
-                                        charge=embedder.options.charge,
+                                        charge=mol.charge,
                                         title=mol.rootname,
                                         procs=2,
                                         threads=max_workers,
                                     )
 
-    embedder.log(f'--> Generated {len(new_structures)} conformers in {time_to_string(time.perf_counter()-t_start)}')
+        conformers.extend(conf_batch)
 
+        elapsed = time.perf_counter() - t_start_conf
+        embedder.log(f'  Conformer {i+1:2}/{len(mol.atomcoords):2} - generated {len(conf_batch)} structures in {time_to_string(elapsed)}')
+
+    conformers = np.concatenate(conformers)
+    conformers = conformers.reshape(-1, mol.atomnos.shape[0], 3)
+    # merging structures from each run in a single array
+
+    embedder.log(f'  MTD conformational search: Generated {len(conformers)} conformers in {time_to_string(time.perf_counter()-t_start)}')
+    before = len(conformers)
+
+    ### SIMILARITY PRUNING: TFD
+    quadruplets = _get_quadruplets(mol.graph)
+    conformers, _ = prune_conformers_tfd(conformers, quadruplets)
+
+    ### MOI
+    conformers, _ = prune_by_moment_of_inertia(conformers, mol.atomnos)
+
+    ### RMSD
+    if len(conformers) < 5E4:
+        conformers, _ = prune_conformers_rmsd(conformers, mol.atomnos, max_rmsd=embedder.options.rmsd)
+    if len(conformers) < 1E3:
+        conformers, _ = prune_conformers_rmsd_rot_corr(conformers, mol.atomnos, mol.graph)
+
+    embedder.log(f'  Discarded {len(conformers)-before} similar structures ({len(conformers)} left)')
+
+    ### PRINTOUT
     with open(f'{mol.rootname}_mtd_confs.xyz', 'w') as f:
-        for i, new_s in enumerate(new_structures):
-            write_xyz(new_s, mol.atomnos, f, title=f'Conformer {i}/{len(new_structures)} from CREST MTD')
+        for i, new_s in enumerate(conformers):
+            write_xyz(new_s, mol.atomnos, f, title=f'Conformer {i}/{len(conformers)} from CREST MTD')
 
     return f'{mol.rootname}_mtd_confs.xyz'
-
 
 def scan_operator(filename, embedder):
     '''
@@ -520,7 +558,7 @@ def distance_scan(embedder):
     d = norm_of(coords[i1]-coords[i2])
 
     # deciding if moving atoms closer or further apart based on distance
-    bonds = list(graphize(coords, mol.atomnos).edges)
+    bonds = list(mol.graph.edges)
     step = 0.05 if (i1, i2) in bonds else -0.05
 
     # logging to file and terminal

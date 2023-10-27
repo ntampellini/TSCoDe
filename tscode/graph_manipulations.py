@@ -315,6 +315,8 @@ def get_sum_graph(graphs, extra_edges=None):
 
         cum_atomnos += list(nx.get_node_attributes(g, "atomnos").values())
 
+    out.is_single_molecule = (len(list(nx.connected_components(out))) == 1)
+
     if extra_edges is not None:
         for e1, e2 in extra_edges:
             out.add_edge(e1, e2)

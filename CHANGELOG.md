@@ -184,9 +184,17 @@
 - Moved RunEmbedding back to embedder.py, and cleaned up the class inheritance. This allowed to have less redundant and tidier code at the expense of having a larger embedder.py file (~2300 lines).
 - Expanded dump_status to reflect the different constraints at different steps of optimization (all constraints or just fixed). Also added the target distance for each in the printout.
 - **CHANGED CONSTRAINTS SPECIFICATION (NON-BACKWARDS COMPATIBLE)** - now fixed constraints are specified with UPPERCASE letters instead of a/b/c, and interaction constraints are specified with lowercase letters instead of x/y/z. Expands the number of each type of constraint that is possible to specify (from 3 to 26).
-<!-- 
-## 0.4.2 (WIP)
-- Significatively reduced memory usage of the prune_conformers functions, avoiding using the wasteful similarity_mat for a lighter, faster set() [TESTING] -->
+
+## 0.4.2 (October 27 2023)
+## Memory usage, pruning refinments, multiembed improvements, molecule attributes
+- Significatively reduced memory usage of the prune_conformers functions, avoiding using the wasteful similarity_mat for a lighter, faster set().
+- Reduced default values for ROTRANGE and STEPS for cyclical embeds (from 90, 9 to 45, 5).
+- TFD similarity refining is now only carried out for single molecules, not for multimolecular embeds.
+- Added SIMPLEORBITALS keyword. All orbitals will be of Single type. Reduces the number of pivots for each molecule, and consequently the number of candidates that will be generated.
+- Added generation of orbitals for main embedder in multiembed runs. Aids debugging, allows for a better bird's-eye view.
+- Input file: added custom attributes in molecule line (mtd> mol.xyz 2A 3A 7x charge=-1). Any attribute is set directly on the Hypermolecule class, and its declaration is recorded in the logfile. For now, the only active attribute is 'charge' and it is passed to the mtd> operator. The approach should be easily applicable to set future molecule-specific settings.
+- Fixed SHRINK printout bug when not specifying embed distances.
+- Multiembed child embedders are passed more options now: shrink (with shrink_multiplier) and simpleorbitals
 <!-- - Introduced compatibility of SADDLE and NEB keywords for scan> runs with both 2 indices (distance scans) and 4 indices (distance scans) -->
 
 <!-- - ... mep_relax> BETA

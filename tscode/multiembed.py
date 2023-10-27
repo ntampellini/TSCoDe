@@ -58,7 +58,7 @@ def multiembed_bifunctional(embedder):
                                         mol2.name,
                                         constrained_indices=arrangement,
                                         i=i,
-                                        debug=embedder.options.debug,
+                                        options=embedder.options,
                                     )
             processes.append(process)  
 
@@ -86,7 +86,7 @@ def run_child_embedder(
                         mol2_name,
                         constrained_indices,
                         i,
-                        debug=False,
+                        options,
                     ):
 
     from tscode.embedder import Embedder, RunEmbedding
@@ -109,7 +109,11 @@ def run_child_embedder(
     child_name = f'embed{i+1}_input.txt'
 
     with open(child_name, 'w') as f:
-        extra = ' debug' if debug else ''
+        extra = ''
+        extra += ' debug' if options.debug else ''
+        extra += ' simpleorbitals' if options.simpleorbitals else ''
+        extra += f' shrink={options.shrink_multiplier}' if options.shrink else ''
+
         f.write(f'noopt rigid{extra}\n')
         f.write(f'{mol1_name} {ix_1}x {iy_1}y\n')
         f.write(f'{mol2_name} {ix_2}x {iy_2}y\n')
@@ -138,7 +142,7 @@ def run_child_embedder(
         child_embedder.log(f'\n--> Child process terminated ({time_to_string(time.perf_counter() - child_embedder.t_start_run, verbose=True)})')
 
         os.chdir(start_dir)
-        if not debug:
+        if not options.debug:
             rmtree(os.path.join(os.getcwd(), foldername))
 
     return child_embedder.structures, child_embedder.constrained_indices
