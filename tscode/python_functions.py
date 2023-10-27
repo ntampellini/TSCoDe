@@ -174,7 +174,8 @@ def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.25, max_delta=None, ve
                 else:
                     _l = len(range(d*step, int(d*(step+1))))
 
-                similarity_mat = np.zeros((_l, _l))
+                # similarity_mat = np.zeros((_l, _l))
+                matches = set()
 
                 for i_rel in range(_l):
                     for j_rel in range(i_rel+1,_l):
@@ -190,19 +191,23 @@ def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.25, max_delta=None, ve
                                                          heavy_structures[j_abs])
 
                             if rmsd < max_rmsd and max_dev < max_delta:
-                                similarity_mat[i_rel,j_rel] = 1
+                                # similarity_mat[i_rel,j_rel] = 1
+                                matches.add((i_rel, j_rel))
                                 break
-
-                for i_rel, j_rel in zip(*np.where(similarity_mat == False)):
-                    i_abs = i_rel+(d*step)
-                    j_abs = j_rel+(d*step)
-                    cache_set.add((i_abs, j_abs))
+                            else:
+                                i_abs = i_rel+(d*step)
+                                j_abs = j_rel+(d*step)
+                                cache_set.add((i_abs, j_abs))
+                # for i_rel, j_rel in zip(*np.where(similarity_mat == False)):
+                #     i_abs = i_rel+(d*step)
+                #     j_abs = j_rel+(d*step)
+                #     cache_set.add((i_abs, j_abs))
                     # adding indices of structures that are considered equal,
                     # so as not to repeat computing their RMSD
                     # Their index accounts for their position in the initial
                     # array (absolute index)
 
-                matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
+                # matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
                 g = nx.Graph(matches)
 
                 subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
@@ -260,7 +265,8 @@ def prune_conformers_tfd(structures, quadruplets, thresh=10, verbose=False):
                 else:
                     _l = len(range(d*step, int(d*(step+1))))
 
-                similarity_mat = np.zeros((_l, _l))
+                # similarity_mat = np.zeros((_l, _l))
+                matches = set()
 
                 for i_rel in range(_l):
                     for j_rel in range(i_rel+1,_l):
@@ -276,19 +282,24 @@ def prune_conformers_tfd(structures, quadruplets, thresh=10, verbose=False):
                                               tf_mat[j_abs],
                                               thresh=thresh):
 
-                                similarity_mat[i_rel,j_rel] = 1
+                                # similarity_mat[i_rel,j_rel] = 1
+                                matches.add((i_rel,j_rel))
                                 break
+                            else:
+                                i_abs = i_rel+(d*step)
+                                j_abs = j_rel+(d*step)
+                                cache_set.add((i_abs, j_abs))
 
-                for i_rel, j_rel in zip(*np.where(similarity_mat == False)):
-                    i_abs = i_rel+(d*step)
-                    j_abs = j_rel+(d*step)
-                    cache_set.add((i_abs, j_abs))
+                # for i_rel, j_rel in zip(*np.where(similarity_mat == False)):
+                #     i_abs = i_rel+(d*step)
+                #     j_abs = j_rel+(d*step)
+                #     cache_set.add((i_abs, j_abs))
                     # adding indices of structures that are considered equal,
                     # so as not to repeat computing their TFD
                     # Their index accounts for their position in the initial
                     # array (absolute index)
 
-                matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
+                # matches = [(i,j) for i,j in zip(*np.where(similarity_mat))]
                 g = nx.Graph(matches)
 
                 subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
