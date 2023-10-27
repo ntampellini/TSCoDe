@@ -37,8 +37,11 @@ Here is a list of the currently available operators:
    (slower but best). It is letter constraints-aware
    and will constrain the specified distances. Generates a new ``molecule_mtd_confs.xyz``
    file with the crest-optimized conformers. The default level is GFN2//GFN-FF (see CREST docs).
-   It is also possible to pass a charge attribute for the molecule via molecule-line 'charge' attribute
-   (mtd> molecule.xyz 4A 8A charge=-1).
+   It is also possible to pass a charge attribute for the molecule via molecule-line 'charge' attribute.
+   
+   ::
+   
+       mtd> molecule.xyz 4A 8A charge=-1
 
 -  ``neb>`` - Allows the use of the TSCoDe NEB procedure on external structures, useful 
    if working with calculators that do not natively integrate such methods (*i.e.* Gaussian). 
