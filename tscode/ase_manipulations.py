@@ -248,7 +248,7 @@ def ase_adjust_spacings(embedder, structure, atomnos, constrained_indices, title
                         title=f'Candidate_{title}'
                     )
 
-    nci_indices = [indices for letter, indices in embedder.pairings_table.items() if letter in ('x', 'y', 'z')]
+    nci_indices = [indices for letter, indices in embedder.pairings_table.items() if letter.islower()]
     halfsprings = [HalfSpring(i1, i2, 2.5) for i1, i2 in nci_indices]
     # HalfSprings get atoms involved in NCIs together if they are more than 2.5A apart,
     # but lets them achieve their natural equilibrium distance when closer

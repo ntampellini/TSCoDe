@@ -46,7 +46,7 @@ def xtb_opt(
         assert_convergence=False, 
         constrain_string=None,
         recursive_stepsize=0.3,
-        spring_constant=1000,
+        spring_constant=1,
         **kwargs,
         ):
     '''
@@ -251,11 +251,14 @@ def xtb_opt(
         print('KeyboardInterrupt requested by user. Quitting.')
         sys.exit()
 
+    if spring_constant > 0.25:
+        print()
+
     if read_output:
         
         if opt:
 
-            if outname in os.listdir():
+            if trajname in os.listdir():
                 coords, energy = read_from_xtbtraj(trajname)
 
             else:
@@ -584,7 +587,7 @@ def parse_xtb_out(filename):
 
     return coords * 0.529177249 # Bohrs to Angstroms
 
-def crest_mtd_csearch(
+def crest_mtd_search(
         coords,
         atomnos,
         constrained_indices=None,

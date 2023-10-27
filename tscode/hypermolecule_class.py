@@ -26,16 +26,16 @@ import numpy as np
 from numpy.linalg import LinAlgError
 from rmsd import kabsch
 
-from tscode.algebra import norm_of
+from tscode.algebra import get_inertia_moments, norm_of
 from tscode.errors import CCReadError, NoOrbitalError
 from tscode.graph_manipulations import (graphize, is_sigmatropic, is_vicinal,
                                         neighbors)
 from tscode.pt import pt
 from tscode.reactive_atoms_classes import get_atom_type
-from tscode.utils import read_xyz, smi_to_3d
+from tscode.utils import flatten, read_xyz, smi_to_3d
 
 
-def align_structures(structures:np.array, indices=None):
+def align_structures(structures:np.array, indices=None, **kwargs):
     '''
     Aligns molecules of a structure array (shape is (n_structures, n_atoms, 3))
     to the first one, based on the indices. If not provided, all atoms are used
@@ -48,7 +48,7 @@ def align_structures(structures:np.array, indices=None):
     if isinstance(indices, (list, tuple)):
         indices = np.array(indices)
 
-    indices = slice(0,len(reference)) if indices is None or len(indices) == 0 else indices.ravel()
+    indices = slice(0,len(reference)) if (indices is None or len(indices) == 0) else indices.ravel()
 
     reference -= np.mean(reference[indices], axis=0)
     for t, _ in enumerate(targets):
@@ -61,6 +61,52 @@ def align_structures(structures:np.array, indices=None):
 
         try:
             matrix = kabsch(reference[indices], target[indices])
+
+        except LinAlgError:
+        # it is actually possible for the kabsch alg not to converge
+            matrix = np.eye(3)
+        
+        # output[t+1] = np.array([matrix @ vector for vector in target])
+        output[t+1] = (matrix @ target.T).T
+
+    return output
+
+def align_by_moi(structures, atomnos, **kwargs):
+    '''
+    Aligns molecules of a structure array (shape is (n_structures, n_atoms, 3))
+    to the first one, based on the the moments of inertia vectors.
+    Returns the aligned array.
+
+    '''
+
+    reference, *targets = structures
+  
+    masses = np.array([pt[a].mass for a in atomnos])
+
+    # center all the structures at the origin
+    reference -= np.mean(reference, axis=0)
+    for t, target in enumerate(targets):
+        targets[t] -= np.mean(target, axis=0)
+
+    # initialize output array
+    output = np.zeros(structures.shape)
+    output[0] = reference
+
+    # reference vectors   
+    ref_moi_vecs = np.eye(3)
+    (ref_moi_vecs[0,0],
+     ref_moi_vecs[1,1],
+     ref_moi_vecs[2,2]) = get_inertia_moments(reference, masses)
+
+    for t, target in enumerate(targets):
+
+        tgt_moi_vecs = np.eye(3)
+        (tgt_moi_vecs[0,0],
+         tgt_moi_vecs[1,1],
+         tgt_moi_vecs[2,2]) = get_inertia_moments(target, masses)
+
+        try:
+            matrix = kabsch(ref_moi_vecs, tgt_moi_vecs)
 
         except LinAlgError:
         # it is actually possible for the kabsch alg not to converge

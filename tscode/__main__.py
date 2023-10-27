@@ -57,7 +57,7 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--profile", help="Profile the run through cProfiler.", action='store_true', required=False)
     parser.add_argument("-b", "--benchmark", help=("Benchmark the geometry optimization of FILE to get the optimal number " +
                         "of procs/threads."), action='store', required=False, default=False)
-    parser.add_argument("-r", "--restart", help="Restarts previous run from an embedder.pickle object.", action='store', required=False, default=False)
+    # parser.add_argument("-r", "--restart", help="Restarts previous run from an embedder.pickle object.", action='store', required=False, default=False)
     parser.add_argument("--procs", help="Number of processors to be used by each optimization job.", action='store', required=False, default=None)
     parser.add_argument("--threads", help="Number of parallel threads used.", action='store', required=False, default=None)
 
@@ -102,10 +102,10 @@ if __name__ == '__main__':
         profiled_wrapper(filename, args.name)
         sys.exit()
 
-    if args.restart:
-        import pickle
-        with open(args.restart, 'rb') as _f:
-            embedder = pickle.load(_f)
+    # if args.restart:
+    #     import pickle
+    #     with open(args.restart, 'rb') as _f:
+    #         embedder = pickle.load(_f)
         # initialize embedder from pickle file
 
         embedder.run()

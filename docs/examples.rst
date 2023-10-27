@@ -49,16 +49,16 @@ Work is in progress to expand this section with more examples.
 
     DIST(a=2.135)
 
-    maleimide.xyz 0a 5x
+    maleimide.xyz 0A 5x
     opt> HCOOH.xyz 4x 1y
-    csearch> dienamine.xyz 6a 23y
+    csearch> dienamine.xyz 6A 23y
 
-    # First pairing (a) is the C-C reactive distance
+    # First pairing (A) is the C-C reactive distance
     # Second and third pairings (x, y) are the
     # hydrogen bonds bridging the two partners.
 
-    # Reactive pairings (a, b, c) will refine to the imposed values (here a=2.135 A)
-    # Non-reactive pairings (x ,y ,z) will relax to an optimal value
+    # Fixed constraints (A, UPPERCASE letters) will refine to the imposed values (here a=2.135 A)
+    # Interaction constraints (x, y, lowercase letters) will relax to an optimal value
 
     # opt> - structure of HCOOH.xyz will be optimized before running TSCoDe
     # csearch> - A conformational search will be performed on dienamine.xyz before running TSCoDe
@@ -75,15 +75,20 @@ Work is in progress to expand this section with more examples.
 
 ::
 
-    SADDLE KCAL=10 CALC=MOPAC LEVEL=PM7
-    atropisomer.xyz 1 2 9 10
+    SADDLE KCAL=10
+    scan> atropisomer.xyz 1 2 9 10
 
-    # Performs various clockwise/anticlockwise scans
-    # at different accuracy for the specified dihedral
-    # angle, performing a saddle point optimization on
-    # each energy maxima above 10 kcal/mol from the lowest
-    # energy structure. The calculator and the theory level
-    # specified in the input override user default settings.
+    # scan> : (four indices specified) performs two dihedral
+    # scans (clockwise/anticlockwise) rotating the specified
+    # dihedral angle in 10° increments. Then, peaks above
+    # 10 kcal/mol (KCAL keyword) form the lowest energy
+    # structure are re-scanned at increased accuracy (1°
+    # increments).
+
+    # SADDLE: Each maxima is then optimized to a saddle point.
+    
+    # It is also possible to replace SADDLE with NEB to use scan
+    # points to run a NEB in an automated way.
 
 .. figure:: /images/atropo.png
    :alt: Example output structure
@@ -149,29 +154,30 @@ Work is in progress to expand this section with more examples.
 ::
 
    DIST(a=2.0, x=1.6, y=1.6) SOLVENT=ch2cl2
-   rsearch> quinazolinedione.xyz 6a 14a 0x 7y
+   mtd_search> quinazolinedione.xyz 6C 14C 0x 7y
    csearch> peptide.xyz 0x 88y 19z 80z
 
-   # Four pairings provided (a, x, y, z):
+   # Four pairings provided (C, x, y, z):
 
-   # a - Fixed (a, b, c letters), internal to quinazolinedione
+   # C - Fixed (UPPERCASE letters), internal to quinazolinedione
    # (green) - kept at 2.0 Å during the entire run
 
-   # x - Interaction (x, y, z letters) - will be embedded at 1.6 Å
+   # x - Interaction (lowercase letters) - will be embedded at 1.6 Å
    # and then relaxed during the ensemble optimization steps (red)
 
-   # y - Interaction (x, y, z letters) -  will be embedded at 1.6 Å
+   # y - Interaction (lowercase letters) -  will be embedded at 1.6 Å
    # and then relaxed during the ensemble optimization steps (orange)
 
-   # z - Interaction (x, y, z letters), internal to peptide (light blue)
+   # z - Interaction (lowercase letters), internal to peptide (light blue)
    # No distance provided, will relax during optimization
 
-   # rsearch> - random torsion-based conformational search. Note that this is
-   # internal constraints-aware, and will treat the "a" pairing as a bond
+   # mtd_search> - metadynamics-based conformational search through CREST.
+   # Note that this is internal constraints-aware, and will treat the "C"
+   # pairing as a bond, retaining the specified distance.
 
    # csearch> - diversity-based torsional conformational search. As rsearch>,
    # it is constraints-aware and will treat the "z" pairing as a bond, preventing
-   # the generation of peptide conformers without the "z" interaction
+   # the generation of peptide conformers without the "z" interaction.
 
 .. figure:: /images/complex_embed_cd.png
    :alt: Chemdraw representation of the embed pairings

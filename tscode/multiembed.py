@@ -89,8 +89,7 @@ def run_child_embedder(
                         debug=False,
                     ):
 
-    from tscode.embedder import Embedder
-    from tscode.run import RunEmbedding
+    from tscode.embedder import Embedder, RunEmbedding
 
     start_dir = os.getcwd()
     foldername = f'TSCoDe_embed{i+1}'

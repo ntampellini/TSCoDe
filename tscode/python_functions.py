@@ -135,18 +135,6 @@ def rmsd_and_max(P, Q):
 
     return rmsd, max_delta
 
-def fast_score(coords, close=1.3, far=3):
-    '''
-    return a fast to compute score
-    used as a metric to evaluate
-    the best structure between
-    similar conformers. The higher,
-    the least the structure is stable.
-    '''
-    dist_mat = all_dists(coords, coords)
-    close_contacts = dist_mat[dist_mat < far]
-    return np.sum(close_contacts/(close-far) - far/(close-far))
-
 def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.25, max_delta=None, verbose=False):
     '''
     Removes similar structures by repeatedly grouping them into k
@@ -157,7 +145,7 @@ def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.25, max_delta=None, ve
     maximum deviation < max_delta.
     '''
 
-    max_delta = max_rmsd * 2 if max_delta is None else max_delta
+    max_delta = (max_rmsd * 2) if max_delta is None else max_delta
 
     heavy_atoms = (atomnos != 1)
     heavy_structures = np.array([structure[heavy_atoms] for structure in structures])
@@ -220,8 +208,8 @@ def prune_conformers_rmsd(structures, atomnos, max_rmsd=0.25, max_delta=None, ve
                 subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
                 groups = [tuple(graph.nodes) for graph in subgraphs]
 
-                best_of_cluster = [sorted(group, key=lambda i: fast_score(structures[i]))[0] for group in groups]
-                # of each cluster, keep the structure that looks the best
+                best_of_cluster = [group[0] for group in groups]
+                # of each cluster, keep the first structure
 
                 rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
                 rejects = []
@@ -306,8 +294,8 @@ def prune_conformers_tfd(structures, quadruplets, thresh=10, verbose=False):
                 subgraphs = [g.subgraph(c) for c in nx.connected_components(g)]
                 groups = [tuple(graph.nodes) for graph in subgraphs]
 
-                best_of_cluster = [sorted(group, key=lambda i: fast_score(structures[i]))[0] for group in groups]
-                # of each cluster, keep the structure that looks the best
+                best_of_cluster = [group[0] for group in groups]
+                # of each cluster, keep the first structure
 
                 rejects_sets = [set(a) - {b} for a, b in zip(groups, best_of_cluster)]
                 rejects = []

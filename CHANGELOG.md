@@ -170,6 +170,20 @@
 - Changed the way xtb_opt deals with distance constraints, now using very stiff springs instead of exact fixing (better when more then one distance constraint is specified).
 - Reinstated fitness_refining after every optimization step, which is now based on a cumulative deviation from the imposed pairing distances.
 
+## 0.4.1 (October 26 2023)
+### RunEmbedding refactoring, stability improvements, internal cleanup of old code
+### "Dihedral embeds" are now part of scan>
+- Various small fixes for stability purposes and printout beautification.
+- write_structures can now also align ensembles based on the moments of inertia (align='moi')
+- Renamed output of refine> runs 'ensemble' instead of 'poses', which is now only for when an embed is carried out.
+- Cleaned some unused junk code from the past (fast_score, hyperneb, opt_iscans, TS keyword, and other experiments)
+- Dihedral "embeds" are now just a part of the scan> operator, as no real embed was carried out.
+- Added printout of input file after the banner in the logfile for easier tracebacks.
+- Renamed mtd_csearch> to mtd_search> (solves a bug where csearch> was called instead).
+- Moved RunEmbedding back to embedder.py, and cleaned up the class inheritance. This allowed to have less redundant and tidier code at the expense of having a larger embedder.py file (~2300 lines).
+- Expanded dump_status to reflect the different constraints at different steps of optimization (all constraints or just fixed). Also added the target distance for each in the printout.
+<!-- - Introduced compatibility of SADDLE and NEB keywords for scan> runs with both 2 indices (distance scans) and 4 indices (distance scans) -->
+
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>
 - ... [OPENBABEL CONTINUED SUPPORT?] -->

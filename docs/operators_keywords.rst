@@ -32,7 +32,7 @@ Here is a list of the currently available operators:
    constraints are rotated (see examples). Generates a new ``molecule_confs.xyz``
    file with the unoptimized conformers.
 
--  ``mtd_csearch>``/ ``mtd>`` - Performs a metadynamics-based conformational
+-  ``mtd_search>``/ ``mtd>`` - Performs a metadynamics-based conformational
    search on the specified input structure through `CREST <https://crest-lab.github.io/crest-docs/>`__
    (slower but best). It is letter constraints-aware
    and will constrain the specified distances. Generates a new ``molecule_mtd_confs.xyz``
@@ -134,11 +134,9 @@ one is accepted, like in ``DIST``.
 
 -  **IMAGES** - Number of images to be used in NEB, ``neb>`` and ``mep_relax>`` jobs.
 
--  **KCAL** - Dihedral embed: when looking for energy maxima scan
-   points in order to run berny optimization, ignore scan peaks below
-   this threshold value (default is 5 kcal/mol). All other embeds: trim
-   output structures to a given value of relative energy (default is
-   None). Syntax: ``KCAL=n``, where n can be an integer or float.
+-  **KCAL** - In refinements, trim output structures to a given value of relative energy
+   (in kcal/mol, default is 10). In ``scan>`` runs, sets the threshold to consider a local
+   energy maxima for further refinement. Syntax: ``KCAL=n``.
 
 -  **LET** - Overrides safety checks that prevent the program from
    running too large calculations, and avoids efficiency-oriented trimming
@@ -164,25 +162,8 @@ one is accepted, like in ``DIST``.
 
 -  **NEB** - Perform an automatic climbing image nudged elastic
    band (CI-NEB) TS search after the partial optimization step,
-   inferring reagents and products for each generated TS pose. For dihedral
-   embeds, (dihedral angle scans), scan points around the energy
-   maxima are used. For all other embeds, these are guessed by obtaining
-   reagents and products by bonding/distancing reactive atom pairs and
-   making use of different constrained optimizations (experimental). For trimolecular
-   transition states with more than one reactive pairing (``a``, ``b``
-   or ``c``, not ``x``, ``y`` and ``z``), only the first, non-NCI imposed
-   pairing (a) is approached - *i.e.* the C-C reactive distance in the
-   example above. This ``NEB`` option is only really usable for those
-   reactions in which molecules are bound together (or strongly interacting)
-   after the TS, with no additional species involved (co-products). 
-   For example, cycloaddition reactions are great candidates while atom
-   transfer reactions (*i.e.* epoxidations) are not. Of course this
-   implementation is not always reliable, and it is provided more as
-   an experimenting tool than a definitive feature.
-
-.. -  **NEWBONDS** - Manually specify the maximum number of "new bonds"
-..    that a TS structure candidate can have to be retained and not to be
-..    considered scrambled. Default is 0. Syntax: ``NEWBONDS=0``
+   inferring reagents and products for each generated TS pose. For scan>
+   runs, scan points around the energy maxima are used.
 
 -  **NOOPT** - Skip the optimization steps, directly writing
    structures to file after compenetration and similarity pruning.
@@ -229,10 +210,10 @@ one is accepted, like in ``DIST``.
    easier to perform the embed without having molecules clashing one
    into the other. Then, the correct distance between reactive atom
    pairs is achieved as for standard runs by spring constraints during
-   MOPAC/ORCA optimization. The larger the scaling, the more the program
+   optimization. The larger the scaling, the more the program
    is likely to find at least some transition state poses, but the more
    time-consuming the step of distance refinement is going to be. Values
-   from 1.5 to 3 are likely to do what this keyword was though for.
+   from 1.5 to 3 are likely to do what this keyword was thought for.
 
 -  **STEPS** - Does not apply to "monomolecular" embeds. Manually
    specify the number of steps to be taken in scanning rotations. For

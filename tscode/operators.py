@@ -24,20 +24,21 @@ from subprocess import DEVNULL, STDOUT, check_call
 import numpy as np
 from networkx import connected_components
 
-from tscode.torsion_module import csearch
+from tscode.ase_manipulations import ase_saddle
+from tscode.atropisomer_module import dihedral_scan
+from tscode.automep import automep
+from tscode.calculators._xtb import crest_mtd_search
 from tscode.errors import InputError
 from tscode.graph_manipulations import graphize
 from tscode.hypermolecule_class import align_structures
+from tscode.mep_relaxer import ase_mep_relax
 from tscode.optimization_methods import _refine_structures, optimize
 from tscode.pka import pka_routine
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
+from tscode.torsion_module import csearch
 from tscode.utils import (get_scan_peak_index, read_xyz,
                           suppress_stdout_stderr, time_to_string, write_xyz)
-from tscode.ase_manipulations import ase_saddle
-from tscode.automep import automep
-from tscode.mep_relaxer import ase_mep_relax
-from tscode.calculators._xtb import crest_mtd_csearch
 
 
 def operate(input_string, embedder):
@@ -72,12 +73,8 @@ def operate(input_string, embedder):
     elif 'rsearch>' in input_string:
         outname = csearch_operator(filename, embedder, mode=2)
 
-    elif any(string in input_string for string in ('mtd_csearch>', 
-                                                   'mtd_search>',
-                                                   'mtdsearch>',
-                                                   'mtdcsearch>',
-                                                   'mtd>')):
-        outname = mtd_csearch_operator(filename, embedder)
+    elif any(string in input_string for string in ('mtd_search>', 'mtd>')):
+        outname = mtd_search_operator(filename, embedder)
 
     elif 'saddle>' in input_string:
         saddle_operator(filename, embedder)
@@ -443,14 +440,14 @@ def saddle_operator(filename, embedder):
             f'Saddle optimization completed, relative energy from start/end points (not barrier heights):\n'
             f'  > E(Saddle_point) : {round(energy, 3)} kcal/mol\n')
 
-def mtd_csearch_operator(filename, embedder):
+def mtd_search_operator(filename, embedder):
     '''
     Run a CREST metadynamic conformational search and return the output filename.
     '''
     mol = next((mol for mol in embedder.objects if mol.name == filename))
     # load molecule to be optimized from embedder
 
-    assert len(mol.atomcoords) == 1, 'mtd_csearch> operator works with a single structure as input.'
+    assert len(mol.atomcoords) == 1, 'mtd_search> operator works with a single structure as input.'
 
     logfunction = embedder.log
 
@@ -461,7 +458,7 @@ def mtd_csearch_operator(filename, embedder):
     
     t_start = time.perf_counter()
 
-    new_structures = crest_mtd_csearch(
+    new_structures = crest_mtd_search(
                                         mol.atomcoords[0],
                                         mol.atomnos,
                                         constrained_indices=_get_internal_constraints(filename, embedder),
@@ -483,22 +480,36 @@ def mtd_csearch_operator(filename, embedder):
 
 def scan_operator(filename, embedder):
     '''
+    Scan operator dispatcher:
+    2 indices: distance_scan
+    4 indices: dihedral_scan
+
+    '''
+    mol = next((mol for mol in embedder.objects if mol.name == filename))
+
+    assert len(mol.atomcoords) == 1, 'The scan> operator works on a single .xyz geometry.'
+    assert len(mol.reactive_indices) in (2,4), 'The scan> operator needs two or four indices' + (
+                                              f'({len(mol.reactive_indices)} were provided)')
+
+    if len(mol.reactive_indices) == 2:
+        return distance_scan(embedder)
+    
+    elif len(mol.reactive_indices) == 4:
+        return dihedral_scan(embedder)
+
+def distance_scan(embedder):
+    '''
     Thought to approach or separate two reactive atoms, looking for the energy maximum.
     Scan direction is inferred by the reactive index distance.
     '''
-    embedder.t_start_run = time.perf_counter()
-    mol_index, mol = next(((i, mol) for i, mol in enumerate(embedder.objects) if mol.name == filename))
-
-    assert len(mol.atomcoords) == 1, 'The scan> operator works on a single .xyz geometry.'
-    assert len(mol.reactive_indices) == 2, 'The scan> operator needs two reactive indices' + (
-                                          f'({len(mol.reactive_indices)} were provided)')
 
     import matplotlib.pyplot as plt
 
     from tscode.algebra import norm_of
-    from tscode.ase_manipulations import ase_popt
     from tscode.pt import pt
 
+    embedder.t_start_run = time.perf_counter()
+    mol = embedder.objects[0]
     t_start = time.perf_counter()
 
     # shorthands for clearer code
@@ -540,18 +551,6 @@ def scan_operator(filename, embedder):
 
     from tscode.calculators._xtb import xtb_opt
     for i in range(max_iterations):
-
-        # coords, energy, _ = ase_popt(embedder,
-        #                              coords,
-        #                              mol.atomnos,
-        #                              constrained_indices=np.array([mol.reactive_indices]),
-        #                              targets=(d,),
-        #                              safe=embedder.fix_angles_in_deformation if hasattr(embedder, 'fix_angles_in_deformation') else False,
-        #                              title=f'Step {i+1}/{max_iterations} - d={round(d, 2)} A -',
-        #                              logfunction=embedder.log,
-        #                              traj=f'{mol.title}_scanpoint_{i+1}.traj' if embedder.options.debug else None,
-        #                              )
-        # optimizing the structure with a spring constraint
 
         t_start = time.perf_counter()
 
@@ -623,8 +622,8 @@ def scan_operator(filename, embedder):
         
     plt.ylabel('Rel. E. (kcal/mol)')
     plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
-    with open(f'{title.replace(" ", "_")}_plt.pickle', 'wb') as _f:
-        pickle.dump(fig, _f)
+    # with open(f'{title.replace(" ", "_")}_plt.pickle', 'wb') as _f:
+    #     pickle.dump(fig, _f)
 
     ### Start structure writing 
 
@@ -645,7 +644,7 @@ def scan_operator(filename, embedder):
     embedder.log(f'\n--> Written energy maximum to {mol.name[:-4]}_scan_max.xyz\n')
 
     # Log data to the embedder class
-    embedder.objects[mol_index].scan_data = (dists, energies)
+    mol.scan_data = (dists, energies)
 
 def _get_lowest_calc(embedder=None):
     '''

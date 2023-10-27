@@ -153,7 +153,7 @@ class Options:
 
         self.rotation_range = 90
         self.rotation_steps = None # Set later by the _setup() function, based on embed type
-        self.rmsd = None # Set later by the _setup() function, based on embed type/atom number
+        self.rmsd = 0.25
         self.rigid = False
         self.max_confs = 1000
         
@@ -356,8 +356,8 @@ class OptionSetter:
         options.optimization = False
 
     def dist(self, options, *args):
-        kw = self.keywords_simple[self.keywords.index('DIST')]
-        orb_string = kw[5:-1].lower().replace(' ','')
+        kw = self.keywords_simple_case_sensitive[self.keywords.index('DIST')]
+        orb_string = kw[5:-1].replace(' ','')
         # orb_string looks like 'a=2.345,b=3.456,c=2.22'
 
         embedder = args[0]
@@ -478,27 +478,6 @@ class OptionSetter:
         if not options.optimization:
             raise SystemExit('SADDLE keyword can only be used if optimization is turned on. (Not compatible with NOOPT).')
         options.saddle = True
-
-    def ts(self, options, *args):
-        if not options.optimization:
-            raise SystemExit('TS keyword can only be used if optimization is turned on. (Not compatible with NOOPT).')
-
-        self.embedder._setup(p=False)
-        # early call of setup function to get the self.embedder.embed variable
-
-        if '?' in self.embedder.pairings_table or (
-            self.embedder.embed in ('cyclical','chelotropic') and len(self.embedder.pairings_table) < len(self.embedder.objects)) or (
-            self.embedder.embed == 'string' and not self.embedder.pairings_table):
-
-            raise SystemExit('TS keyword does not have sufficient pairing information to run. Make sure you specify the\n'
-                             'label of each atomic pairing with the correct set of letters - "a", "b" or "c" for reactive atoms\n'
-                             'and "x", "y" or "z" for non-covalent interactions holding the TS together.')
-
-        if self.embedder.embed == 'dihedral':
-            raise SystemExit('TS keyword not available with diheral embeds.\n'
-                             'The embed itself yields first-order saddle point optimized structures.')
-
-        options.ts = True
 
     def solvent(self, options, *args):
         from tscode.solvents import solvent_synonyms

@@ -362,54 +362,6 @@ def prune_by_moment_of_inertia(structures, atomnos, max_deviation=1e-2):
 
     return structures[mask], mask
 
-def opt_iscans(embedder, coords, atomnos, title='temp', logfile=None, xyztraj=None):
-    '''
-    Runs one or more independent scans along the constrained indices
-    specified, one at a time, through the ASE package. Each scan starts
-    from the previous maximum in energy. This is done as a low-dimensional
-    but effective approach of exploring the PES trying to maximize the
-    energy. The highest energy structure is returned.
-    '''
-
-    overall_success = False
-
-    scan_active_indices = [indices for letter, indices in embedder.pairings_table.items() if letter not in ('x', 'y', 'z')]
-    for i, indices in enumerate(scan_active_indices):
-        new_coords, energy, success = opt_linear_scan(embedder,
-                                                    coords,
-                                                    atomnos,
-                                                    indices,
-                                                    embedder.constrained_indices[0],
-                                                    # safe=True,
-                                                    title=title+f' scan {i+1}',
-                                                    logfile=logfile,
-                                                    xyztraj=xyztraj,
-                                                    )
-
-    if success:
-        overall_success = True
-        coords = new_coords
-
-    else: # Re-try with safe keyword to prevent scrambling
-
-        for i, indices in enumerate(scan_active_indices):
-            new_coords, energy, success = opt_linear_scan(embedder,
-                                                        coords,
-                                                        atomnos,
-                                                        indices,
-                                                        embedder.constrained_indices[0],
-                                                        safe=True,
-                                                        title=title+f' scan {i}',
-                                                        logfile=logfile,
-                                                        xyztraj=xyztraj,
-                                                        )
-                                                        
-        if success:
-            overall_success = True
-            coords = new_coords
-
-    return coords, energy, overall_success
-
 def opt_linear_scan(embedder, coords, atomnos, scan_indices, constrained_indices, step_size=0.02, safe=False, title='temp', logfile=None, xyztraj=None):
     '''
     Runs a linear scan along the specified linear coordinate.

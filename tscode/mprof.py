@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
     # %%
     # does not seem to leak in the conformational search, maybe it does in the augmentation part
-    from tscode.run import RunEmbedding
+    from tscode.embedder import RunEmbedding
     import numpy as np
     mol = embedder.objects[0]
 

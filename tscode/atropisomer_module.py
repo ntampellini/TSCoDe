@@ -27,7 +27,10 @@ from networkx.algorithms.shortest_paths.generic import shortest_path
 
 from tscode.algebra import dihedral
 from tscode.ase_manipulations import ase_neb, ase_saddle, get_ase_calc
+from tscode.errors import ZeroCandidatesError
 from tscode.hypermolecule_class import align_structures, graphize
+from tscode.optimization_methods import optimize
+from tscode.python_functions import prune_conformers_rmsd
 from tscode.utils import (clean_directory, loadbar, molecule_check,
                           time_to_string, write_xyz)
 
@@ -43,6 +46,11 @@ def ase_torsion_TSs(embedder,
                     bernytraj=None,
                     plot=False):
     '''
+    Automated dihedral scan. Runs two preliminary scans
+    (clockwise, anticlockwise) in 10 degrees increments,
+    then peaks above 'kcal_thresh' are re-scanned accurately
+    in 1 degree increments.
+
     '''
     
     assert len(indices) == 4
@@ -124,11 +132,9 @@ def ase_torsion_TSs(embedder,
                 write_xyz(structure, atomnos, outfile, title=f'Scan point {s+1}/{len(structures)} - Rel. E = {round(rel_energies[s], 3)} kcal/mol')
 
         if plot:
-            import pickle
-
             import matplotlib.pyplot as plt
 
-            fig = plt.figure()
+            plt.figure()
 
             x1 = [dihedral(structure[indices]) for structure in structures]
             y1 = [e-min_e for e in energies]
@@ -267,8 +273,8 @@ def ase_torsion_TSs(embedder,
             plt.legend()
             plt.xlabel(f'Dihedral Angle {tuple(indices)}')
             plt.ylabel('Energy (kcal/mol)')
-            with open(f'{title}{direction}_plt.pickle', 'wb') as _f:
-                pickle.dump(fig, _f)
+            # with open(f'{title}{direction}_plt.pickle', 'wb') as _f:
+            #     pickle.dump(fig, _f)
             plt.savefig(f'{title}{direction}_plt.svg')
 
     ts_structures = np.array(ts_structures)
@@ -285,7 +291,7 @@ def atropisomer_peaks(data, min_thr, max_thr):
     return: list of peak indices
     '''
     l = len(data)
-    peaks = [i for i in range(l-1) if (
+    peaks = [i for i in range(l-2) if (
 
         data[i-1] < data[i] >= data[i+1] and
         # peaks have neighbors that are smaller than them
@@ -293,8 +299,9 @@ def atropisomer_peaks(data, min_thr, max_thr):
         max_thr > data[i] > min_thr and
         # discard peaks that are too small or too big
 
-        abs(data[i] - min((data[i-1], data[i+1]))) > 2
-        # discard small peaks (noise) that do not "drop" at least 2 kcal/mol
+        # abs(data[i] - min((data[i-1], data[i+1]))) > 2
+        data[i] == max(data[i-2:i+3])
+        # discard peaks that are not the highest within close nieghbors
     )]
 
     return peaks
@@ -422,3 +429,83 @@ def get_plot_segments(x, y, max_step=2):
         y_slices[-1].append(y[i])
 
     return zip(x_slices, y_slices)
+
+def dihedral_scan(embedder):
+    '''
+    Automated dihedral scan. Runs two preliminary scans
+    (clockwise, anticlockwise) in 10 degrees increments,
+    then peaks above 'kcal_thresh' are re-scanned accurately
+    in 1 degree increments.
+
+    '''
+
+    if 'kcal' not in embedder.kw_line.lower():
+    # set to 5 if user did not specify a value
+        embedder.options.kcal_thresh = 5
+
+    mol = embedder.objects[0]
+    embedder.structures, embedder.energies = [], []
+
+
+    embedder.log(f'\n--> {mol.name} - performing a scan of dihedral angle with indices {mol.reactive_indices}\n')
+
+    for c, coords in enumerate(mol.atomcoords):
+
+        embedder.log(f'\n--> Pre-optimizing input structure{"s" if len(mol.atomcoords) > 1 else ""} '
+                   f'({embedder.options.theory_level} via {embedder.options.calculator})')
+
+        embedder.log(f'--> Performing relaxed scans (conformer {c+1}/{len(mol.atomcoords)})')
+
+        new_coords, ground_energy, success = optimize(
+                                                    coords,
+                                                    mol.atomnos,
+                                                    embedder.options.calculator,
+                                                    method=embedder.options.theory_level,
+                                                    procs=embedder.procs,
+                                                    solvent=embedder.options.solvent
+                                                )
+
+        if not success:
+            embedder.log(f'Pre-optimization failed - Skipped conformer {c+1}', p=False)
+            continue
+
+        structures, energies = ase_torsion_TSs(embedder,
+                                                new_coords,
+                                                mol.atomnos,
+                                                mol.reactive_indices,
+                                                threshold_kcal=embedder.options.kcal_thresh,
+                                                title=mol.rootname+f'_conf_{c+1}',
+                                                optimization=embedder.options.optimization,
+                                                logfile=embedder.logfile,
+                                                bernytraj=mol.rootname + '_berny' if embedder.options.debug else None,
+                                                plot=True)
+
+        for structure, energy in zip(structures, energies):
+            embedder.structures.append(structure)
+            embedder.energies.append(energy)
+
+    embedder.structures = np.array(embedder.structures)
+    embedder.energies = np.array(embedder.energies)
+    embedder.atomnos = mol.atomnos
+
+    if len(embedder.structures) == 0:
+        s = ('\n--> Dihedral scan did not find any suitable maxima above the set threshold\n'
+            f'    ({embedder.options.kcal_thresh} kcal/mol) during the scan procedure. Observe the\n'
+                '    generated energy plot and try lowering the threshold value (KCAL keyword).')
+        embedder.log(s)
+        raise ZeroCandidatesError()
+
+    # remove similar structures (RMSD)
+    embedder.structures, mask = prune_conformers_rmsd(embedder.structures, mol.atomnos, max_rmsd=embedder.options.rmsd, verbose=False)
+    embedder.energies = embedder.energies[mask]
+    if 0 in mask:
+        embedder.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for RMSD similarity ({len([b for b in mask if b])} left)')
+
+    # sort structures based on energy
+    embedder.energies, embedder.structures = zip(*sorted(zip(embedder.energies, embedder.structures), key=lambda x: x[0]))
+    embedder.structures = np.array(embedder.structures)
+    embedder.energies = np.array(embedder.energies)
+
+    # write output and exit
+    embedder.write_structures('maxima', indices=mol.reactive_indices, relative=True, extra='(barrier height)', align='moi')
+    embedder.normal_termination()

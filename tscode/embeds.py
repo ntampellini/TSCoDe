@@ -23,11 +23,11 @@ import numpy as np
 from tscode.algebra import (align_vec_pair, norm, rot_mat_from_pointer,
                             vec_angle)
 from tscode.ase_manipulations import ase_bend
-from tscode.torsion_module import _get_quadruplets
 from tscode.errors import TriangleError, ZeroCandidatesError
 from tscode.graph_manipulations import get_sum_graph
-from tscode.optimization_methods import optimize
-from tscode.python_functions import compenetration_check, get_torsion_fingerprint, tfd_similarity
+from tscode.python_functions import (compenetration_check,
+                                     get_torsion_fingerprint, tfd_similarity)
+from tscode.torsion_module import _get_quadruplets
 from tscode.utils import (cartesian_product, loadbar, polygonize, pretty_num,
                           rotation_matrix_from_vectors)
 
@@ -942,69 +942,6 @@ def _get_monomolecular_reactive_indices(embedder):
     # accessible.
 
     return np.array([[] for _ in embedder.structures])
-
-def dihedral_embed(embedder):
-    '''
-    '''
-    from tscode.atropisomer_module import ase_torsion_TSs
-    mol = embedder.objects[0]
-    embedder.structures, embedder.energies = [], []
-
-
-    embedder.log(f'\n--> {mol.name} - performing a scan of dihedral angle with indices {mol.reactive_indices}\n')
-
-    for c, coords in enumerate(mol.atomcoords):
-
-        embedder.log(f'\n--> Pre-optimizing input structure{"s" if len(mol.atomcoords) > 1 else ""} '
-                   f'({embedder.options.theory_level} via {embedder.options.calculator})')
-
-        embedder.log(f'--> Performing relaxed scans (conformer {c+1}/{len(mol.atomcoords)})')
-
-        new_coords, ground_energy, success = optimize(
-                                                    coords,
-                                                    mol.atomnos,
-                                                    embedder.options.calculator,
-                                                    method=embedder.options.theory_level,
-                                                    procs=embedder.procs,
-                                                    solvent=embedder.options.solvent
-                                                )
-
-        if not success:
-            embedder.log(f'Pre-optimization failed - Skipped conformer {c+1}', p=False)
-            # with open(f'conf_{c+1}_opt_failed.xyz', 'w') as f:
-            #     write_xyz(new_coords, mol.atomnos, f)
-            continue
-
-        structures, energies = ase_torsion_TSs(embedder,
-                                                new_coords,
-                                                mol.atomnos,
-                                                mol.reactive_indices,
-                                                threshold_kcal=embedder.options.kcal_thresh,
-                                                title=mol.rootname+f'_conf_{c+1}',
-                                                optimization=embedder.options.optimization,
-                                                logfile=embedder.logfile,
-                                                bernytraj=mol.rootname + '_berny' if embedder.options.debug else None,
-                                                plot=True)
-
-        for structure, energy in zip(structures, energies):
-            embedder.structures.append(structure)
-            embedder.energies.append(energy-ground_energy)
-
-    embedder.structures = np.array(embedder.structures)
-    embedder.energies = np.array(embedder.energies)
-
-    if len(embedder.structures) == 0:
-        s = ('\n--> Dihedral embed did not find any suitable maxima above the set threshold\n'
-            f'    ({embedder.options.kcal_thresh} kcal/mol) during the scan procedure. Observe the\n'
-                '    generated energy plot and try lowering the threshold value (KCAL keyword).')
-        embedder.log(s)
-        raise ZeroCandidatesError()
-
-    embedder.atomnos = mol.atomnos
-    embedder.similarity_refining()
-    embedder.write_structures('poses', indices=embedder.objects[0].reactive_indices, relative=False, extra='(barrier height)')
-    # embedder.write_vmd(indices=embedder.objects[0].reactive_indices)
-    embedder.normal_termination()
 
 def get_embed(mols, conf_ids):
     '''

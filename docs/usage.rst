@@ -82,14 +82,14 @@ to add more if you need them (from *reactive_atoms_classes.py*).
    :align: center
    :width: 700px
 
-   *Colored dots represent imposed atom pairings. Note that monomolecular embeds only support two reactive atoms at the moment (feature requests are encouraged).*
+   *Colored dots represent the imposed atom pairings.*
 
 Pairings
 ++++++++
 
-After each reactive index, it is possible to specify a pairing letter (``a``,
-``b`` or ``c``) to represent the "flag" of that atom. If provided, the
-program will only yield the poses that respect these atom
+After each reactive index, it is possible to specify a pairing letter
+representing the "flag" of that atom. If provided, the
+program will only yield poses that respect these atom
 pairings. It is also possible to specify more than one flag per atom,
 useful for chelotropic embeds - *i.e.* the hydroxyl oxygen atom of a peracid, as
 ``4ab``.
@@ -125,6 +125,8 @@ is the ketone-thiourea interaction complex while the second one is the metal eno
 3) Make sure to use the ``csearch>`` and/or ``csearch_hb>`` operators or provide conformational
 ensembles obtained with other software. Note that the CSearch implementation here
 is meant to be fast, scalable, and efficient, and is not able to sample ring conformations.
+The most effective conformational search tool (although usually slower) is ``mtd_search>``
+which runs a metadynamic-based conformational search through CREST.
    
 4) Understand what atoms are reacting for each structure and record
 their index (**starting from 0!**). If you are unsure of reactive atomic
@@ -143,32 +145,28 @@ atoms chosen. This can be used to check "orbital" positions or conformer
 reading faults (scroll through conformers with page-up and down
 buttons). Program will terminate after the last visualization is closed.
 
-6) I try to tweak TSCoDe default parameters to yield good results for any situation
-without specifying any keyword or atom pairing. However, if you
-have some information about your system, I strongly encourage you to specify all
-the desired pairings and options. Trimolecular TSs without imposed pairings are 8
-times more than the ones with defined pairings. Also, if you have an
-accurate idea of the distances between reactive atoms in your desired
-TSs, the ``DIST`` keyword can yield structures that are *very* close to
-higher theory level TSs. These can come from a previous higher-level
-calculation or can be inferred by similar reactions. If no pairing
-distances are provided, a guess is performed based on the atom type by reading editable
-parameters on the ``parameters.py`` file.
+6) TSCoDe default parameters are tentatively optimized to yield good results
+for the most common situations. However, if you
+have more information about your system, specifying details of the pairings
+and options for your system is likely to give better results. For example,
+embedding trimolecular TSs without imposed pairings generates about 8
+times more structures than an embed with defined pairings. Also, if
+reactive atoms distances in the transition state is known, using the
+``DIST`` keyword can yield structures that are quite close to
+ones obtained at higher levels of theory. If no pairing
+distances are provided, a distance guess is performed based on the atom type
+(defaults are editable in the ``parameters.py`` file).
 
 7) If the reaction involves big molecules, or if a lot of conformations
 are to be used, a preliminar run using the ``NOOPT`` keyword may be a
 good idea to see how many structures are generated and would require
-MOPAC/ORCA optimization in a standard run.
+optimization in a standard run.
 
 8) If TSCoDe does not find any suitable candidate for the given reacion,
-most of the times this is because of compenetration pruning. This mean
-that a lot of structures are generated, but all of them have some atoms
-compenetrating one into the other, and are therefore discarded. A
-solution could be to loosen the compenetration rejection citeria
-(``CLASHES`` keyword, not recommended) or to use the ``SHRINK`` keyword
-(recommended, see keywords section). Note that ``SHRINK`` calculations
-will be loger, as MOPAC/ORCA/GAUSSIAN distance-refining optimizations
-through ASE will require more iterations to reach target distances.
+this could be bacause of different factors. An option is to try the ``SHRINK`` keyword
+(see keywords section). Note that ``SHRINK`` optimization could
+be a little slower, as distance refinement
+through ASE will require more iterations to reach the target distances.
 Note that the use of ``RIGID``, while speeding up cyclical embeds
 considerably, could jeopardize finding some transition state arrangements.
 
