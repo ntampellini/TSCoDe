@@ -154,30 +154,30 @@ Work is in progress to expand this section with more examples.
 ::
 
    DIST(a=2.0, x=1.6, y=1.6) SOLVENT=ch2cl2
-   mtd_search> quinazolinedione.xyz 6C 14C 0x 7y
+   mtd_search> quinazolinedione.xyz 6A 14A 0x 7y
    csearch> peptide.xyz 0x 88y 19z 80z
 
-   # Four pairings provided (C, x, y, z):
+   # Four pairings provided (A, x, y, z):
 
-   # C - Fixed (UPPERCASE letters), internal to quinazolinedione
+   # A - Fixed (UPPERCASE letter), internal to quinazolinedione
    # (green) - kept at 2.0 Å during the entire run
 
-   # x - Interaction (lowercase letters) - will be embedded at 1.6 Å
+   # x - Interaction (lowercase letter) - will be embedded at 1.6 Å
    # and then relaxed during the ensemble optimization steps (red)
 
-   # y - Interaction (lowercase letters) -  will be embedded at 1.6 Å
+   # y - Interaction (lowercase letter) -  will be embedded at 1.6 Å
    # and then relaxed during the ensemble optimization steps (orange)
 
-   # z - Interaction (lowercase letters), internal to peptide (light blue)
+   # z - Interaction (lowercase letter), internal to peptide (light blue)
    # No distance provided, will relax during optimization
 
    # mtd_search> - metadynamics-based conformational search through CREST.
-   # Note that this is internal constraints-aware, and will treat the "C"
+   # Note that this is internal constraints-aware, and will treat the "A"
    # pairing as a bond, retaining the specified distance.
 
    # csearch> - diversity-based torsional conformational search. As rsearch>,
    # it is constraints-aware and will treat the "z" pairing as a bond, preventing
-   # the generation of peptide conformers without the "z" interaction.
+   # the generation of peptide conformers without the "z" interaction present.
 
 .. figure:: /images/complex_embed_cd.png
    :alt: Chemdraw representation of the embed pairings
