@@ -653,4 +653,9 @@ def get_atom_type(graph, index, override=None):
         return atom_type_dict[override]
 
     nb = neighbors(graph, index)
-    return atom_type_dict[pt[graph.nodes[index]['atomnos']].symbol + str(len(nb))]
+    code = pt[graph.nodes[index]['atomnos']].symbol + str(len(nb))
+    try:
+        return atom_type_dict[code]
+
+    except KeyError:
+        raise KeyError(f'Orbital type {code} not known (index {index})')

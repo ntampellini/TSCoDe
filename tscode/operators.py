@@ -452,7 +452,11 @@ def mtd_search_operator(filename, embedder):
     if not hasattr(mol, 'charge'):
         mol.charge = 0
 
-    assert len(mol.atomcoords) == 1, 'mtd_search> operator works with a single structure as input.'
+    if not embedder.options.let:
+        if len(mol.atomcoords) >= 20:
+            raise InputError('The mtd_search> operator was given more than 20 input structures. ' +
+                             'This would run >20 metadynamic conformational searches. If this was not a mistake, ' +
+                             'add the LET keyword an re-run the job.')
 
     logfunction = embedder.log
 
@@ -498,8 +502,8 @@ def mtd_search_operator(filename, embedder):
     quadruplets = _get_quadruplets(mol.graph)
     conformers, _ = prune_conformers_tfd(conformers, quadruplets)
 
-    ### MOI
-    conformers, _ = prune_by_moment_of_inertia(conformers, mol.atomnos)
+    # ### MOI - turned off, as it would get rid of enantiomeric conformations
+    # conformers, _ = prune_by_moment_of_inertia(conformers, mol.atomnos)
 
     ### RMSD
     if len(conformers) < 5E4:
@@ -507,7 +511,7 @@ def mtd_search_operator(filename, embedder):
     if len(conformers) < 1E3:
         conformers, _ = prune_conformers_rmsd_rot_corr(conformers, mol.atomnos, mol.graph)
 
-    embedder.log(f'  Discarded {len(conformers)-before} similar structures ({len(conformers)} left)')
+    embedder.log(f'  Discarded {before-len(conformers)} similar structures ({len(conformers)} left)\n')
 
     ### PRINTOUT
     with open(f'{mol.rootname}_mtd_confs.xyz', 'w') as f:

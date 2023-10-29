@@ -35,7 +35,7 @@ from tscode.algebra import norm_of
 from tscode.ase_manipulations import ase_saddle
 from tscode.calculators._xtb import (xtb_metadyn_augmentation, xtb_opt,
                                      xtb_pre_opt)
-from tscode.embedder_options import Options, OptionSetter, keywords_list
+from tscode.embedder_options import Options, OptionSetter, keywords_dict
 from tscode.embeds import (_get_monomolecular_reactive_indices, cyclical_embed,
                            monomolecular_embed, string_embed)
 from tscode.errors import (InputError, NoOrbitalError, SegmentedGraphError,
@@ -218,7 +218,7 @@ class Embedder:
         with open(filename, 'r') as f:
             lines = f.readlines()
 
-        self.log(f'--> Input file: {filename}')
+        self.log(f'--> Input file: {filename}\n')
         for line in lines:
             self.log('> '+line.rstrip('\n'))
         self.log() 
@@ -234,7 +234,7 @@ class Embedder:
         try:
 
             keywords = [l.split('=')[0] if not '(' in l else l.split('(')[0] for l in lines[0].split()]
-            if any(k.upper() in keywords_list for k in keywords):
+            if any(k.upper() in keywords_dict.keys() for k in keywords):
                 self.kw_line, *self.mol_lines = lines
             else:
                 self.mol_lines = lines
@@ -251,6 +251,10 @@ class Embedder:
                 filename, *reactive_atoms = line.split()
 
                 if reactive_atoms:
+                    # remove attributes from reactive indices
+                    reactive_atoms = [fragment for fragment in reactive_atoms if '=' not in fragment]
+
+                    # remove inteernal constraints from reactive indices
                     reactive_indices = _remove_internal_constraints(reactive_atoms)
                 else:
                     reactive_indices = None
@@ -311,7 +315,7 @@ class Embedder:
             # remove operators (if present) and the molecule name, keeping pairs only ['2a','5b']
 
             # store custom variables
-            for fragment in fragments:
+            for fragment in deepcopy(fragments):
                 if '=' in fragment:
                     parts = fragment.split('=')
 
@@ -325,16 +329,18 @@ class Embedder:
 
                     self.log(f'--> Set attribute \'{attr_name}\' of {self.objects[i]} to \'{attr_value}\'.')
 
+            self.log()
+
             unlabeled = []
             pairings = []
 
-            for j in fragments:
+            for fragment in fragments:
 
-                if not j.lower().islower(): # if all we have is a number
-                    unlabeled.append(int(j))
+                if not fragment.lower().islower(): # if all we have is a number
+                    unlabeled.append(int(fragment))
 
                 else:
-                    index, letters = [''.join(g) for _, g in groupby(j, str.isalpha)]
+                    index, letters = [''.join(g) for _, g in groupby(fragment, str.isalpha)]
 
                     for letter in letters:
                         pairings.append([int(index), letter])
@@ -1384,10 +1390,7 @@ class RunEmbedding(Embedder):
                                                         self.atomnos,
                                                         excluded_atoms=constraints.ravel(),
                                                         mols_graphs=self.graphs,
-
-                                                        # tolerate up to two extra bonds at this stage,
-                                                        # since the next optimization could fix things
-                                                        max_newbonds=self.options.max_newbonds+2)
+                                                        max_newbonds=self.options.max_newbonds)
                     
                 cum_time += t_struct
 
