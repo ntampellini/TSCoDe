@@ -166,7 +166,7 @@ class Options:
         # since it is used by both cyclical and string embeds
         self.rotation_steps = None
         
-        self.rmsd = 0.25
+        self.rmsd = 0.5
         self.rigid = False
         self.max_confs = 1000
         
@@ -201,7 +201,7 @@ class Options:
         self.keep_hb = False
         self.csearch_aug = False
         self.dryrun = False
-        self.checkpoint_frequency = 20
+        self.checkpoint_frequency = 50
 
         self.fix_angles_in_deformation = False
         # Not possible to set manually through a keyword.

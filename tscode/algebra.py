@@ -90,8 +90,8 @@ def norm(vec):
 def norm_of(vec):
     '''
     Returns the norm of the vector.
-    Reasonably faster than Numpy version.
-    Only for 3D vectors.
+    Faster than Numpy version, but 
+    only compatible with 3D vectors.
     '''
     return sqrt((vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]))
 

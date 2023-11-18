@@ -44,9 +44,7 @@ def run_concurrent_test(filename):
                 # only run test if we are using between 50% and 100% of cpu resources
                 if cpus/2 <= procs * threads <= cpus:
 
-                    results = []
-
-                    results, processes, = [], []
+                    processes = []
                     cum_exec_time = 0
 
                     with ProcessPoolExecutor(max_workers=threads) as executor:
@@ -69,9 +67,8 @@ def run_concurrent_test(filename):
                             processes.append(p)
 
                         for i, process in enumerate(as_completed(processes)):
-                            results, elapsed = process.result()
+                            _, elapsed = process.result()
                             cum_exec_time += elapsed
-                            results.extend(results)
 
                         t_end_batch = perf_counter()
                         elapsed = t_end_batch-t_start_batch

@@ -43,7 +43,7 @@ def multiembed_bifunctional(embedder):
     embedder.t_start_run = time.perf_counter()
     embedder.log()
 
-    max_workers = embedder.avail_cpus//2 or 1
+    max_workers = embedder.avail_cpus or 1
     embedder.log(f'--> Multiembed: running {len(arrangements)} embeds on {max_workers} threads')
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:

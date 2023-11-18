@@ -30,6 +30,7 @@ from tscode.python_functions import (compenetration_check,
 from tscode.torsion_module import _get_quadruplets
 from tscode.utils import (cartesian_product, loadbar, polygonize, pretty_num,
                           rotation_matrix_from_vectors)
+from tscode.rmsd_pruning import _rmsd_similarity
 
 
 def string_embed(embedder):
@@ -230,14 +231,14 @@ def _get_string_constrained_indices(embedder, n):
     return np.array([[[int(embedder.objects[0].reactive_indices[0]),
                        int(embedder.objects[1].reactive_indices[0] + embedder.ids[0])]] for _ in range(n)])
 
-def cyclical_embed(embedder):
+def cyclical_embed(embedder, max_norm_delta=5):
     '''
     return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
                     into embedder.structures. Algorithm used is the "cyclical" algorithm (see docs).
     '''
     
     if len(embedder.objects) == 2 and embedder.options.rigid:
-        return _fast_bimol_rigid_cyclical_embed(embedder)
+        return _fast_bimol_rigid_cyclical_embed(embedder, max_norm_delta=max_norm_delta)
         # shortened, simplified version that is somewhat faster
 
     def _get_directions(norms):
@@ -300,7 +301,7 @@ def cyclical_embed(embedder):
         dir1 = -dir1 if angle2_obtuse else dir1
         dir2 = -dir2 if angle0_obtuse else dir2
         dir3 = -dir3 if angle1_obtuse else dir3
-        # invert the versors sign if circumcenter is
+        # invert the versors sign of circumcenter if
         # one angle is obtuse, because then
         # circumcenter is outside the triangle
         
@@ -488,7 +489,7 @@ def cyclical_embed(embedder):
 
             if len(norms) == 2:
 
-                if abs(norms[0] - norms[1]) < 2.5:
+                if abs(norms[0] - norms[1]) < max_norm_delta:
                     norms_type = 'digon'
 
                 else:
@@ -623,9 +624,11 @@ def cyclical_embed(embedder):
                     norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
                     # updating the pivots norms to feed into the polygonize function
 
-                polygon_vectors = polygonize(norms)
-                # repeating the failed polygon creation
+                    polygon_vectors = polygonize(norms)
+                    # repeating the failed polygon creation
 
+                else:
+                    continue # do not embed digons with too different lengths if RIGID
 
             directions = _get_directions(norms)
             # directions to orient the molecules toward, orthogonal to each vec_pair
@@ -638,6 +641,11 @@ def cyclical_embed(embedder):
 
                 if not embedder.pairings_table or all((pair in ids) or (pair in embedder.internal_constraints) for pair in embedder.pairings_table.values()):
                 # ensure that the active arrangement has all the pairings that the user specified
+
+                    angular_poses = []
+                    # initialize a container for the poses generated for this combination of conformations,
+                    # pairing and polygon_vectors orientation. These will be used not to generate poses
+                    # that are too similar to each other.
 
                     if len(embedder.objects) == 3:
 
@@ -704,10 +712,11 @@ def cyclical_embed(embedder):
 
                         embedded_structure = get_embed(embedder.objects, conf_ids)
                         if compenetration_check(embedded_structure, ids=embedder.ids, thresh=embedder.options.clash_thresh):
-
-                            poses.append(embedded_structure)
-                            constrained_indices.append(ids)
-                            # Save indices to be constrained later in the optimization step
+                            if not _rmsd_similarity(embedded_structure, angular_poses, rmsd_thr=1):
+                                poses.append(embedded_structure)
+                                angular_poses.append(embedded_structure)
+                                constrained_indices.append(ids)
+                                # Save indices to be constrained later in the optimization step
 
     loadbar(1, 1, prefix=f'Embedding structures ')
 
@@ -722,7 +731,7 @@ def cyclical_embed(embedder):
 
     return np.array(poses)
 
-def _fast_bimol_rigid_cyclical_embed(embedder):
+def _fast_bimol_rigid_cyclical_embed(embedder, max_norm_delta=10):
     '''
     return threads: return embedded structures, with position and rotation attributes set, ready to be pumped
                     into embedder.structures. Algorithm used is the "cyclical" algorithm (see docs).
@@ -750,7 +759,7 @@ def _fast_bimol_rigid_cyclical_embed(embedder):
             norms = np.linalg.norm(np.array([p.pivot for p in pivots]), axis=1)
             # getting the pivots norms to feed into the polygonize function
 
-            if abs(norms[0] - norms[1]) > 5:
+            if abs(norms[0] - norms[1]) > max_norm_delta:
                 continue
             # skip if norms are too different
 
@@ -768,6 +777,11 @@ def _fast_bimol_rigid_cyclical_embed(embedder):
                 if not embedder.pairings_table or all((pair in ids) or (pair in embedder.internal_constraints) for pair in embedder.pairings_table.values()):
                 # ensure that the active arrangement has all the pairings that the user specified
                         
+                    angular_poses = []
+                    # initialize a container for the poses generated for this combination of conformations,
+                    # pairing and polygon_vectors orientation. These will be used not to generate poses
+                    # that are too similar to each other.
+
                     for angles in embedder.systematic_angles:
 
                         for i, vec_pair in enumerate(vecs):
@@ -826,10 +840,11 @@ def _fast_bimol_rigid_cyclical_embed(embedder):
 
                         embedded_structure = get_embed(embedder.objects, conf_ids)
                         if compenetration_check(embedded_structure, ids=embedder.ids, thresh=embedder.options.clash_thresh):
-
-                            poses.append(embedded_structure)
-                            constrained_indices.append(ids)
-                            # Save indices to be constrained later in the optimization step
+                            if not _rmsd_similarity(embedded_structure, angular_poses, rmsd_thr=1):
+                                poses.append(embedded_structure)
+                                angular_poses.append(embedded_structure)
+                                constrained_indices.append(ids)
+                                # Save indices to be constrained later in the optimization step
 
     loadbar(1, 1, prefix=f'Embedding structures ')
 

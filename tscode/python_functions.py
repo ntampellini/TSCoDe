@@ -21,7 +21,7 @@ import numpy as np
 from numba import njit, float32, prange
 from rmsd import kabsch_rotate
 
-from tscode.algebra import all_dists, dihedral
+from tscode.algebra import all_dists, dihedral, norm_of
 
 # These functions are here to facilitate eventual porting to
 # faster precompiled versions of themselves (Cython/C++/Julia/...)
@@ -358,3 +358,20 @@ def get_torsion_fingerprint(coords, quadruplets):
                            coords[i3],
                            coords[i4]])
     return out
+
+@njit(parallel=True)
+def _score_embed_poses(structures, constrained_indices, constrained_distances):
+    '''
+    Returns array of scores for embedded structures.
+    The score is calculated as the sum of deltas from
+    the desired embed distances.
+    '''
+    _l = len(structures)
+    scores = np.zeros(shape=_l, dtype=float32)
+
+    for j in prange(_l):
+        for i, (i1, i2) in enumerate(constrained_indices[j]):
+            dist = norm_of(structures[j][i1] - structures[j][i2])
+            scores[j] += np.abs(dist - constrained_distances[j][i])
+
+    return scores

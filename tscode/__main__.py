@@ -42,7 +42,6 @@ if __name__ == '__main__':
           -c, --cite              Print citation links.
           -p, --profile           Profile the run through cProfiler.
           -b, --benchmark FILE    Benchmark the geometry optimization of FILE to get the optimal number of procs/threads.
-          -r, --restart PICKLE    Restarts previous run from an embedder.pickle object.
           --procs                 Number of processors to be used by each optimization job.
           --threads               Number of parallel threads used.
           '''

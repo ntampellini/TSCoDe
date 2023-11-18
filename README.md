@@ -7,11 +7,12 @@
 ![Python Version](https://img.shields.io/badge/Python-3.8.10-blue)
 ![Size](https://img.shields.io/github/languages/code-size/ntampellini/TSCoDe)
 
-![Lines](https://tokei.rs/b1/github/ntampellini/tscode)
+![Lines](https://sloc.xyz/github/ntampellini/tscode/)
 [![PyPI](https://img.shields.io/pypi/v/tscode)](https://pypi.org/project/tscode/)
 [![Wheel](https://img.shields.io/pypi/wheel/tscode)](https://pypi.org/project/tscode/)
 [![Documentation Status](https://readthedocs.org/projects/tscode/badge/?version=latest)](https://tscode.readthedocs.io/en/latest/?badge=latest)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/tscode)
+![Twitter](https://img.shields.io/twitter/url?url=https%3A%2F%2Ftwitter.com%2Fntampellini_&label=%40ntampellini_&link=https%3A%2F%2Ftwitter.com%2Fntampellini_)
 
 </div>
 
@@ -20,6 +21,7 @@
   <img src="docs/images/logo.jpg" alt="TSCoDe logo" class="center" width="500"/>
 
 </p>
+
 
 TSCoDe is a systematical conformational embedder for small molecules. It helps computational chemists build transition states and binding poses precisely in an automated way. It is thought as a tool to explore complex multimolecular conformational space fast and systematically, and yield a series of starting points for higher-level calculations.
 

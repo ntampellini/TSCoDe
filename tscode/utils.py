@@ -440,13 +440,19 @@ def smi_to_3d(smi, new_filename):
 
     return new_filename + ".xyz"
 
-def timing_wrapper(function, *args, **kwargs):
+def timing_wrapper(function, *args, payload=None, **kwargs):
     '''
     Generic function wrapper that appends the
     execution time at the end of return.
+    If payload is not None, appends it at the end
+    of the function return, before the elapsed time.
     
     '''
     start_time = time.perf_counter()
     func_return = function(*args, **kwargs)
     elapsed = time.perf_counter() - start_time
-    return func_return, elapsed
+
+    if payload is None:
+        return func_return, elapsed
+    
+    return func_return, payload, elapsed

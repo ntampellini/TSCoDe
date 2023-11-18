@@ -51,8 +51,8 @@ from tscode.optimization_methods import (fitness_check, opt_funcs_dict,
 from tscode.parameters import orb_dim_dict
 from tscode.pt import pt
 from tscode.python_functions import (compenetration_check,
-                                     prune_conformers_rmsd,
                                      prune_conformers_tfd, scramble)
+from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS, THREADS
 from tscode.torsion_module import (_get_quadruplets, csearch,
                                    prune_conformers_rmsd_rot_corr)
@@ -1108,21 +1108,28 @@ class RunEmbedding(Embedder):
         # if self.options.debug:
         self.write_structures('embedded', energies=False)
 
-    def dump_status(self, outname, only_fixed_constraints):
+        if self.options.debug:
+            self.dump_status('generate_candidates')
+
+    def dump_status(self, outname, only_fixed_constraints=False):
         '''
         Writes structures and energies to [outname].xyz
         and [outname].dat to help debug the current run.
                 
         '''
-        with open(f'{outname}_energies.dat', 'w') as _f:
-            for i, energy in enumerate(self.energies):
-                print_energy = str(round(energy-np.min(self.energies), 2))+' kcal/mol' if energy != 1E10 else 'SCRAMBLED'
-                _f.write('Candidate {:5} : {}\n'.format(i, print_energy))
 
-        with open(f'{outname}_structures.xyz', 'w') as _f:        
+        if hasattr(self, 'energies'):
+            with open(f'{outname}_energies.dat', 'w') as _f:
+                for i, energy in enumerate(self.energies):
+                    print_energy = str(round(energy-np.min(self.energies), 2))+' kcal/mol' if energy != 1E10 else 'SCRAMBLED'
+                    _f.write('Candidate {:5} : {}\n'.format(i, print_energy))
+
+        with open(f'{outname}_structures.xyz', 'w') as _f:
+            exit_status = self.exit_status if hasattr(self, 'exit_status') else [0 for _ in self.structures]    
+            energies = self.rel_energies() if hasattr(self, 'energies') else [0 for _ in self.structures]
             for i, (structure, status, energy) in enumerate(zip(align_structures(self.structures),
-                                                                self.exit_status,
-                                                                self.rel_energies())):
+                                                                exit_status,
+                                                                energies)):
 
                 kind = 'REFINED - ' if status else 'NOT REFINED - '
                 write_xyz(structure, self.atomnos, _f, title=f'Structure {i+1} - {kind}Rel. E. = {round(energy, 3)} kcal/mol ({self.options.ff_level})')
@@ -1143,12 +1150,16 @@ class RunEmbedding(Embedder):
         with open(f'{outname}_runembedding.pickle', 'wb') as _f:
             d = {
                 'structures' : self.structures,
-                'energies' : self.energies,
                 'constrained_indices' : self.constrained_indices,
                 'graphs' : self.graphs,
                 'objects' : self.objects,
                 'options' : self.options,
+                'atomnos' : self.atomnos,
             }
+
+            if hasattr(self, 'energies'):
+                d['energies'] = self.energies
+
             pickle.dump(d, _f)
 
     def compenetration_refining(self):
@@ -1277,12 +1288,14 @@ class RunEmbedding(Embedder):
                 if before3 > len(self.structures):
                     self.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for MOI similarity ({len([b for b in mask if b])} left, {time_to_string(time.perf_counter()-t_start)})')
 
-        if rmsd and len(self.structures) <= 1E4:
+        if rmsd and len(self.structures) <= 1E5:
 
             before1 = len(self.structures)
 
             t_start = time.perf_counter()
-            self.structures, mask = prune_conformers_rmsd(self.structures, self.atomnos, max_rmsd=self.options.rmsd, verbose=verbose)
+            
+            # self.structures, mask = prune_conformers_rmsd(self.structures, self.atomnos, max_rmsd=self.options.rmsd, verbose=verbose)
+            self.structures, mask = prune_conformers_rmsd(self.structures, self.atomnos, rmsd_thr=self.options.rmsd)
 
             self.apply_mask(attr, mask)
 
@@ -1331,7 +1344,7 @@ class RunEmbedding(Embedder):
         ################################################# GEOMETRY OPTIMIZATION - FORCE FIELD
 
         task = 'Distance refining' if only_fixed_constraints else f'Structure {"pre-" if prevent_scrambling else ""}optimization'
-        self.log(f'--> {task} ({self.options.ff_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.ff_calc}, {int(self.avail_cpus/2)} thread{"s" if int(self.avail_cpus/2)>1 else ""})')
+        self.log(f'--> {task} ({self.options.ff_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.ff_calc}, {self.avail_cpus} thread{"s" if self.avail_cpus>1 else ""})')
 
         t_start_ff_opt = time.perf_counter()
 
@@ -1340,9 +1353,9 @@ class RunEmbedding(Embedder):
 
         opt_function = xtb_pre_opt if prevent_scrambling else xtb_opt
 
-        # Running half as many threads as we have procs (2 proc/thread)
-        # since FF does not parallelize well with more cores per struc
-        with ProcessPoolExecutor(max_workers=int(self.avail_cpus/2)) as executor:
+        # Running as many threads as we have procs
+        # since FF does not parallelize well with more cores
+        with ProcessPoolExecutor(max_workers=self.avail_cpus) as executor:
 
             for i, structure in enumerate(deepcopy(self.structures)):
 
@@ -1370,7 +1383,10 @@ class RunEmbedding(Embedder):
                                             constrained_distances=pairing_dists,
                                             procs=2, # FF just needs two per structure
                                             title=f'Candidate_{i+1}',
-                                            spring_constant=0.2 if prevent_scrambling else 1000,
+                                            spring_constant=0.2 if prevent_scrambling else 1,
+                                            payload=(
+                                                self.constrained_indices[i],
+                                                )
                                         )
                 processes.append(process)
           
@@ -1378,7 +1394,22 @@ class RunEmbedding(Embedder):
                         
                 loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
 
-                (new_structure, new_energy, self.exit_status[i]), t_struct = process.result()
+                ((
+                    new_structure,
+                    new_energy,
+                    self.exit_status[i]
+                ),
+                # from optimization function
+                 
+                (
+                    self.constrained_indices[i],
+                ),
+                # from payload
+                
+                    t_struct
+                # from timing_wrapper
+
+                ) = process.result()
                 
                 # assert that the structure did not scramble during optimization
                 if self.exit_status[i]:
@@ -1406,7 +1437,7 @@ class RunEmbedding(Embedder):
                     self.energies[i] = 1E10
 
                 ### Update checkpoint every (20*max_workers) optimized structures, and give an estimate of the remaining time
-                chk_freq = int(self.avail_cpus/2) * self.options.checkpoint_frequency
+                chk_freq = self.avail_cpus * self.options.checkpoint_frequency
                 if i % chk_freq == chk_freq-1:
 
                     with open(self.outname, 'w') as f:        
@@ -1586,7 +1617,10 @@ class RunEmbedding(Embedder):
                                             constrained_distances=pairing_dists,
                                             procs=self.procs,
                                             title=f'Candidate_{i+1}',
-                                            spring_constant=1,
+                                            spring_constant=2 if only_fixed_constraints else 1,
+                                            payload=(
+                                                self.constrained_indices[i],
+                                                )
                                         )
                 processes.append(process)
 
@@ -1594,9 +1628,24 @@ class RunEmbedding(Embedder):
                         
                 loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
 
-                (new_structure, new_energy, self.exit_status[i]), t_struct = process.result()
+                ((
+                    new_structure,
+                    new_energy,
+                    self.exit_status[i]
+                ),
+                # from optimization function
+                 
+                (
+                    self.constrained_indices[i],
+                ),
+                # from payload
                 
-                # # assert that the structure did not scramble during optimization
+                    t_struct
+                # from timing_wrapper
+
+                ) = process.result()
+
+                # assert that the structure did not scramble during optimization
                 if self.exit_status[i]:
                     constraints = (np.concatenate([self.constrained_indices[i], self.internal_constraints])
                                    if len(self.internal_constraints) > 0

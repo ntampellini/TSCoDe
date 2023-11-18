@@ -35,7 +35,7 @@ def xtb_opt(
         constrained_dihedrals=None,
         constrained_dih_angles=None,
         method='GFN2-xTB',
-        maxiter=None,
+        maxiter=500,
         solvent=None,
         charge=0,
         title='temp',
@@ -723,6 +723,8 @@ def crest_mtd_search(
 
         else:
             flags += f' --alpb {solvent}'
+
+    flags += ' --noreftopo'
 
     try:
         with open(f"{title}.out", "w") as f:
