@@ -12,7 +12,7 @@
 [![Wheel](https://img.shields.io/pypi/wheel/tscode)](https://pypi.org/project/tscode/)
 [![Documentation Status](https://readthedocs.org/projects/tscode/badge/?version=latest)](https://tscode.readthedocs.io/en/latest/?badge=latest)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/tscode)
-![Twitter](https://img.shields.io/twitter/url?url=https%3A%2F%2Ftwitter.com%2Fntampellini_&label=%40ntampellini_&link=https%3A%2F%2Ftwitter.com%2Fntampellini_)
+![Twitter](https://img.shields.io/twitter/url?url=https%3A%2F%2Ftwitter.com%2Fntampellini_)
 
 </div>
 
