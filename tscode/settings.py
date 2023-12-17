@@ -20,15 +20,12 @@ GNU General Public License for more details.
 # CHANGE IDENTATION/WHITESPACES/NEWLINES!
 
 FF_OPT_BOOL = True
-# Whether to run Force Field optimization with
-# prior to the final one. Set to False if no
-# Openbabel/XTB programs and python bindings
-# are installed.
+# Whether to run Force Field optimization
+# prior to the final one.
 
 FF_CALC = 'XTB'
 # Calculator to perform Force Field optimizations.
 # Possibilites are:
-# 'OB' : Openbabel UFF and MMFF94 methods
 # 'GAUSSIAN' : FF methods supported by Gaussian (UFF, MMFF)
 # 'XTB' : GFN-FF method
 
@@ -37,7 +34,6 @@ DEFAULT_FF_LEVELS = {
     ### THESE TWO LINES
     'GAUSSIAN':'UFF',
     'XTB':'GFN-FF',
-    'OB':'MMFF94',
 }
 # Default levels used to run calculations, overridden by FFLEVEL keyword
 

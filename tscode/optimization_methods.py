@@ -29,7 +29,7 @@ from tscode.calculators._gaussian import gaussian_opt
 from tscode.calculators._mopac import mopac_opt
 from tscode.calculators._orca import orca_opt
 from tscode.calculators._xtb import xtb_opt
-from tscode.python_functions import prune_conformers_rmsd
+from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.settings import DEFAULT_LEVELS, FF_CALC
 from tscode.utils import (loadbar, molecule_check, pt, scramble_check,
                           time_to_string, write_xyz)
@@ -40,11 +40,6 @@ opt_funcs_dict = {
     'GAUSSIAN':gaussian_opt,
     'XTB':xtb_opt,
 }
-
-if FF_CALC in ('OB', 'OPENBABEL'):
-    from tscode.calculators._openbabel import openbabel_opt
-    opt_funcs_dict['OB'] = openbabel_opt
-    opt_funcs_dict['OPENBABEL'] = openbabel_opt
 
 def optimize(
             coords,

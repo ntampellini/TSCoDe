@@ -28,15 +28,14 @@ precisely and in an automated way. It is thought as a tool to explore complex
 multimolecular conformational space fast and systematically, and yield a
 series of starting points for higher-level calculations.
 
-Since its inclusion of many subroutines and functionality, it also serves as a computational toolbox
+Since its many subroutines and functionality, it also serves as a computational toolbox
 to automate various routine tasks, via either MM, semiempirical or DFT methods.
 
-TSCoDe is written in pure Python. It leverages the Numpy and Numba libraries to perform the linear
-algebra required to translate and rotate molecules and the `ASE <https://github.com/rosswhitfield/ase>`__
-environment to perform a set of structure manipulations. It supports various
-:ref:`external calculators <installation>` (at least one required):
+TSCoDe is written in pure Python. The linear algebra module required to translate, rotate, embed and compare
+conformational ensembles is mostly compiled just-in-time with `Numba <https://numba.readthedocs.io/en/stable/>`_ and
+is parallelized where possible to achieve the best possible performance and scalability. The program supports
+various :ref:`external calculators <installation>` (at least one required):
 
--  Openbabel (>=3.1.0) (required)
 -  XTB (>=6.3) (recommended)
 -  ORCA (>=4.2)
 -  Gaussian (>=9)
@@ -46,15 +45,12 @@ What it does
 ------------
 
 **Generate accurately spaced poses** for bimolecular and trimolecular
-transition states of organic molecules, also considering structural
-deformation. If a transition state is already in hand, the distance
+transition states of organic molecules. If a transition state is already in hand, the distance
 between reactive atoms can be specified, so as to obtain all the
-stereo/regioisomeric analogs with precise molecular spacings.
-
-Monomolecular transition states are also supported, with sigmatropic reactions in mind. (experimental)
+topologically different poses with precise molecular spacings.
 
 TSCoDe is best suited for modelizations that involve many transition
-state regio- and stereoisomers, where the combination of reagents
+state poses and activation modes, where the combination of reagents
 conformations is an important aspect in transition state building.
 
 **Perform routine tasks and ensemble refinement** on conformational ensembles obtained
@@ -87,11 +83,11 @@ Ensemble refinement starts with a similarity pruning, evaluated through a sequen
 
  - RMSD pruning
 
- - TFD (torsion fingerprint deviation) pruning
+ - TFD (torsion fingerprint deviation) pruning - only for monomolecular embeds/ensembles
 
- - Rotationally-corrected RMSD pruning (invariant for periodic rotation of locally symmetrical known groups, i.e. tBu, Ph)
+ - Rotationally-corrected RMSD pruning - invariant for periodic rotation of locally symmetrical *known* groups, i.e. tBu, Ph
 
- - Moment of Inertia along the principal axes pruning (helps remove enantiomers and rotamers along unknown locally symmetrical groups)
+ - MOI (moment of inertia) pruning - helps remove enantiomers and rotamers along unknown locally symmetrical groups
 
 Extra features
 --------------
@@ -106,8 +102,8 @@ keywords and the ``saddle>`` and ``neb>`` operators are available:
   on the embedded structures, using the `Sella <https://github.com/zadorlab/sella>`__ library through ASE.
 
 - With ``NEB``, a climbing image nudged elastic band (CI-NEB) transition state
-  search is performed on each embedded structure. This tends to perform best with atropisomer rotation embeddings,
-  where start and end points are available, and do not need to be guessed like for other embeds.
+  search is performed on each embedded structure. This tends to perform best with the scan> operator,
+  where the initial minimum energy path is extracted from the distance or dihedral scan points.
 
 - The ``saddle>`` and ``neb>`` operators work in the same way on user-provided structures.
 

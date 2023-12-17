@@ -30,7 +30,7 @@ from tscode.ase_manipulations import ase_neb, ase_saddle, get_ase_calc
 from tscode.errors import ZeroCandidatesError
 from tscode.hypermolecule_class import align_structures, graphize
 from tscode.optimization_methods import optimize
-from tscode.python_functions import prune_conformers_rmsd
+from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.utils import (clean_directory, loadbar, molecule_check,
                           time_to_string, write_xyz)
 
@@ -496,7 +496,7 @@ def dihedral_scan(embedder):
         raise ZeroCandidatesError()
 
     # remove similar structures (RMSD)
-    embedder.structures, mask = prune_conformers_rmsd(embedder.structures, mol.atomnos, max_rmsd=embedder.options.rmsd, verbose=False)
+    embedder.structures, mask = prune_conformers_rmsd(embedder.structures, mol.atomnos, rmsd_thr=embedder.options.rmsd, verbose=False)
     embedder.energies = embedder.energies[mask]
     if 0 in mask:
         embedder.log(f'Discarded {int(len([b for b in mask if not b]))} candidates for RMSD similarity ({len([b for b in mask if b])} left)')

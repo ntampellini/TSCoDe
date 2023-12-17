@@ -188,8 +188,8 @@ def prune_conformers_rmsd(structures, atomnos, rmsd_thr=0.5):
               50, 20, 10, 5, 2, 1):
         
         # choose only k values such that every subgroup
-        # has at least five structures in it
-        if k == 1 or 5*k < len(structures):
+        # has on average at least twenty active structures in it
+        if k == 1 or 20*k < np.count_nonzero(out_mask):
 
             # compute similarities and get back the out_mask
             # and the pairings to be added to cache

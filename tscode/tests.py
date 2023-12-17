@@ -90,7 +90,7 @@ def run_tests():
                 print('Module imported successfully.')
 
             except ImportError:
-                raise Exception(f'Could not import OpenBabel Python module. Is standalone openbabel correctly installed?')
+                raise Exception(f'Could not import OpenBabel Python module. Is standalone/conda openbabel correctly installed?')
         else: # == 'XTB', 'GAUSSIAN'
             opt_funcs_dict[FF_CALC](data.atomcoords[0],
                                     data.atomnos,

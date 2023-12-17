@@ -35,10 +35,12 @@ from tscode.mep_relaxer import ase_mep_relax
 from tscode.optimization_methods import (_refine_structures, optimize,
                                          prune_by_moment_of_inertia)
 from tscode.pka import pka_routine
-from tscode.python_functions import prune_conformers_rmsd, prune_conformers_tfd
+from tscode.python_functions import prune_conformers_tfd
+from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
-from tscode.torsion_module import csearch, prune_conformers_rmsd_rot_corr, _get_quadruplets
+from tscode.torsion_module import (_get_quadruplets, csearch,
+                                   prune_conformers_rmsd_rot_corr)
 from tscode.utils import (get_scan_peak_index, read_xyz,
                           suppress_stdout_stderr, time_to_string, write_xyz)
 
@@ -55,11 +57,6 @@ def operate(input_string, embedder):
     if embedder.options.dryrun:
         embedder.log(f'--> Dry run requested: skipping operator \"{input_string}\"')
         return filename
-
-    if 'confab>' in input_string:
-        outname = confab_operator(filename,
-                                    embedder.options,
-                                    logfunction=embedder.log)
 
     elif 'csearch>' in input_string:
         outname = csearch_operator(filename, embedder)
@@ -125,47 +122,6 @@ def operate(input_string, embedder):
         raise Exception(f'Operator {op} not recognized.')
 
     return outname
-
-def confab_operator(filename, options, logfunction=None):
-    '''
-    '''
-
-    if logfunction is not None:
-        logfunction(f'--> Performing conformational search and optimization on {filename}')
-
-    data = read_xyz(filename)
-
-    if len(data.atomcoords) > 1:
-        raise InputError(f'Requested conformational search on file {filename} that already contains more than one structure.')
-
-    if len(tuple(connected_components(graphize(data.atomcoords[0], data.atomnos)))) > 1:
-        raise InputError((f'Requested conformational search on a molecular complex (file {filename}). '
-                           'Confab is not suited for this task, use internal csearch> operator.'))
-
-    if len(set(data.atomnos) - {1,6,7,8,9,15,16,17,35,53}) != 0:
-        raise InputError(('Requested conformational search on a molecule that contains atoms different '
-                            'than the ones for which OpenBabel Force Fields are parametrized. Please '
-                            'perform this conformational search through the csearch> operator.'))
-                                
-    confname = filename[:-4] + '_confab.xyz'
-
-    with suppress_stdout_stderr():
-        check_call(f'obabel {filename} -O {confname} --confab --rcutoff 0.5 --original'.split(), stdout=DEVNULL, stderr=STDOUT)
-        # running Confab through Openbabel
-
-    data = read_xyz(confname)
-    conformers = data.atomcoords
-        
-    # if len(conformers) > 10 and not options.let:
-    #     conformers = conformers[0:10]
-    #     logfunction(f'Will use only the best 10 conformers for TSCoDe embed.\n')
-
-    os.remove(confname)
-    with open(confname, 'w') as f:
-        for i, conformer in enumerate(conformers):
-            write_xyz(conformer, data.atomnos, f, title=f'Generated conformer {i}')
-
-    return confname
 
 def csearch_operator(filename, embedder, keep_hb=False, mode=1):
     '''
@@ -507,7 +463,7 @@ def mtd_search_operator(filename, embedder):
 
     ### RMSD
     if len(conformers) < 5E4:
-        conformers, _ = prune_conformers_rmsd(conformers, mol.atomnos, max_rmsd=embedder.options.rmsd)
+        conformers, _ = prune_conformers_rmsd(conformers, mol.atomnos, rmsd_thr=embedder.options.rmsd)
     if len(conformers) < 1E3:
         conformers, _ = prune_conformers_rmsd_rot_corr(conformers, mol.atomnos, mol.graph)
 

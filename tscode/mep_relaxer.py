@@ -164,7 +164,8 @@ def interpolate_structures(structures, atomnos, n, method='idpp'):
         ratio = n/len(structures)
 
         # calculate where original structures will be mapped in the final set
-        mappings = [round(i*(ratio+1)) for i, _ in enumerate(structures)]
+        mappings = [round(i*ratio) for i, _ in enumerate(structures)]
+        mappings[-1] = len(structures)
 
         # initialize output container with initial structures mapped in
         images = [Atoms(atomnos, positions=structures[mappings.index(i)])

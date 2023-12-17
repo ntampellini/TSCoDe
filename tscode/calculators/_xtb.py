@@ -171,7 +171,7 @@ def xtb_opt(
     maxiter = maxiter if maxiter is not None else 0
     s = f'$opt\n   logfile={trajname}\n   output={outname}\n   maxcycle={maxiter}\n'
          
-    if constrained_indices is not None:  
+    if constrained_indices is not None:
         # s += '\n$fix\n   atoms: '
         # for i in np.unique(np.array(constrained_indices).flatten()):
         #     s += f"{i+1},"
@@ -438,13 +438,19 @@ def energy_grepper(filename, signal_string, position):
                 raise Exception()
 
 def xtb_get_free_energy(coords, atomnos, method='GFN2-xTB', solvent=None,
-                        charge=0, title='temp', **kwargs):
+                        charge=0, title='temp', sph=False, **kwargs):
     '''
+    Calculates free energy with XTB,
+    without optimizing the provided structure.
     '''
+
     with open(f'{title}.xyz', 'w') as f:
         write_xyz(coords, atomnos, f, title=title)
 
-    s = f'$opt\n   logfile={title}_opt.log\n$end'
+    outname = 'xtbopt.xyz'
+    trajname = f'{title}_opt_log.xyz'
+    s = f'$opt\n   logfile={trajname}\n   output={outname}\n   maxcycle=1\n'
+
           
     if method.upper() in ('GFN-XTB', 'GFNXTB'):
         s += '\n$gfn\n   method=1\n'
@@ -458,7 +464,10 @@ def xtb_get_free_energy(coords, atomnos, method='GFN2-xTB', solvent=None,
     with open(f'{title}.inp', 'w') as f:
         f.write(s)
     
-    flags = '--ohess'
+    if sph:
+        flags = '--bhess'
+    else:
+        flags = '--ohess'
     
     if method in ('GFN-FF', 'GFNFF'):
         flags += ' --gfnff'
@@ -498,7 +507,7 @@ def xtb_get_free_energy(coords, atomnos, method='GFN2-xTB', solvent=None,
 
     except FileNotFoundError:
         # return 1E10
-        print(f'temp_hess.log not present here - we are in', os.getcwd())
+        # print(f'temp_hess.log not present here - we are in', os.getcwd())
         print(os.listdir())
         sys.exit()
 

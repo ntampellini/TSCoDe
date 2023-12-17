@@ -59,15 +59,14 @@ def run_setup():
         'orca':'ORCA',
         'gau':'GAUSSIAN',
         'xtb':'XTB',
-        'ob':'OB',
     }
 
     print('\nTSCoDe setup:\n')
 
     #########################################################################################
 
-    answer = ask('What Force Field calculator would you like to use?\n- XTB -> xtb\n- Openbabel -> ob\n- Gaussian -> gau\n'
-                 '- None -> none\n\nAnswer [xtb]/ob/gau/none: ', accepted=('xtb', 'ob', 'gau', 'none'), default='xtb')
+    answer = ask('What Force Field calculator would you like to use?\n- XTB -> xtb\n- Gaussian -> gau\n'
+                 '- None -> none\n\nAnswer [xtb]/gau/none: ', accepted=('xtb', 'gau', 'none'), default='xtb')
 
     if answer == 'xtb':
         properties['FF_OPT_BOOL'] = True
@@ -127,7 +126,6 @@ def run_setup():
         'ORCA':2,
         'GAUSSIAN':3,
         'XTB':4,
-        'OB':5,
     }
 
     q = "\'"

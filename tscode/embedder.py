@@ -1476,15 +1476,12 @@ class RunEmbedding(Embedder):
 
         if self.options.debug:
             self.dump_status(f'force_field_refining_{conv_thr}', only_fixed_constraints=only_fixed_constraints)
+  
+        mask = self.rel_energies() < 1E10
+        self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
 
-        if self.options.kcal_thresh is not None and only_fixed_constraints:
-    
-            mask = self.rel_energies() < 2*self.options.kcal_thresh
-
-            self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
-
-            if False in mask:
-                self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {2*self.options.kcal_thresh} kcal/mol)')
+        if False in mask:
+            self.log(f'Discarded {len([b for b in mask if not b])} scrambled candidates ({np.count_nonzero(mask)} left)')
 
         ################################################# PRUNING: FITNESS (POST FORCE FIELD OPT)
 
@@ -1915,7 +1912,7 @@ class RunEmbedding(Embedder):
         if len(self.structures) != 0:
 
             t_start = time.perf_counter()
-            self.structures, mask = prune_conformers_rmsd(self.structures, self.atomnos, max_rmsd=self.options.rmsd)
+            self.structures, mask = prune_conformers_rmsd(self.structures, self.atomnos, rmsd_thr=self.options.rmsd)
             self.apply_mask(('energies', 'exit_status'), mask)
             t_end = time.perf_counter()
             
@@ -2157,7 +2154,7 @@ class RunEmbedding(Embedder):
                     self.normal_termination()
 
                 self.compenetration_refining()
-                self.similarity_refining(rmsd=False, verbose=True)
+                self.similarity_refining(rmsd=True if self.embed == "refine" else False, verbose=True)
 
                 if self.options.optimization:
 

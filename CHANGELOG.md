@@ -5,6 +5,10 @@
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>
 - ... [OPENBABEL DEPRECATION] -->
+## 0.4.4 (December 17 2023)
+###
+- Updated prune_conformers_rmsd group criteria, avoiding group numbers that have (on average) less than 20 active structures.
+- Disconnected the Openbabel Force Field calculator from the embedder, as the XTB implementation proved uniquiely versatile and robust for more sophisticated manipulations. The interface is still present in the code (inside calculators) for reference, external utility purposes and potential future re-adoption for specific tasks. Updated the rest of the documentation accordingly.
 
 ## 0.4.3 (November 18 2023)
 ### RMSD pruning significative speedup, increased extent of parallelization throughout, keywords priority

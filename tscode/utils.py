@@ -19,6 +19,7 @@ GNU General Public License for more details.
 import os
 import sys
 import time
+from shutil import rmtree
 from subprocess import DEVNULL, STDOUT, CalledProcessError, check_call, run
 
 import numpy as np
@@ -75,6 +76,8 @@ def clean_directory(to_remove=None):
         for name in to_remove:
             try:
                 os.remove(name)
+            except IsADirectoryError:
+                rmtree(os.path.join(os.getcwd(), name))
             except FileNotFoundError:
                 pass
 
@@ -82,11 +85,15 @@ def clean_directory(to_remove=None):
         if f.split('.')[0] == 'temp':
             try:
                 os.remove(f)
+            except IsADirectoryError:
+                rmtree(os.path.join(os.getcwd(), f))
             except FileNotFoundError:
                 pass
         elif f.startswith('temp_'):
             try:
                 os.remove(f)
+            except IsADirectoryError:
+                rmtree(os.path.join(os.getcwd(), f))
             except FileNotFoundError:
                 pass
 

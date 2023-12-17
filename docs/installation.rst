@@ -16,7 +16,7 @@ calculators:
 -  Gaussian (>=9)
 -  MOPAC2016
 
-An additional installation of Openbabel is required, as it provides various i/o utilities.
+An additional installation of Openbabel is required, as it provides i/o capabilities via cclib.
 
 XTB (recommended for FF/SE)
 ---------------------------

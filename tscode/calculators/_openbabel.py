@@ -15,27 +15,28 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 '''
-from tscode.settings import FF_OPT_BOOL, FF_CALC
+# VERSION 0.4.4:
+# THIS MODULE IS NOT INTERFACED WITH THE MAIN PROGRAM EMBEDDER ANYMORE.
+# IT IS LEFT HERE AS AN EXTERNAL UTILITY TOOL AND FOR POTENTIAL FUTURE
+# USE AS A FASTER, LESS ROBUST ALTERNATIVE TO THE XTB FF IMPLEMENTATION.
+
 from tscode.utils import clean_directory, scramble_check, write_xyz, read_xyz
 from tscode.algebra import norm, norm_of
+from openbabel import openbabel as ob
 
-if FF_OPT_BOOL and FF_CALC == 'OB':
-
-    from openbabel import openbabel as ob
-
-    def openbabel_opt(
-                        structure,
-                        atomnos,
-                        constrained_indices,
-                        constrained_distances=None,
-                        tight_constraint=True,
-                        graphs=None,
-                        check=False,
-                        method='UFF',
-                        nsteps=1000,
-                        title='temp_ob',
-                        **kwargs,
-                    ):
+def openbabel_opt(
+                    structure,
+                    atomnos,
+                    constrained_indices,
+                    constrained_distances=None,
+                    tight_constraint=True,
+                    graphs=None,
+                    check=False,
+                    method='UFF',
+                    nsteps=1000,
+                    title='temp_ob',
+                    **kwargs,
+                ):
         '''
         tight_constraint: False uses the native implementation,
                           True uses a more accurate recursive one 

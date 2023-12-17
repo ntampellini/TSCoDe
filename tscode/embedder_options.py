@@ -55,6 +55,8 @@ keywords_dict = {
                                 # in Angstroms. Syntax uses parenthesis and commas:
                                 # `DIST(a=2.345,b=3.67,c=2.1)`
 
+            'DRYRUN' : 1,       # skip any computing step - used to check for runtime errors during setup)
+
             # 'ENANTIOMERS',    # Do not discard enantiomeric structures.
 
             'EZPROT' : 1,         # Double bond protection
@@ -289,10 +291,10 @@ class OptionSetter:
         self.embedder = embedder
         self.args = args
 
-        if not all(k in keywords_dict.keys() for k in self.keywords):
-            for k in self.keywords:
-                if k not in keywords_dict.keys():
-                    SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
+        # if not all(k in keywords_dict.keys() for k in self.keywords):
+        for k in self.keywords:
+            if k not in keywords_dict.keys():
+                SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
         if self.keywords_simple:
             embedder.log('--> Parsed keywords, in order of execution:\n    ' + ' '.join(self.sorted_keywords()) + '\n')
@@ -315,7 +317,7 @@ class OptionSetter:
             # set this only if user did not already specify a value
             self.embedder.options.rmsd = 0.25 
 
-        self.embedder.objects[0].compute_orbitals(override='Single' if self.options.simpleorbitals else None)
+        self.embedder.objects[0].compute_orbitals(override='Single' if self.embedder.options.simpleorbitals else None)
 
     def bypass(self, options, *args):
         options.bypass = True
