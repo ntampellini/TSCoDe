@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021-2023 Nicolò Tampellini
+Copyright (C) 2021-2024 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -419,7 +419,8 @@ def mtd_search_operator(filename, embedder):
     max_workers = embedder.avail_cpus//2 or 1
     logfunction(f'--> Performing {embedder.options.calculator} GFN2//GFN-FF' + (
                     f'{f"/{embedder.options.solvent.upper()}" if embedder.options.solvent is not None else ""} ' +
-                    f'metadynamic conformational search on {filename} via CREST (2 cores, {max_workers} threads)'))
+                    f'metadynamic conformational search on {filename} via CREST.\n' +
+                    f'    (2 cores, {max_workers} threads, {embedder.options.kcal_thresh} kcal/mol thr.)'))
     
     if len(mol.atomcoords) > 1:
         embedder.log(f'Requested conformational search on multimolecular file - will do\n' +
@@ -437,7 +438,8 @@ def mtd_search_operator(filename, embedder):
                                         constrained_indices=_get_internal_constraints(filename, embedder),
                                         solvent=embedder.options.solvent,
                                         charge=mol.charge,
-                                        title=mol.rootname,
+                                        kcal=embedder.options.kcal_thresh,
+                                        title=mol.rootname+"_mtd_csearch",
                                         procs=2,
                                         threads=max_workers,
                                     )

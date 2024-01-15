@@ -153,7 +153,7 @@ Work is in progress to expand this section with more examples.
 
 ::
 
-   DIST(a=2.0, x=1.6, y=1.6) SOLVENT=ch2cl2
+   DIST(a=2.0, x=1.6, y=1.6) SOLVENT=ch2cl2 KCAL=20
    mtd_search> quinazolinedione.xyz 6A 14A 0x 7y
    csearch> peptide.xyz 0x 88y 19z 80z
 
@@ -172,12 +172,15 @@ Work is in progress to expand this section with more examples.
    # No distance provided, will relax during optimization
 
    # mtd_search> - metadynamics-based conformational search through CREST.
-   # Note that this is internal constraints-aware, and will treat the "A"
-   # pairing as a bond, retaining the specified distance.
+   # Note that this is internal constraints-aware, and will treat the "A",
+   # "x" and "y" pairings as bonds, retaining the specified distances.
 
    # csearch> - diversity-based torsional conformational search. As rsearch>,
    # it is constraints-aware and will treat the "z" pairing as a bond, preventing
    # the generation of peptide conformers without the "z" interaction present.
+
+   # The KCAL keyword sets the energy threshold in kcal/mol for both the final 
+   # ensemble and the metadynamics-based conformational search ("--ewin" in CREST).
 
 .. figure:: /images/complex_embed_cd.png
    :alt: Chemdraw representation of the embed pairings

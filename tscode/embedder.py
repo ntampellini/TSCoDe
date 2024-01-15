@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021-2023 Nicolò Tampellini
+Copyright (C) 2021-2024 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -1625,16 +1625,16 @@ class RunEmbedding(Embedder):
                         
                 loadbar(i, len(self.structures), prefix=f'Optimizing structure {i+1}/{len(self.structures)} ')
 
-                ((
+                (   (
                     new_structure,
                     new_energy,
                     self.exit_status[i]
-                ),
+                    ),
                 # from optimization function
                  
-                (
+                    (
                     self.constrained_indices[i],
-                ),
+                    ),
                 # from payload
                 
                     t_struct
@@ -1711,12 +1711,15 @@ class RunEmbedding(Embedder):
 
             if self.options.kcal_thresh is not None and only_fixed_constraints:
         
-                mask = self.rel_energies() < self.options.kcal_thresh
+                # mask = self.rel_energies() < self.options.kcal_thresh
+                energy_thr = self.dynamic_energy_thr()
+                mask = self.rel_energies() < energy_thr
 
                 self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
 
                 if False in mask:
-                    self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, threshold {self.options.kcal_thresh} kcal/mol)')
+                    self.log(f'Discarded {len([b for b in mask if not b])} candidates for energy ({np.count_nonzero(mask)} left, ' +
+                             f'{round(100*np.count_nonzero(mask)/len(mask), 1)}% kept, threshold {energy_thr} kcal/mol)')
        
             ################################################# PRUNING: FITNESS (POST SEMIEMPIRICAL OPT)
 
@@ -1742,6 +1745,33 @@ class RunEmbedding(Embedder):
             # do not retain energies for the next optimization step if optimization was not tight
             if not only_fixed_constraints:
                 self.energies.fill(0)
+
+    def dynamic_energy_thr(self, keep_min=0.1, verbose=True):
+        '''
+        Returns an energy threshold that is dynamically adjusted
+        based on the distribution of energies around the lowest,
+        so that at least 10% of the structures are retained.
+
+        keep_min: float, minimum percentage of structures to keep
+        verbose: bool, prints comments in self.log
+
+        '''
+        active = len(self.structures)
+        keep = np.count_nonzero(self.rel_energies() < self.options.kcal_thresh)
+
+        # if the standard threshold keeps enough structures, use that
+        if keep/active > keep_min:
+            return self.options.kcal_thresh
+        
+        # if not, iterate on the relative energy values as
+        # thresholds until we keep enough structures
+        for thr in (energy for energy in self.rel_energies() if energy > self.options.kcal_thresh):
+            keep = np.count_nonzero(self.rel_energies() < thr)
+
+            if keep/active > keep_min:
+                if verbose:
+                    self.log(f"--> Dynamically adjusted energy threshold to {round(thr, 1)} kcal/mol to retain at least {round(thr)}% of structures.")
+                return thr
 
     def metadynamics_augmentation(self):
         '''

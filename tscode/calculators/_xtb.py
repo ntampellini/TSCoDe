@@ -2,7 +2,7 @@
 '''
 
 TSCODE: Transition State Conformational Docker
-Copyright (C) 2021-2023 Nicolò Tampellini
+Copyright (C) 2021-2024 Nicolò Tampellini
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -606,6 +606,7 @@ def crest_mtd_search(
         method='GFN2-XTB//GFN-FF',
         solvent='CH2Cl2',
         charge=0,
+        kcal=None,
         title='temp',
         procs=4,
         threads=1,
@@ -733,6 +734,10 @@ def crest_mtd_search(
         else:
             flags += f' --alpb {solvent}'
 
+    if kcal is None:
+        kcal = 10
+    flags += f' --ewin {kcal}'
+
     flags += ' --noreftopo'
 
     try:
@@ -762,6 +767,6 @@ def crest_mtd_search(
             pass
 
     os.chdir(os.path.dirname(os.getcwd()))
-    shutil.rmtree(os.path.join(os.getcwd(), title))
+    # shutil.rmtree(os.path.join(os.getcwd(), title))
     
     return new_coords
