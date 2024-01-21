@@ -19,7 +19,7 @@ GNU General Public License for more details.
 import os
 # import pickle
 import time
-from subprocess import DEVNULL, STDOUT, check_call
+from subprocess import CalledProcessError
 
 import numpy as np
 from networkx import connected_components
@@ -418,12 +418,15 @@ def mtd_search_operator(filename, embedder):
 
     max_workers = embedder.avail_cpus//2 or 1
     logfunction(f'--> Performing {embedder.options.calculator} GFN2//GFN-FF' + (
-                    f'{f"/{embedder.options.solvent.upper()}" if embedder.options.solvent is not None else ""} ' +
-                    f'metadynamic conformational search on {filename} via CREST.\n' +
-                    f'    (2 cores, {max_workers} threads, {embedder.options.kcal_thresh} kcal/mol thr.)'))
+                f'{f"/{embedder.options.solvent.upper()}" if embedder.options.solvent is not None else ""} ' +
+                f'metadynamic conformational search on {filename} via CREST.\n' +
+                f'    (2 cores, {max_workers} threads, {embedder.options.kcal_thresh} kcal/mol thr.)'))
+
+    if embedder.options.crestnci:
+        logfunction(f'--> CRESTNCI: Running crest in NCI mode (wall potential applied)')
     
     if len(mol.atomcoords) > 1:
-        embedder.log(f'Requested conformational search on multimolecular file - will do\n' +
+        embedder.log(f'--> Requested conformational search on multimolecular file - will do\n' +
                       'an individual search from each conformer (might be time-consuming).')
 
     t_start = time.perf_counter()
@@ -432,17 +435,36 @@ def mtd_search_operator(filename, embedder):
 
         t_start_conf = time.perf_counter()
 
-        conf_batch = crest_mtd_search(
-                                        coords,
-                                        mol.atomnos,
-                                        constrained_indices=_get_internal_constraints(filename, embedder),
-                                        solvent=embedder.options.solvent,
-                                        charge=mol.charge,
-                                        kcal=embedder.options.kcal_thresh,
-                                        title=mol.rootname+"_mtd_csearch",
-                                        procs=2,
-                                        threads=max_workers,
-                                    )
+        try:
+            conf_batch = crest_mtd_search(
+                                            coords,
+                                            mol.atomnos,
+                                            constrained_indices=_get_internal_constraints(filename, embedder),
+                                            solvent=embedder.options.solvent,
+                                            charge=mol.charge,
+                                            kcal=embedder.options.kcal_thresh,
+                                            ncimode=embedder.options.crestnci,
+                                            title=mol.rootname+"_mtd_csearch",
+                                            procs=2,
+                                            threads=max_workers,
+                                        )
+            
+        # if the run errors out, we retry with XTB2
+        except CalledProcessError:
+            logfunction(f'--> Metadynamics run failed with GFN2-XTB//GFN-FF, retrying with just GFN2-XTB (slower but more stable)')
+            conf_batch = crest_mtd_search(
+                                            coords,
+                                            mol.atomnos,
+                                            constrained_indices=_get_internal_constraints(filename, embedder),
+                                            solvent=embedder.options.solvent,
+                                            charge=mol.charge,
+                                            method='GFN2-XTB', # try with XTB2
+                                            kcal=embedder.options.kcal_thresh,
+                                            ncimode=embedder.options.crestnci,
+                                            title=mol.rootname+"_mtd_csearch",
+                                            procs=2,
+                                            threads=max_workers,
+                                        )
 
         conformers.extend(conf_batch)
 

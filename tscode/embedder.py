@@ -1343,7 +1343,7 @@ class RunEmbedding(Embedder):
 
         ################################################# GEOMETRY OPTIMIZATION - FORCE FIELD
 
-        task = 'Distance refining' if only_fixed_constraints else f'Structure {"pre-" if prevent_scrambling else ""}optimization'
+        task = 'Relaxing interactions' if only_fixed_constraints else f'Structure {"pre-" if prevent_scrambling else ""}optimization'
         self.log(f'--> {task} ({self.options.ff_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.ff_calc}, {self.avail_cpus} thread{"s" if self.avail_cpus>1 else ""})')
 
         t_start_ff_opt = time.perf_counter()
@@ -1575,7 +1575,7 @@ class RunEmbedding(Embedder):
         self.outname = f'TSCoDe_{"ensemble" if self.embed == "refine" else "poses"}_{self.stamp}.xyz'
 
 
-        task = 'Distance refining' if only_fixed_constraints else 'Structure optimization'
+        task = 'Relaxing interactions' if only_fixed_constraints else 'Structure optimization'
         self.log(f'--> {task} ({self.options.theory_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.calculator}, {self.threads} thread{"s" if self.threads>1 else ""})')
 
         self.energies.fill(0)
@@ -2201,7 +2201,7 @@ class RunEmbedding(Embedder):
                         self.log(f"--> Performing {self.options.calculator} FF optimization (tight convergence, fixed constraints only, step 2/2)\n")
                         self.force_field_refining(conv_thr="tight", only_fixed_constraints=True)
 
-                        self.csearch_augmentation_routine()
+                        # self.csearch_augmentation_routine()
 
                     if not (self.options.ff_opt and self.options.theory_level == self.options.ff_level):
                         # If we just optimized at a (FF) level and the final

@@ -46,6 +46,8 @@ keywords_dict = {
                                 # clashing. The more forgiving, the more structures will reach
                                 # the geometry optimization step. Syntax: `CLASHES(num=3,dist=1.2)`
             
+            'CRESTNCI' : 1,     # passes the "--nci" flag to CREST metadynamic conformational searches.
+
             'DEEP' : 1,           # Performs a deeper search, retaining more starting points
                                 # for calculations and smaller turning angles.
 
@@ -192,6 +194,7 @@ class Options:
         self.saddle = False
         self.ts = False
         self.nci = False
+        self.crestnci = False
         self.shrink = False
         self.shrink_multiplier = 1
         self.metadynamics = False
@@ -235,6 +238,7 @@ class Options:
             'bypass',
             'check_structures',
             'csearch_aug',
+            'crestnci',
             'debug',
             'let',
             'metadynamics',
@@ -330,6 +334,9 @@ class OptionSetter:
     def confs(self, options, *args):
         kw = self.keywords_simple[self.keywords.index('CONFS')]
         options.max_confs = int(kw.split('=')[1])
+
+    def crestnci(self, options, *args):
+        options.crestnci = True
 
     def dryrun(self, options, *args):
         options.dryrun = True

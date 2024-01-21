@@ -100,6 +100,10 @@ one is accepted, like in ``DIST``.
 -  **CONFS** - Override the maximum number of conformers to be used for
    the embed of each molecule (default is 1000). Syntax: ``CONFS=10000``
 
+-  **CRESTNCI** - mtd>/mtd_search> runs: passes the "--nci" argument to CREST, running
+   it in non-covalent interaction mode, *i.e.* applying a wall potential to prevent
+   unconstrained non-covalent complexes to evaporate during the metadynamics.
+
 -  **DEBUG** - Outputs more intermediate files and information in general.
    Structural adjustments, distance refining and similar processes will
    output ASE ".traj" trajectory files. It will also produce

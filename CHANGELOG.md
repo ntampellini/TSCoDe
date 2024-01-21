@@ -4,9 +4,11 @@
 
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>-->
+## 0.4.6 (January 21, 2024)
+- CRESTNCI keyword: passes "--nci" to CREST, making it run in "NCI mode" that is applying a wall potential to prevent unconstrained non-covalent complexes from evaporating during the dynamics.
+- If metadynamic conformational searches fail (CalledProcessError) at the default GFN2-XTB//GFN-FF level they are re-launched with pure GFN2-XTB (slower but more stable and works with inorganic ions).
 
 ## 0.4.5 (January 15, 2024)
-###
 - Added support for passing an energy threshold to mtd_search> CREST runs ("--ewin" in CREST, set with the KCAL keyword on TSCoDe).
 - Dynamically adjusted energy pruning threshold above self.options.kcal_thresh in optimization_refining if needed, so that at least a percentage of structures is retained (default minimum set to 10%).
 

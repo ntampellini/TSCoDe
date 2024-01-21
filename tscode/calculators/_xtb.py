@@ -607,6 +607,7 @@ def crest_mtd_search(
         solvent='CH2Cl2',
         charge=0,
         kcal=None,
+        ncimode=False,
         title='temp',
         procs=4,
         threads=1,
@@ -708,15 +709,21 @@ def crest_mtd_search(
     with open(f'{title}.inp', 'w') as f:
         f.write(s)
     
+    # avoid restarting the run
     flags = '--norestart'
       
+    # add method flag
     if method.upper() in ('GFN-FF', 'GFNFF'):
         flags += ' --gfnff'
         # declaring the use of FF instead of semiempirical
 
+    elif method.upper() in ('GFN2-XTB', 'GFN2'):
+        flags += ' --gfn2'
+
     elif method.upper() in ('GFN2-XTB//GFN-FF', 'GFN2//GFNFF'):
         flags += ' --gfn2//gfnff'
 
+    # adding other options
     if charge != 0:
         flags += f' --chrg {charge}'
 
@@ -738,6 +745,9 @@ def crest_mtd_search(
         kcal = 10
     flags += f' --ewin {kcal}'
 
+    if ncimode:
+        flags += f' --nci'
+
     flags += ' --noreftopo'
 
     try:
@@ -747,6 +757,11 @@ def crest_mtd_search(
     except KeyboardInterrupt:
         print('KeyboardInterrupt requested by user. Quitting.')
         sys.exit()
+
+    # if CREST crashes, cd into the parent folder before propagating the error
+    except CalledProcessError:
+        os.chdir(os.path.dirname(os.getcwd()))
+        raise CalledProcessError
 
     new_coords = read_xyz('crest_conformers.xyz').atomcoords
 
