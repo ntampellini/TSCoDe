@@ -4,6 +4,12 @@
 
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>-->
+
+## 0.4.7 (Januray 28, 2024)
+- Restyled copy of input in the log file.
+- Added citations to the main program and external modules if they are used (references.py, embedder.py/_print_references).
+- In runs with operators, t_start_run is set before running the first operator, and it is not overwritten by RunEmbedding if it was already set. This makes sure that the final time always includes the time spent executing the operators.
+
 ## 0.4.6 (January 21, 2024)
 - CRESTNCI keyword: passes "--nci" to CREST, making it run in "NCI mode" that is applying a wall potential to prevent unconstrained non-covalent complexes from evaporating during the dynamics.
 - If metadynamic conformational searches fail (CalledProcessError) at the default GFN2-XTB//GFN-FF level they are re-launched with pure GFN2-XTB (slower but more stable and works with inorganic ions).

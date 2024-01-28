@@ -54,6 +54,9 @@ def operate(input_string, embedder):
 
     filename = embedder._extract_filename(input_string)
    
+    if not hasattr(embedder, "t_start_run"):
+        embedder.t_start_run = time.perf_counter()
+
     if embedder.options.dryrun:
         embedder.log(f'--> Dry run requested: skipping operator \"{input_string}\"')
         return filename

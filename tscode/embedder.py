@@ -53,6 +53,7 @@ from tscode.pt import pt
 from tscode.python_functions import (compenetration_check,
                                      prune_conformers_tfd, scramble)
 from tscode.rmsd_pruning import prune_conformers_rmsd
+from tscode.references import references
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS, THREADS
 from tscode.torsion_module import (_get_quadruplets, csearch,
                                    prune_conformers_rmsd_rot_corr)
@@ -101,7 +102,7 @@ class Embedder:
 
         try:
 
-            self.write_banner()
+            self.write_banner_and_info()
             # Write banner to log file
 
             self.options = Options()
@@ -135,6 +136,9 @@ class Embedder:
             self._calculator_setup()
             # initialize default or specified calculator
 
+            self._print_references()
+            # based on the data collected from setup
+
             self._apply_operators()
             # execute the operators, replacing the self.objects molecule
 
@@ -162,14 +166,14 @@ class Embedder:
         string += '\n'
         self.logfile.write(string)
 
-    def write_banner(self):
+    def write_banner_and_info(self):
         '''
         Write banner to log file, containing program and run info
         '''
         banner = '''
        +   .     ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ .     .    
-    *    .   .. ╱────────────────────────────────────╲   *     .  
- .     ..   +  ╱▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╲ .   .   +  
+    *    .   .. /────────────────────────────────────\   *     .  
+ .     ..   +  /▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ \ .   .   +  
    +       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ . ..   .  
      .  ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒  .   *  
        ▒░████████╗░██████╗░█████╗░░█████╗░██████╗░███████╗░░░▒  .  .  
@@ -177,22 +181,22 @@ class Embedder:
  ..  . ▒░░░░██║░░░╚█████╗░██║░░╚═╝██║░░██║██║░░██║█████╗░░░░░▒ *    +   
    .   ▒░░░░██║░░░░╚═══██╗██║░░██╗██║░░██║██║░░██║██╔══╝░░░░░▒   .   .
 .       ▒░░░██║░░░██████╔╝╚█████╔╝╚█████╔╝██████╔╝███████╗░░░▒ ..   +   
- *  .  ╱ ▒░░╚═╝░░░╚═════╝░░╚════╝░░╚════╝░╚═════╝░╚══════╝░░▒ ╲ .  ..  
-  ..  ╱   ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒   ╲   .   
-.    ╱    ▒░░╔══════════════════════════════════════════╗░░▒    ╲ +    
-    ╱      ▒░║  Transition State Conformational Docker  ║░▒      ╲ ..  
- +  ╲╲     ▒░║        nicolo.tampellini@yale.edu        ║░▒     ╱╱    .  
-     ╲╲    ▒░║                                          ║░▒    ╱╱  .       
- ..   ╲╲   ▒░║     Version    >{0:^25}║░▒   ╱╱ .  *                                    
-   .   ╲╲  ▒░║      User      >{1:^25}║░▒  ╱╱   .                                     
-        ╲╲ ▒░║      Time      >{2:^25}║░▒ ╱╱ *   .                                                      
- ..   *  ╲╲▒░║      Procs     >{3:^25}║░▒╱╱   ..            
-    .     ╲▒░║     Threads    >{4:^25}║░▒╱  +              
+ *  .  / ▒░░╚═╝░░░╚═════╝░░╚════╝░░╚════╝░╚═════╝░╚══════╝░░▒ \ .  ..  
+  ..  /   ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒   \   .   
+.    /    ▒░░╔══════════════════════════════════════════╗░░▒    \ +    
+    /      ▒░║  Transition State Conformational Docker  ║░▒      \ ..  
+ +  \\\     ▒░║        nicolo.tampellini@yale.edu        ║░▒     //    .  
+     \\\    ▒░║                                          ║░▒    //  .       
+ ..   \\\   ▒░║     Version    >{0:^25}║░▒   // .  *                                    
+   .   \\\  ▒░║      User      >{1:^25}║░▒  //   .                                     
+        \\\ ▒░║      Time      >{2:^25}║░▒ // *   .                                                      
+ ..   *  \\\▒░║      Procs     >{3:^25}║░▒//   ..            
+    .     \▒░║     Threads    >{4:^25}║░▒/  +              
       .    ▒░║    Avail CPUs  >{5:^25}║░▒ .   ..                            
   +  .. .  ▒░╚══════════════════════════════════════════╝░▒  .. .   
     .       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒     .     
- .     *  +   ╲╲ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ ╱╱  .      .
-     .      .  ╲╲▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╱╱ .   .    
+ .     *  +   \\\ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ //  .      .
+     .      .  \\\▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁// .   .    
            '''.format(__version__,
                       getuser(),
                       time.ctime()[0:-8],
@@ -207,6 +211,27 @@ class Embedder:
         if self.procs * self.threads > self.avail_cpus:
             self.log(f'--> ATTENTION: Excessive hyperthreading - {self.avail_cpus} CPUs (w/Hyperthreading) detected, {self.procs}*{self.threads} will be used')
 
+    def _print_references(self):
+        '''
+        Print relevant literature references based on the run settings
+
+        '''
+
+        self.log('--> If you use TSCoDe in your publication, please cite this manuscript in the main text:\n' +
+                 f'    {references["TSCoDe"]}')
+        
+        cite_ff = self.options.ff_calc == "XTB"
+        cite_gfn2 = self.options.calculator == "XTB"
+        cite_crest = any(("mtd>" in op or "mtd_search>" in op) for op in self.options.operators)
+
+        if any((cite_ff, cite_gfn2, cite_crest)):
+            s = ''
+            s += f"    GFN-FF : {references['GFN-FF']}\n" if cite_ff else ""
+            s += f"    GFN2-XTB : {references['GFN2-XTB']}\n" if cite_gfn2 else ""
+            s += f"    CREST : {references['CREST']}\n" if cite_crest else ""
+
+            self.log(f'\n--> Your run also makes use of these other software: please cite these references as well.\n{s}')
+
     def _parse_input(self, filename):
         '''
         Reads a textfile and sets the Embedder properties for the run.
@@ -218,11 +243,15 @@ class Embedder:
         with open(filename, 'r') as f:
             lines = f.readlines()
 
+        # write a formatted copy of the input file to the log
         self.log(f'--> Input file: {filename}\n')
-        for line in lines:
-            self.log('> '+line.rstrip('\n'))
-        self.log() 
+        longest = max(len(line.rstrip('\n')) for line in lines)
+        self.log('   '+'-'*(longest+3))
+        for l, line in enumerate(lines):
+            self.log(f'{l+1}> | '+line.rstrip('\n').ljust(longest)+'|')
+        self.log('   '+'-'*(longest+3)+'\n')
 
+        # start parsing: get rid of comment and blank lines
         lines = [line.replace(', ',',') for line in lines if line[0] not in ('#', '\n')]
         
         def _remove_internal_constraints(string):
@@ -2169,7 +2198,9 @@ class RunEmbedding(Embedder):
             self.log(f'--> Large embed: RIGID keyword added for efficiency (override with LET)')
 
         self.write_options()
-        self.t_start_run = time.perf_counter()
+
+        if not hasattr(self, "t_start_run"):
+            self.t_start_run = time.perf_counter()
 
         if self.options.dryrun:
             self.log('\n--> Dry run requested: exiting.')
