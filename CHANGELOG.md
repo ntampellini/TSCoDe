@@ -5,6 +5,16 @@
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>-->
 
+## 0.4.9 (February 22, 2024)
+- CREST constraints (mtd_search>) are now passed as distance constraints instead of atom fixing (forgot to implement it this way before?).
+- CREST metadynamics input/output files are all retained now and not deleted after execution.
+- Output names changed from starting with "TSCoDe" to "tscode" for easier typing.
+- Modified variable definition of periodic table in tscode.pt to avoid ValueError(s).
+- Added the mep_relax> operator (beta, not present in documentation) to relax chains of images along the PES. Useful to get good starting points for higher-level NEB calculations. First, the optimization is performed by retaining all bond distances, which are then relaxed after the first cycle is converged (developed to find atropisomer interconversion pathways).
+
+## 0.4.8 (February 2, 2024)
+- Updated library dependency versions.
+
 ## 0.4.7 (Januray 28, 2024)
 - Restyled copy of input in the log file.
 - Added citations to the main program and external modules if they are used (references.py, embedder.py/_print_references).

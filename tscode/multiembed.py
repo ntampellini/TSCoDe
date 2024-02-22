@@ -92,7 +92,7 @@ def run_child_embedder(
     from tscode.embedder import Embedder, RunEmbedding
 
     start_dir = os.getcwd()
-    foldername = f'TSCoDe_embed{i+1}'
+    foldername = f'tscode_embed{i+1}'
     (ix_1, ix_2), (iy_1, iy_2) = constrained_indices
 
     # create a dedicated folder

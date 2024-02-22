@@ -91,12 +91,12 @@ class Embedder:
         self.procs = int(procs) if procs is not None else PROCS or 4
 
         try:
-            os.remove(f'TSCoDe_{self.stamp}.log')
+            os.remove(f'tscode_{self.stamp}.log')
 
         except FileNotFoundError:
             pass
 
-        log_filename = f'TSCoDe_{self.stamp}.log'
+        log_filename = f'tscode_{self.stamp}.log'
         self.logfile = open(log_filename, 'a', buffering=1, encoding="utf-8")
         logging.basicConfig(filename=log_filename, filemode='a')
 
@@ -248,8 +248,8 @@ class Embedder:
         longest = max(len(line.rstrip('\n')) for line in lines)
         self.log('   '+'-'*(longest+3))
         for l, line in enumerate(lines):
-            self.log(f'{l+1}> | '+line.rstrip('\n').ljust(longest)+'|')
-        self.log('   '+'-'*(longest+3)+'\n')
+            self.log(f'{l+1}> | '+line.rstrip('\n').ljust(longest)+'   |')
+        self.log('   '+'-'*(longest+6)+'\n')
 
         # start parsing: get rid of comment and blank lines
         lines = [line.replace(', ',',') for line in lines if line[0] not in ('#', '\n')]
@@ -870,8 +870,8 @@ class Embedder:
 
     def _extract_filename(self, input_string):
         '''
-        Input: 'refine> TSCoDe_unoptimized_comp_check.xyz 5a 36a 0b 43b 33c 60c'
-        Output: 'TSCoDe_unoptimized_comp_check.xyz'
+        Input: 'refine> tscode_unoptimized_comp_check.xyz 5a 36a 0b 43b 33c 60c'
+        Output: 'tscode_unoptimized_comp_check.xyz'
         '''
         input_string = input_string.split('>')[-1].lstrip()
         # remove operator and whitespaces after it
@@ -891,7 +891,7 @@ class Embedder:
             ase_view(mol)
         
         self.logfile.close()
-        os.remove(f'TSCoDe_{self.stamp}.log')
+        os.remove(f'tscode_{self.stamp}.log')
 
         sys.exit()
 
@@ -988,7 +988,7 @@ class Embedder:
         else:
             output_structures = self.structures
 
-        self.outname = f'TSCoDe_{tag}_{self.stamp}.xyz'
+        self.outname = f'tscode_{tag}_{self.stamp}.xyz'
         with open(self.outname, 'w') as f:        
 
             for i, structure in enumerate(align_functions[align](output_structures, atomnos=self.atomnos, indices=indices)):
@@ -1364,7 +1364,7 @@ class RunEmbedding(Embedder):
         ################################################# CHECKPOINT BEFORE FF OPTIMIZATION
 
         if not only_fixed_constraints:
-            self.outname = f'TSCoDe_checkpoint_{self.stamp}.xyz'
+            self.outname = f'tscode_checkpoint_{self.stamp}.xyz'
             with open(self.outname, 'w') as f:        
                 for i, structure in enumerate(align_structures(self.structures)):
                     write_xyz(structure, self.atomnos, f, title=f'TS candidate {i+1} - Checkpoint before FF optimization')
@@ -1529,7 +1529,7 @@ class RunEmbedding(Embedder):
             s += f' before {self.options.calculator} optimization.'
 
         else:
-            self.outname = f'TSCoDe_{"ensemble" if self.embed == "refine" else "poses"}_{self.stamp}.xyz'
+            self.outname = f'tscode_{"ensemble" if self.embed == "refine" else "poses"}_{self.stamp}.xyz'
             # if the FF optimization was the last one, call the outfile accordingly
 
 
@@ -1601,7 +1601,7 @@ class RunEmbedding(Embedder):
 
         '''
 
-        self.outname = f'TSCoDe_{"ensemble" if self.embed == "refine" else "poses"}_{self.stamp}.xyz'
+        self.outname = f'tscode_{"ensemble" if self.embed == "refine" else "poses"}_{self.stamp}.xyz'
 
 
         task = 'Relaxing interactions' if only_fixed_constraints else 'Structure optimization'
@@ -1987,7 +1987,7 @@ class RunEmbedding(Embedder):
             self.constrained_indices = scramble(self.constrained_indices, sequence)
             # sorting structures based on energy
 
-            self.outname = f'TSCoDe_SADDLE_TSs_{self.stamp}.xyz'
+            self.outname = f'tscode_SADDLE_TSs_{self.stamp}.xyz'
             with open(self.outname, 'w') as f:        
                 for structure, energy in zip(align_structures(self.structures), self.rel_energies()):
                     write_xyz(structure, self.atomnos, f, title=f'Structure {i+1} - TS - Rel. E. = {round(energy, 3)} kcal/mol')

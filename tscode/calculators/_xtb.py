@@ -644,9 +644,11 @@ def crest_mtd_search(
 
     '''
 
+    # Remove title directory, if already present
     if title in os.listdir():
         shutil.rmtree(os.path.join(os.getcwd(), title))
         
+    # make title directory and cd into it
     os.mkdir(title)
     os.chdir(os.path.join(os.getcwd(), title))
 
@@ -664,10 +666,14 @@ def crest_mtd_search(
     s = f'$opt\n   '
          
     if constrained_indices is not None:  
-        s += '\n$constrain\n   atoms: '
-        for i in np.unique(np.array(constrained_indices).flatten()):
-            s += f"{i+1},"
-        s = s[:-1] + "\n"
+        s += '\n$constrain\n'
+        # s += '   atoms: '
+        # for i in np.unique(np.array(constrained_indices).flatten()):
+        #     s += f"{i+1},"
+
+        for (c1, c2), cd in zip(constrained_indices, constrained_distances):
+            cd = "auto" if cd is None else cd
+            s += f"    distance: {c1+1}, {c2+1}, {cd}\n"
 
     if constrained_dihedrals is not None:
         assert len(constrained_dihedrals) == len(constrained_dih_angles)
@@ -765,7 +771,7 @@ def crest_mtd_search(
 
     new_coords = read_xyz('crest_conformers.xyz').atomcoords
 
-    clean_directory((f'{title}.inp', f'{title}.xyz', f"{title}.out"))     
+    # clean_directory((f'{title}.inp', f'{title}.xyz', f"{title}.out"))     
 
     for filename in ('gfnff_topo',
                         'charges',

@@ -44,7 +44,7 @@ setup(
     long_description_content_type='text/markdown',
 
     install_requires=[
-        'numpy==1.20.3',
+        'numpy==1.24.4',
         'scipy==1.6.2',
         'numba-scipy==0.3.0',
         'cclib==1.7',
@@ -55,9 +55,11 @@ setup(
         'ase==3.21.1',
         'sella==2.3.2',
         'scikit-learn==1.0.1',
-        'numba==0.54.1',
+        'numba==0.58.1',
         'prettytable==3.3.0',
         'typing-extensions==4.8.0',
+        'llvmlite==0.41.1',
+        'importlib-metadata==7.0.1',
     ],
 
     url='https://www.github.com/ntampellini/tscode',

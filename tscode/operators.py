@@ -108,16 +108,45 @@ def operate(input_string, embedder):
 
         data = read_xyz(filename)
 
-        ase_mep_relax(
-            embedder,
-            data.atomcoords,
-            data.atomnos,
-            title=embedder.stamp,
-            n_images=embedder.options.images if hasattr(embedder.options, 'images') else None,
-            logfunction=embedder.log,
-            write_plot=True,
-            verbose_print=True,
-            )
+        # can implement a smart safety feature that is
+        # disabled when some bonds have to be let free to break
+        no_bonds_breaking = True
+
+        if no_bonds_breaking:
+
+            mep, _, exit_status = ase_mep_relax(
+                                                embedder,
+                                                data.atomcoords,
+                                                data.atomnos,
+                                                title=embedder.stamp+"_safe",
+                                                n_images=embedder.options.images if hasattr(embedder.options, 'images') else None,
+                                                logfunction=embedder.log,
+                                                write_plot=True,
+                                                verbose_print=True,
+                                                safe=True
+                                                )
+            
+        else:
+            mep = data.atomcoords
+            exit_status = True
+        
+        if exit_status:
+
+            if no_bonds_breaking:
+                print("--> Completed safe optimization, relaxing bond distance constraints.")
+
+            ase_mep_relax(
+                embedder,
+                mep,
+                data.atomnos,
+                title=embedder.stamp,
+                n_images=embedder.options.images if hasattr(embedder.options, 'images') else None,
+                logfunction=embedder.log,
+                write_plot=True,
+                verbose_print=True,
+                safe=True
+                )
+        
         embedder.normal_termination()
 
     else:
@@ -437,12 +466,14 @@ def mtd_search_operator(filename, embedder):
     for i, coords in enumerate(mol.atomcoords):
 
         t_start_conf = time.perf_counter()
-
+        constrained_indices = _get_internal_constraints(filename, embedder)
+        constrained_distances = [embedder.get_pairing_dists_from_constrained_indices(cp) for cp in constrained_indices]
         try:
             conf_batch = crest_mtd_search(
                                             coords,
                                             mol.atomnos,
-                                            constrained_indices=_get_internal_constraints(filename, embedder),
+                                            constrained_indices=constrained_indices,
+                                            constrained_distances=constrained_distances,
                                             solvent=embedder.options.solvent,
                                             charge=mol.charge,
                                             kcal=embedder.options.kcal_thresh,
@@ -458,7 +489,8 @@ def mtd_search_operator(filename, embedder):
             conf_batch = crest_mtd_search(
                                             coords,
                                             mol.atomnos,
-                                            constrained_indices=_get_internal_constraints(filename, embedder),
+                                            constrained_indices=constrained_indices,
+                                            constrained_distances=constrained_distances,
                                             solvent=embedder.options.solvent,
                                             charge=mol.charge,
                                             method='GFN2-XTB', # try with XTB2

@@ -9,7 +9,7 @@ from ase.calculators.calculator import (CalculationFailed,
 from ase.dyneb import DyNEB
 from ase.optimize import LBFGS
 
-from tscode.ase_manipulations import ase_dump, get_ase_calc
+from tscode.ase_manipulations import ase_dump, get_ase_calc, PreventScramblingConstraint
 from tscode.hypermolecule_class import align_structures
 from tscode.utils import time_to_string
 
@@ -25,6 +25,7 @@ def ase_mep_relax(
         logfunction=None,
         write_plot=False,
         verbose_print=False,
+        safe=False,
     ):
     '''
     embedder: tscode embedder object
@@ -78,6 +79,11 @@ def ase_mep_relax(
     # Set calculators for all images
     for _, image in enumerate(images):
         image.calc = get_ase_calc(embedder)
+
+        if safe:
+            bond_constr = PreventScramblingConstraint(embedder.objects[0].graph, image)
+            image.set_constraint([bond_constr])
+
 
     t_start = time.perf_counter()
 
@@ -142,7 +148,7 @@ def ase_mep_relax(
         plt.ylabel('Rel. E. (kcal/mol)')
         plt.savefig(f'{title.replace(" ", "_")}_plt.svg')
 
-    mep = [image.get_positions() for image in images]
+    mep = np.array([image.get_positions() for image in images])
 
     return mep, energies, exit_status
 
