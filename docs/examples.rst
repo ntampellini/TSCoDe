@@ -47,7 +47,7 @@ Work is in progress to expand this section with more examples.
 
 ::
 
-    DIST(a=2.135)
+    DIST(A=2.135)
 
     maleimide.xyz 0A 5x
     opt> HCOOH.xyz 4x 1y
