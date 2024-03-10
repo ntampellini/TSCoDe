@@ -5,6 +5,16 @@
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>-->
 
+## 0.4.11 (March 10, 2024)
+- Various small bugfixes/graphic restyling
+- Stuctures are optimized at embedder.options.theory_level before running the mtd_search> operator, and a FatalError is raised if they scramble during this process. This increases the robustness of the workflow by avoiding changes in the molecular graph if the input structure is bad.
+- Added a warning printout system to the Embedder class, via logging and appending strings to the embedder.warnings list.
+- Added a saturation and compenetration check for input molecules, that warns about potential bad geometries. 
+
+## 0.4.10 (February 24, 2024)
+- Reduced/summarized printouts for loose to tight optimization steps. 
+<!-- - Removed call to compenetration_refining() on input ensemble: it is usually already pruned for compenetration for embed runs, and other ensembles (for example from "refine> mtd>" runs coming from CREST) benefit from relaxing eventual clashes that are present. -->
+
 ## 0.4.9 (February 22, 2024)
 - CREST constraints (mtd_search>) are now passed as distance constraints instead of atom fixing (forgot to implement it this way before?).
 - CREST metadynamics input/output files are all retained now and not deleted after execution.

@@ -53,3 +53,8 @@ class NoOrbitalError(Exception):
     '''
     Thrown when trying to access orbital data when they are not present
     '''
+
+class FatalError(Exception):
+    '''
+    Thrown when a molecule optimization crashed or scrambled fatally
+    '''

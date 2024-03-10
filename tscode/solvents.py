@@ -86,6 +86,7 @@ solvent_synonyms = {
     'ch3cn':'acetonitrile',
     'ch3cl':'chloroform',
     'dcm':'ch2cl2',
+    'dichloromethane':'ch2cl2',
     'carbondisuphide':'cs2',
     'carbondisulfide':'cs2',
     'diethylether':'et2o',

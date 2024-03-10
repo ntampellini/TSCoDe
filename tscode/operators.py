@@ -28,7 +28,7 @@ from tscode.ase_manipulations import ase_saddle
 from tscode.atropisomer_module import dihedral_scan
 from tscode.automep import automep
 from tscode.calculators._xtb import crest_mtd_search
-from tscode.errors import InputError
+from tscode.errors import InputError, FatalError
 from tscode.graph_manipulations import graphize
 from tscode.hypermolecule_class import align_structures
 from tscode.mep_relaxer import ase_mep_relax
@@ -41,7 +41,7 @@ from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)
 from tscode.torsion_module import (_get_quadruplets, csearch,
                                    prune_conformers_rmsd_rot_corr)
-from tscode.utils import (get_scan_peak_index, read_xyz,
+from tscode.utils import (get_scan_peak_index, molecule_check, read_xyz,
                           suppress_stdout_stderr, time_to_string, write_xyz)
 
 
@@ -447,6 +447,49 @@ def mtd_search_operator(filename, embedder):
                              'add the LET keyword an re-run the job.')
 
     logfunction = embedder.log
+    constrained_indices = _get_internal_constraints(filename, embedder)
+    constrained_distances = [embedder.get_pairing_dists_from_constrained_indices(cp) for cp in constrained_indices]
+
+    logfunction(f'--> {filename}: Geometry optimization pre-mtd_search ({embedder.options.theory_level} via {embedder.options.calculator})')
+    logfunction(f'    {len(constrained_indices)} constraints applied{": "+constrained_indices if len(constrained_indices) > 0 else ""}')
+    
+    for c, coords in enumerate(mol.atomcoords.copy()):
+        logfunction(f"    Optimizing conformer {c+1}/{len(mol.atomcoords)}")
+
+        opt_coords, _, success = optimize(
+                                    coords,
+                                    mol.atomnos,
+                                    calculator=embedder.options.calculator,
+                                    method=embedder.options.theory_level,
+                                    solvent=embedder.options.solvent,
+                                    charge=embedder.options.charge,
+                                    procs=embedder.procs,
+                                    constrained_indices=constrained_indices,
+                                    constrained_distances=constrained_distances,
+                                    title=f'{filename.split(".")[0]}_conf{c+1}',
+                                ) if embedder.options.optimization else coords
+        
+        exit_status = "" if success else "CRASHED"
+        
+        if success:
+            success = molecule_check(coords, opt_coords, mol.atomnos)
+            exit_status = "" if success else "SCRAMBLED"
+
+        if not success:
+            dumpname = filename.split(".")[0] + f"_conf{c+1}_{exit_status}.xyz"
+            with open(dumpname, "w") as f:
+                write_xyz(opt_coords, mol.atomnos, f, title=f"{filename}, conformer {c+1}/{len(mol.atomcoords)}, {exit_status}")
+
+            logfunction(f"{filename}, conformer {c+1}/{len(mol.atomcoords)} optimization {exit_status}. Inspect geometry at {dumpname}. Aborting run.")
+
+            raise FatalError(filename)
+        
+        # update embedder structures after optimization
+        mol.atomcoords[c] = opt_coords
+
+    # update mol and embedder graph after optimization 
+    mol.graph = graphize(mol.atomcoords[0], mol.atomnos)
+    embedder.graphs = [m.graph for m in embedder.objects]
 
     max_workers = embedder.avail_cpus//2 or 1
     logfunction(f'--> Performing {embedder.options.calculator} GFN2//GFN-FF' + (
@@ -466,8 +509,6 @@ def mtd_search_operator(filename, embedder):
     for i, coords in enumerate(mol.atomcoords):
 
         t_start_conf = time.perf_counter()
-        constrained_indices = _get_internal_constraints(filename, embedder)
-        constrained_distances = [embedder.get_pairing_dists_from_constrained_indices(cp) for cp in constrained_indices]
         try:
             conf_batch = crest_mtd_search(
                                             coords,

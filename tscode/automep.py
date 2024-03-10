@@ -1,28 +1,32 @@
 import time
 
+from ase import Atoms
 import numpy as np
 from networkx import cycle_basis
 
 from tscode.algebra import dihedral
 from tscode.calculators._xtb import xtb_opt
 from tscode.graph_manipulations import neighbors
+from tscode.hypermolecule_class import align_structures
+from tscode.mep_relaxer import interpolate_structures
 from tscode.optimization_methods import optimize
 from tscode.utils import graphize, write_xyz
 
 
-def automep(embedder, n_images=7):
+def automep(embedder, n_images=9):
 
     assert embedder.options.calculator == "XTB"
+    assert len(embedder.objects) == 2, "Provide two molecules as start/endpoints."
 
     mol = embedder.objects[0]
     coords = mol.atomcoords[0]
 
-    # Get cycle indices bigger than 6
+    # Get cycle indices between 7 and 9
     graph = graphize(coords, mol.atomnos)
-    cycles = [l for l in cycle_basis(graph) if len(l) == 7]
-    assert len(cycles) == 1, "Automep only works for 7-membered ring flips at the moment"
+    cycles = [l for l in cycle_basis(graph) if len(l) in (7, 8, 9)]
+    assert len(cycles) == 1, "Automep only works for 7/8/9-membered ring flips at the moment"
 
-    embedder.log('--> AutoMEP - Building MEP for 7-membered ring inversion')
+    embedder.log(f'--> AutoMEP - Building MEP for {len(cycles[0])}-membered ring inversion')
     embedder.log(f'    Preoptimizing starting point at {embedder.options.calculator}/{embedder.options.theory_level}({embedder.options.solvent}) level')
 
     coords, _, _ = optimize(
@@ -39,28 +43,59 @@ def automep(embedder, n_images=7):
     dihedrals = cycle_to_dihedrals(cycles[0])
     exocyclic = get_exocyclic_dihedrals(graph, cycles[0])
 
-    start_angles = np.array([dihedral(coords[d]) for d in dihedrals+exocyclic])
+    # start_angles = np.array([dihedral(coords[d]) for d in dihedrals+exocyclic])
     target_angles = np.array([0 for _ in dihedrals] + [180 for _ in exocyclic])
-    multipliers = np.linspace(1, -1, n_images)
+    print("Optimizing planar TS guess...", end="\r")
+    ts_guess, _, _ = xtb_opt(
+                            coords,
+                            mol.atomnos,
+                            constrained_dihedrals=dihedrals+exocyclic,
+                            constrained_dih_angles=target_angles,
+                            method=embedder.options.theory_level,
+                            solvent=embedder.options.solvent,
+                            procs=embedder.procs
+                        )
+    # multipliers = np.linspace(1, -1, n_images)
 
-    mep_angles = [(start_angles * m + target_angles * (1-m)) % 360 for m in multipliers]
+    # mep_angles = [(start_angles * m + target_angles * (1-m)) % 360 for m in multipliers]
+    # mep = []
+    # for i, m_a in enumerate(mep_angles):
+    #     t_start = time.perf_counter()
+    #     coords, _, _ = xtb_opt(coords,
+    #                             mol.atomnos,
+    #                             constrained_dihedrals=dihedrals+exocyclic,
+    #                             constrained_dih_angles=m_a,
+    #                             method=embedder.options.theory_level,
+    #                             solvent=embedder.options.solvent,
+    #                             procs=embedder.procs)
+    #     embedder.log(f'    - optimized image {i+1}/{len(mep_angles)} ({round(time.perf_counter()-t_start, 3)} s)')
+    #     mep.append(coords)
 
-    mep = []
-    for i, m_a in enumerate(mep_angles):
-        t_start = time.perf_counter()
-        coords, _, _ = xtb_opt(coords,
+    mep = interpolate_structures(align_structures(np.array([coords,
+                                                            ts_guess,
+                                                            embedder.objects[1].atomcoords[0]])),
+                                 mol.atomnos,
+                                 n=n_images,
+                                 method='linear')
+    
+    for g, geom in enumerate(mep):
+        if g not in (0, n_images-1):
+            print(f"Relaxing image {g+1}/{n_images}...", end="\r")
+            positions = geom.get_positions()
+            opt_geom, _, _ = xtb_opt(
+                                positions,
                                 mol.atomnos,
                                 constrained_dihedrals=dihedrals+exocyclic,
-                                constrained_dih_angles=m_a,
+                                constrained_dih_angles=[dihedral(positions[quadruplet]) for quadruplet in dihedrals+exocyclic],
                                 method=embedder.options.theory_level,
                                 solvent=embedder.options.solvent,
-                                procs=embedder.procs)
-        embedder.log(f'    - optimized image {i+1}/{len(mep_angles)} ({round(time.perf_counter()-t_start, 3)} s)')
-        mep.append(coords)
+                                procs=embedder.procs
+                            )
+            mep[g] = Atoms(mol.atomnos, positions=opt_geom)
 
     with open(f"{mol.rootname}_automep.xyz", "w") as f:
         for c in mep:
-            write_xyz(c, mol.atomnos, f)
+            write_xyz(c.get_positions(), mol.atomnos, f)
 
     embedder.log(f"\n--> Saved autogenerated MEP as {mol.rootname}_automep.xyz\n")
 

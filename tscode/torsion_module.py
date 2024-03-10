@@ -1153,6 +1153,9 @@ def prune_conformers_rmsd_rot_corr(structures, atomnos, graph, max_rmsd=0.25, ve
 
     # restore molecular graph
     for hb in hydrogen_bonds:
-        graph.remove_edge(*hb)
+        try:
+            graph.remove_edge(*hb)
+        except nx.NetworkXError():
+            pass
 
     return structures[final_mask], final_mask

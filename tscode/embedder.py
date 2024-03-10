@@ -52,14 +52,15 @@ from tscode.parameters import orb_dim_dict
 from tscode.pt import pt
 from tscode.python_functions import (compenetration_check,
                                      prune_conformers_tfd, scramble)
-from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.references import references
+from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS, THREADS
 from tscode.torsion_module import (_get_quadruplets, csearch,
                                    prune_conformers_rmsd_rot_corr)
-from tscode.utils import (ase_view, auto_newline, cartesian_product,
-                          clean_directory, graphize, loadbar, scramble_check,
-                          time_to_string, timing_wrapper, write_xyz)
+from tscode.utils import (_saturation_check, ase_view, auto_newline,
+                          cartesian_product, clean_directory, graphize,
+                          loadbar, scramble_check, time_to_string,
+                          timing_wrapper, write_xyz)
 
 
 class Embedder:
@@ -109,7 +110,8 @@ class Embedder:
             # initialize option subclass
 
             self.embed = None
-            # initialize embed type variable, to be modified later
+            self.warnings = []
+            # initialize embed type variable and warnings list
 
             inp = self._parse_input(filename)
             # collect information about molecule files
@@ -128,6 +130,12 @@ class Embedder:
 
             self._read_pairings()
             # read imposed pairings from input file [i.e. mol1(6)<->mol2(45)]
+
+            self.check_input_compenetration()
+            # make sure the input structure looks alright
+
+            self.check_saturation()
+            # make sure that structures look nice and correct
 
             self._set_options(filename)
             # read the keywords line and set the relative options
@@ -246,10 +254,10 @@ class Embedder:
         # write a formatted copy of the input file to the log
         self.log(f'--> Input file: {filename}\n')
         longest = max(len(line.rstrip('\n')) for line in lines)
-        self.log('   '+'-'*(longest+3))
+        self.log('    '+'-'*(longest+6))
         for l, line in enumerate(lines):
-            self.log(f'{l+1}> | '+line.rstrip('\n').ljust(longest)+'   |')
-        self.log('   '+'-'*(longest+6)+'\n')
+            self.log(f'{l+1:2}> | '+line.rstrip('\n').ljust(longest)+'   |')
+        self.log('    '+'-'*(longest+6)+'\n')
 
         # start parsing: get rid of comment and blank lines
         lines = [line.replace(', ',',') for line in lines if line[0] not in ('#', '\n')]
@@ -295,6 +303,27 @@ class Embedder:
         except Exception as e:
             print(e)
             raise InputError(f'Error in reading molecule input for {filename}. Please check your syntax.')
+
+    def check_saturation(self):
+        '''
+        Check each loaded object and make sure it looks nice and correct
+        
+        '''
+        for mol in self.objects:
+            charge = int(mol.charge) if hasattr(mol, "charge") else 0
+            _saturation_check(mol.atomnos, charge, self)
+
+    def check_input_compenetration(self):
+        '''
+        Checks that the input molecules look alright
+        
+        '''
+        for mol in self.objects:
+            for c, coords in enumerate(mol.atomcoords):
+                if not compenetration_check(coords):
+                    s = f"--> WARNING! {mol.name}, conformer {c+1}, looks compenetrated (interatomic distances < 0.95 A)"
+                    self.warnings.append(s)
+                    self.log(s)
 
     def _set_options(self, filename):
         '''
@@ -1030,7 +1059,7 @@ class Embedder:
     def normal_termination(self):
         '''
         Terminate the run, printing the total time and the
-        relative energies of the first 50 structures, if possible.
+        relative energies of the first 10 structures, if possible.
 
         '''
         clean_directory()
@@ -1038,12 +1067,12 @@ class Embedder:
         
         if hasattr(self, "structures"):
             if len(self.structures) > 0 and hasattr(self, "energies"):
-                self.energies = self.energies if len(self.energies) <= 50 else self.energies[0:50]
+                self.energies = self.energies if len(self.energies) <= 10 else self.energies[0:10]
 
                 # Don't write structure info if there is only one, or all are zero
                 if np.max(self.energies - np.min(self.energies)) > 0:
 
-                    self.log(f'\n--> Energies of output structures ({self.options.theory_level}/{self.options.calculator}{f"/{self.options.solvent}" if self.options.solvent is not None else ""})\n')
+                    self.log(f'\n--> Energies of output structures (first 10, {self.options.theory_level}/{self.options.calculator}{f"/{self.options.solvent}" if self.options.solvent is not None else ""})\n')
 
                     self.log(f'> #                Rel. E.           RMSD')
                     self.log('-------------------------------------------')
@@ -1051,10 +1080,7 @@ class Embedder:
 
                         rmsd_value = '(ref)' if i == 0 else str(round(kabsch_rmsd(self.structures[i], self.structures[0], translate=True), 2))+' Å'
 
-                        self.log('> Candidate {:2}  :  {:4} kcal/mol  :  {}'.format(
-                                                                            str(i+1),
-                                                                            round(energy, 2),
-                                                                            rmsd_value))
+                        self.log(f'> Candidate {str(i+1):2}  :  {energy:.2f} kcal/mol  :  {rmsd_value}')
 
         self.write_quote()
         self.logfile.close()
@@ -1095,6 +1121,7 @@ class RunEmbedding(Embedder):
         Asserts that not all structures are being rejected.
         '''
         if len(self.structures) == 0:
+            self.log_warnings()
             raise ZeroCandidatesError()
 
     def generate_candidates(self):
@@ -1371,8 +1398,12 @@ class RunEmbedding(Embedder):
             self.log(f'\n--> Checkpoint output - Wrote {len(self.structures)} unoptimized structures to {self.outname} file before FF optimization.\n')
 
         ################################################# GEOMETRY OPTIMIZATION - FORCE FIELD
+        
+        if only_fixed_constraints:
+            task = 'Structure optimization (tight) / relaxing interactions'
+        else:
+            task = f'Structure {"pre-" if prevent_scrambling else ""}optimization (loose)'
 
-        task = 'Relaxing interactions' if only_fixed_constraints else f'Structure {"pre-" if prevent_scrambling else ""}optimization'
         self.log(f'--> {task} ({self.options.ff_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.ff_calc}, {self.avail_cpus} thread{"s" if self.avail_cpus>1 else ""})')
 
         t_start_ff_opt = time.perf_counter()
@@ -1450,7 +1481,9 @@ class RunEmbedding(Embedder):
                                                         self.atomnos,
                                                         excluded_atoms=constraints.ravel(),
                                                         mols_graphs=self.graphs,
-                                                        max_newbonds=self.options.max_newbonds)
+                                                        max_newbonds=self.options.max_newbonds,
+                                                        logfunction=self.log if self.options.debug else None,
+                                                        title=f"Candidate_{i+1}")
                     
                 cum_time += t_struct
 
@@ -1458,8 +1491,8 @@ class RunEmbedding(Embedder):
                     exit_status = 'REFINED  ' if self.exit_status[i] else 'SCRAMBLED'
                     self.log(f'    - Candidate_{i+1} - {exit_status} {time_to_string(t_struct, digits=3)}', p=False)
                 
-                self.structures[i] = new_structure
                 if self.exit_status[i] and new_energy is not None:
+                    self.structures[i] = new_structure
                     self.energies[i] = new_energy
 
                 else:
@@ -1603,8 +1636,11 @@ class RunEmbedding(Embedder):
 
         self.outname = f'tscode_{"ensemble" if self.embed == "refine" else "poses"}_{self.stamp}.xyz'
 
+        if only_fixed_constraints:
+            task = 'Structure optimization (tight) / relaxing interactions'
+        else:
+            task = 'Structure optimization (loose)'
 
-        task = 'Relaxing interactions' if only_fixed_constraints else 'Structure optimization'
         self.log(f'--> {task} ({self.options.theory_level}{f"/{self.options.solvent}" if self.options.solvent is not None else ""} level via {self.options.calculator}, {self.threads} thread{"s" if self.threads>1 else ""})')
 
         self.energies.fill(0)
@@ -1614,7 +1650,7 @@ class RunEmbedding(Embedder):
         processes = []
         cum_time = 0
 
-        with ProcessPoolExecutor(max_workers=int(self.avail_cpus/4)) as executor:
+        with ProcessPoolExecutor(max_workers=int(self.avail_cpus//4)) as executor:
 
             opt_func = opt_funcs_dict[self.options.calculator]
 
@@ -1689,15 +1725,15 @@ class RunEmbedding(Embedder):
                     exit_status = 'REFINED  ' if self.exit_status[i] else 'SCRAMBLED'
                     self.log(f'    - Candidate_{i+1} - {exit_status if new_energy is not None else "CRASHED"} {time_to_string(t_struct, digits=3)}', p=False)
                 
-                self.structures[i] = new_structure
                 if self.exit_status[i] and new_energy is not None:
+                    self.structures[i] = new_structure
                     self.energies[i] = new_energy
 
                 else:
                     self.energies[i] = 1E10
 
                 ### Update checkpoint every (20*max_workers) optimized structures, and give an estimate of the remaining time
-                chk_freq = int(self.avail_cpus/4) * self.options.checkpoint_frequency
+                chk_freq = int(self.avail_cpus//4) * self.options.checkpoint_frequency
                 if i % chk_freq == chk_freq-1:
 
                     with open(self.outname, 'w') as f:        
@@ -2171,9 +2207,27 @@ class RunEmbedding(Embedder):
 
             self.log(f'    - {line}')
 
+    def log_warnings(self):
+        '''
+        Logs the non-fatal errors (warnings) at the end of a run.
+        
+        '''
+        if self.warnings:
+            self.log()
+            self.log("{:*^76}".format("  W  A  R  N  I  N  G  S  "))
+            self.log("{:*^76}".format(" your run generated these non-fatal warnings "))
+            self.log()
+
+            for warning in self.warnings:
+                self.log(auto_newline(warning, max_line_len=65))
+                self.log()
+
+            self.log("*"*76)
+
     def run(self):
         '''
         Run the TSCoDe program.
+        
         '''
         self.write_mol_info()
 
@@ -2221,15 +2275,16 @@ class RunEmbedding(Embedder):
 
                     if self.options.ff_opt:
 
+                        # perform safe optimization only for embeds
                         if len(self.objects) > 1 and self.options.ff_calc == 'XTB':
-                            self.log(f"--> Performing {self.options.calculator} FF pre-optimization (loose convergence, molecular and pairing constraints)\n")
+                            # self.log(f"--> Performing {self.options.calculator} FF pre-optimization (loose convergence, molecular and pairing constraints)\n")
                             self.force_field_refining(conv_thr="loose", prevent_scrambling=True)
 
 
-                        self.log(f"--> Performing {self.options.calculator} FF optimization (loose convergence, pairing constraints, step 1/2)\n")
+                        # self.log(f"--> Performing {self.options.calculator} FF optimization (loose convergence, pairing constraints, step 1/2)\n")
                         self.force_field_refining(conv_thr="loose")
 
-                        self.log(f"--> Performing {self.options.calculator} FF optimization (tight convergence, fixed constraints only, step 2/2)\n")
+                        # self.log(f"--> Performing {self.options.calculator} FF optimization (tight convergence, fixed constraints only, step 2/2)\n")
                         self.force_field_refining(conv_thr="tight", only_fixed_constraints=True)
 
                         # self.csearch_augmentation_routine()
@@ -2253,7 +2308,6 @@ class RunEmbedding(Embedder):
                         # final uncompromised optimization (with fixed constraints and interactions active)
 
                         self.optimization_refining(conv_thr='tight', only_fixed_constraints=True)
-                        # self.distance_refining()
                         # final uncompromised optimization (with only fixed constraints active)
 
                 else:
@@ -2298,6 +2352,7 @@ class RunEmbedding(Embedder):
             if self.options.nci and self.options.optimization:
                 self.print_nci()
             
+            self.log_warnings()
             self.normal_termination()
 
             ################################################ END

@@ -352,7 +352,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
     return True
 
-def scramble_check(TS_structure, TS_atomnos, excluded_atoms, mols_graphs, max_newbonds=0) -> bool:
+def scramble_check(TS_structure, TS_atomnos, excluded_atoms, mols_graphs, max_newbonds=0, logfunction=False, title=None) -> bool:
     '''
     Check if a multimolecular arrangement has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the
@@ -380,6 +380,8 @@ def scramble_check(TS_structure, TS_atomnos, excluded_atoms, mols_graphs, max_ne
     # removing bonds involving constrained atoms: they are not counted as scrambled bonds
 
     if len(delta_bonds) > max_newbonds:
+        if logfunction is not None:
+            logfunction(f"{title}, scramble_check - found {len(delta_bonds)} extra bonds: {delta_bonds}")
         return False
 
     return True
@@ -463,3 +465,44 @@ def timing_wrapper(function, *args, payload=None, **kwargs):
         return func_return, elapsed
     
     return func_return, payload, elapsed
+
+def _saturation_check(atomnos, charge=0, embedder=None):
+
+    transition_metals = [
+                    "Sc", "Ti", "V", "Cr", "Mn", "Fe",
+                    "Co", "Ni", "Cu", "Zn", "Y", "Zr",
+                    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd",
+                    "Ag", "Cd", "La", "Ce", "Pr", "Nd",
+                    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy",
+                    "Ho", "Er", "Tm", "Yb", "Lu", "Hf",
+                    "Ta", "W", "Re", "Os", "Ir", "Pt",
+                    "Au", "Hg", "Th", "Pa", "U", "Np",
+                    "Pu", "Am", 
+    ]
+
+    # if we have any transition metal, it's hard to tell
+    # if the structure looks ok: in this case we assume it is.
+    organometallic = any([pt[a].symbol in transition_metals for a in atomnos])
+
+    odd_valent = [  #1 valent
+                    "H", "Li", "Na", "K", "Rb", "Cs",
+                    "F", "Cl", "Br", "I", "At",
+
+                    # 3/5 valent
+                    "N", "P", "As", "Sb", "Bi",
+                    "B", "Al", "Ga", "In", "Tl",
+                 ]
+
+    n_odd_valent = sum([1 for a in atomnos if pt[a].symbol in odd_valent])
+    looks_ok = ((n_odd_valent + charge) / 2) % 1 < 0.001 if not organometallic else True
+
+    if embedder is not None:
+        if looks_ok:
+            embedder.log(f"--> Saturation check passed: input structure has an even saturation index")
+
+        else:
+            s = f"--> WARNING! Saturation check failed: input structure has an odd saturation index (charge={charge}). Radical or bad input geometry?"
+            embedder.log(s)
+            embedder.warnings.append(s)
+
+    return looks_ok

@@ -301,7 +301,7 @@ class OptionSetter:
                 SyntaxError(f'Keyword {k} was not understood. Please check your syntax.')
 
         if self.keywords_simple:
-            embedder.log('--> Parsed keywords, in order of execution:\n    ' + ' '.join(self.sorted_keywords()) + '\n')
+            embedder.log('\n--> Parsed keywords, in order of execution:\n    ' + ' '.join(self.sorted_keywords()) + '\n')
 
     def refine(self, options, *args):
         if len(self.embedder.objects) > 1:
