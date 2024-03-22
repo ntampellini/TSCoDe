@@ -45,7 +45,7 @@ setup(
 
     install_requires=[
         'numpy',
-        'scipy==1.6.2',
+        'scipy==',
         'numba-scipy==0.3.0',
         'cclib==1.7',
         'periodictable==1.6.0',
@@ -58,7 +58,7 @@ setup(
         'numba==0.54.1',
         'prettytable==3.3.0',
         'typing-extensions==4.8.0',
-        'llvmlite==0.41.1',
+        'llvmlite',
         'importlib-metadata==7.0.1',
     ],
 
