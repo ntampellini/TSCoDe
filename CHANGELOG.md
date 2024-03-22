@@ -4,6 +4,9 @@
 
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>-->
+## 0.4.12 (March 22, 2024)
+- Changed numpy version to 1.20.3
+- Added saturation check
 
 ## 0.4.11 (March 10, 2024)
 - Various small bugfixes/graphic restyling

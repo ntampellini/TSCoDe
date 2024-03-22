@@ -86,10 +86,10 @@ def operate(input_string, embedder):
         scan_operator(filename, embedder)
         outname = filename
 
-    elif 'autoneb>' in input_string:
-        automep_filename = automep(embedder)
-        neb_operator(automep_filename, embedder)
-        embedder.normal_termination()
+    elif 'automep>' in input_string:
+        automep(embedder, n_images=embedder.options.images if hasattr(embedder.options, 'images') else 9)
+        # neb_operator(automep_filename, embedder)
+        # embedder.normal_termination()
 
     elif 'neb>' in input_string:
         neb_operator(filename, embedder)
@@ -565,14 +565,18 @@ def mtd_search_operator(filename, embedder):
     if len(conformers) < 5E4:
         conformers, _ = prune_conformers_rmsd(conformers, mol.atomnos, rmsd_thr=embedder.options.rmsd)
     if len(conformers) < 1E3:
-        conformers, _ = prune_conformers_rmsd_rot_corr(conformers, mol.atomnos, mol.graph)
+        conformers, _ = prune_conformers_rmsd_rot_corr(conformers, mol.atomnos, mol.graph, max_rmsd=embedder.options.rmsd)
 
-    embedder.log(f'  Discarded {before-len(conformers)} similar structures ({len(conformers)} left)\n')
+    embedder.log(f'  Discarded {before-len(conformers)} RMSD-similar structures ({len(conformers)} left)\n')
 
     ### PRINTOUT
     with open(f'{mol.rootname}_mtd_confs.xyz', 'w') as f:
         for i, new_s in enumerate(conformers):
             write_xyz(new_s, mol.atomnos, f, title=f'Conformer {i}/{len(conformers)} from CREST MTD')
+
+    
+    # check the structures again and warn if some look compenetrated
+    self.check_objects_compenetration()
 
     return f'{mol.rootname}_mtd_confs.xyz'
 

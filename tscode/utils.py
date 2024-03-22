@@ -466,7 +466,7 @@ def timing_wrapper(function, *args, payload=None, **kwargs):
     
     return func_return, payload, elapsed
 
-def _saturation_check(atomnos, charge=0, embedder=None):
+def _saturation_check(atomnos, charge=0):
 
     transition_metals = [
                     "Sc", "Ti", "V", "Cr", "Mn", "Fe",
@@ -495,14 +495,5 @@ def _saturation_check(atomnos, charge=0, embedder=None):
 
     n_odd_valent = sum([1 for a in atomnos if pt[a].symbol in odd_valent])
     looks_ok = ((n_odd_valent + charge) / 2) % 1 < 0.001 if not organometallic else True
-
-    if embedder is not None:
-        if looks_ok:
-            embedder.log(f"--> Saturation check passed: input structure has an even saturation index")
-
-        else:
-            s = f"--> WARNING! Saturation check failed: input structure has an odd saturation index (charge={charge}). Radical or bad input geometry?"
-            embedder.log(s)
-            embedder.warnings.append(s)
 
     return looks_ok

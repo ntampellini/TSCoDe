@@ -131,8 +131,8 @@ class Embedder:
             self._read_pairings()
             # read imposed pairings from input file [i.e. mol1(6)<->mol2(45)]
 
-            self.check_input_compenetration()
-            # make sure the input structure looks alright
+            self.check_objects_compenetration()
+            # make sure the input structures look alright
 
             self.check_saturation()
             # make sure that structures look nice and correct
@@ -238,7 +238,7 @@ class Embedder:
             s += f"    GFN2-XTB : {references['GFN2-XTB']}\n" if cite_gfn2 else ""
             s += f"    CREST : {references['CREST']}\n" if cite_crest else ""
 
-            self.log(f'\n--> Your run also makes use of these other software: please cite these references as well.\n{s}')
+            self.log(f'\n--> Your run also makes use of this other software: please cite these references as well.\n{s}')
 
     def _parse_input(self, filename):
         '''
@@ -309,11 +309,19 @@ class Embedder:
         Check each loaded object and make sure it looks nice and correct
         
         '''
+        self.log()
         for mol in self.objects:
             charge = int(mol.charge) if hasattr(mol, "charge") else 0
-            _saturation_check(mol.atomnos, charge, self)
+            
+            if _saturation_check(mol.atomnos, charge):
+                self.log(f"--> {mol.name}: saturation check passed (even saturation index)")
 
-    def check_input_compenetration(self):
+            else:
+                s = f"--> WARNING! {mol.name}: saturation check failed. Odd saturation index (charge={charge}). Radical or bad input geometry?"
+                self.log(s)
+                self.warnings.append(s)
+
+    def check_objects_compenetration(self):
         '''
         Checks that the input molecules look alright
         
