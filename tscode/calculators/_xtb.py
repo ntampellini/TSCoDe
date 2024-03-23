@@ -302,8 +302,8 @@ def xtb_pre_opt(
                 **kwargs,
                 ):
     '''
-    Wrapper for xtb_opt that preserves the distance of
-    every bond present in each subgraph provided.
+    Wrapper for xtb_opt that preserves the distance of every bond present in each subgraph provided
+
     graphs: list of subgraphs that make up coords, in order
 
     '''
@@ -311,7 +311,7 @@ def xtb_pre_opt(
 
     # we have to check through a list this way, as I have not found
     # an analogous way to check through an array for subarrays in a nice way
-    list_of_constr_ids = [[a,b] for a, b in constrained_indices]
+    list_of_constr_ids = [[a,b] for a, b in constrained_indices] if constrained_indices is not None else []
 
     constrain_string = "$constrain\n"
     for constraint in [[a, b] for (a, b) in sum_graph.edges if a!=b]:

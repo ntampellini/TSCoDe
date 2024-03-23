@@ -25,7 +25,7 @@ from tscode.algebra import (align_vec_pair, norm, rot_mat_from_pointer,
 from tscode.ase_manipulations import ase_bend
 from tscode.errors import TriangleError, ZeroCandidatesError
 from tscode.graph_manipulations import get_sum_graph
-from tscode.python_functions import (compenetration_check,
+from tscode.numba_functions import (compenetration_check,
                                      get_torsion_fingerprint, tfd_similarity)
 from tscode.torsion_module import _get_quadruplets
 from tscode.utils import (cartesian_product, loadbar, polygonize, pretty_num,

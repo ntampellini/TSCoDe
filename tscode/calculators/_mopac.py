@@ -24,7 +24,7 @@ import numpy as np
 from tscode.algebra import dihedral, norm, norm_of, vec_angle
 from tscode.errors import MopacReadError
 from tscode.pt import pt
-from tscode.python_functions import scramble
+from tscode.numba_functions import scramble
 from tscode.settings import COMMANDS
 from tscode.solvents import get_solvent_line
 

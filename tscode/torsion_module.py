@@ -32,7 +32,7 @@ from tscode.graph_manipulations import (_get_phenyl_ids, findPaths, get_sp_n,
 from tscode.hypermolecule_class import align_structures, graphize
 from tscode.optimization_methods import optimize
 from tscode.pt import pt
-from tscode.python_functions import prune_conformers_tfd, torsion_comp_check
+from tscode.numba_functions import prune_conformers_tfd, torsion_comp_check
 from tscode.settings import DEFAULT_FF_LEVELS, FF_CALC
 from tscode.utils import (cartesian_product, flatten, get_double_bonds_indices,
                           loadbar, rotate_dihedral, time_to_string, write_xyz)

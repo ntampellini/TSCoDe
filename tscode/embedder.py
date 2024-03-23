@@ -50,7 +50,7 @@ from tscode.optimization_methods import (fitness_check, opt_funcs_dict,
                                          prune_by_moment_of_inertia)
 from tscode.parameters import orb_dim_dict
 from tscode.pt import pt
-from tscode.python_functions import (compenetration_check,
+from tscode.numba_functions import (compenetration_check,
                                      prune_conformers_tfd, scramble)
 from tscode.references import references
 from tscode.rmsd_pruning import prune_conformers_rmsd
@@ -329,7 +329,7 @@ class Embedder:
         for mol in self.objects:
             for c, coords in enumerate(mol.atomcoords):
                 if not compenetration_check(coords):
-                    s = f"--> WARNING! {mol.name}, conformer {c+1}, looks compenetrated (interatomic distances < 0.95 A)"
+                    s = f"--> WARNING! {mol.name}, conformer {c+1}, looks compenetrated (interatomic distances < 0.5 A)"
                     self.warnings.append(s)
                     self.log(s)
 

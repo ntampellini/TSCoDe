@@ -35,7 +35,7 @@ from tscode.mep_relaxer import ase_mep_relax
 from tscode.optimization_methods import (_refine_structures, optimize,
                                          prune_by_moment_of_inertia)
 from tscode.pka import pka_routine
-from tscode.python_functions import prune_conformers_tfd
+from tscode.numba_functions import prune_conformers_tfd
 from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.settings import (CALCULATOR, DEFAULT_FF_LEVELS, DEFAULT_LEVELS,
                              FF_CALC, FF_OPT_BOOL, PROCS)

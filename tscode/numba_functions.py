@@ -23,10 +23,6 @@ from rmsd import kabsch_rotate
 
 from tscode.algebra import all_dists, dihedral, norm_of
 
-# These functions are here to facilitate eventual porting to
-# faster precompiled versions of themselves (Cython/C++/Julia/...)
-# if the necessity ever occurs
-
 @njit
 def torsion_comp_check(coords, torsion, mask, thresh=1.5, max_clashes=0) -> bool:
     '''
@@ -63,7 +59,7 @@ def compenetration_check(coords, ids=None, thresh=1.5, max_clashes=0) -> bool:
 
     if ids is None:
         return 0 if np.count_nonzero(
-                                     (all_dists(coords,coords) < 0.95) & (
+                                     (all_dists(coords,coords) < 0.5) & (
                                       all_dists(coords,coords) > 0)
                                     ) > max_clashes else 1
 
