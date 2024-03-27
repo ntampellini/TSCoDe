@@ -576,7 +576,7 @@ def mtd_search_operator(filename, embedder):
 
     
     # check the structures again and warn if some look compenetrated
-    self.check_objects_compenetration()
+    embedder.check_objects_compenetration()
 
     return f'{mol.rootname}_mtd_confs.xyz'
 

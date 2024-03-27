@@ -1769,7 +1769,15 @@ class RunEmbedding(Embedder):
 
             ################################################# EXIT STATUS
 
-            self.log(f'Successfully optimized {len([b for b in self.exit_status if b])}/{len(self.structures)} structures. Non-optimized ones will not be discarded.')
+            self.log(f'Successfully optimized {len([b for b in self.exit_status if b])}/{len(self.structures)} structures. Non-optimized ones will {"not " if not self.options.only_refined else ""}be discarded.')
+
+            if self.options.only_refined:
+        
+                mask = self.exit_status
+                self.apply_mask(('structures', 'constrained_indices', 'energies', 'exit_status'), mask)
+
+                if False in mask:
+                    self.log(f'Discarded {len([b for b in mask if not b])} candidates for unsuccessful optimization ({np.count_nonzero(mask)} left')
 
             ################################################# PRUNING: ENERGY
 

@@ -5,6 +5,10 @@
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>-->
 
+## 0.4.15 (March 23, 2024)
+- Reinstated the only_refined option at the end of optimization_refining.
+- Solved bugfix in operators.
+
 ## 0.4.14 (March 23, 2024)
 - renamed python_functions.py to numba_functions.py
 - Decreased compenetration check threshold for close contacts to 0.5 A from 0.95 A. In this way, topological mistakes made by GFN-FF, that bind hydrogen atoms (d~0.89 A) will not automatically flag the structures as compenetrated, as this will most likely optimize fine when the theory level is raised to GFN2 or other.
