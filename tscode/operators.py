@@ -451,7 +451,8 @@ def mtd_search_operator(filename, embedder):
     constrained_distances = [embedder.get_pairing_dists_from_constrained_indices(cp) for cp in constrained_indices]
 
     logfunction(f'--> {filename}: Geometry optimization pre-mtd_search ({embedder.options.theory_level} via {embedder.options.calculator})')
-    logfunction(f'    {len(constrained_indices)} constraints applied{": "+constrained_indices if len(constrained_indices) > 0 else ""}')
+    return_char = "\n"
+    logfunction(f'    {len(constrained_indices)} constraints applied{": "+str(constrained_indices).replace(return_char, " ") if len(constrained_indices) > 0 else ""}')
     
     for c, coords in enumerate(mol.atomcoords.copy()):
         logfunction(f"    Optimizing conformer {c+1}/{len(mol.atomcoords)}")
