@@ -352,7 +352,7 @@ def molecule_check(old_coords, new_coords, atomnos, max_newbonds=0):
 
     return True
 
-def scramble_check(TS_structure, TS_atomnos, excluded_atoms, mols_graphs, max_newbonds=0, logfunction=False, title=None) -> bool:
+def scramble_check(TS_structure, TS_atomnos, excluded_atoms, mols_graphs, max_newbonds=0, logfunction=None, title=None) -> bool:
     '''
     Check if a multimolecular arrangement has scrambled during some optimization
     steps. If more than a given number of bonds changed (formed or broke) the

@@ -488,6 +488,8 @@ def mtd_search_operator(filename, embedder):
         # update embedder structures after optimization
         mol.atomcoords[c] = opt_coords
 
+    logfunction()
+
     # update mol and embedder graph after optimization 
     mol.graph = graphize(mol.atomcoords[0], mol.atomnos)
     embedder.graphs = [m.graph for m in embedder.objects]

@@ -47,6 +47,16 @@ def torsion_comp_check(coords, torsion, mask, thresh=1.5, max_clashes=0) -> bool
     return 0 if np.count_nonzero(all_dists(m2,m1) < thresh) > max_clashes else 1
  
 @njit
+def count_clashes(coords):
+    '''
+    '''
+    return np.count_nonzero(
+                            (all_dists(coords,coords) < 0.5) & (
+                             all_dists(coords,coords) > 0)
+                            )
+
+
+@njit
 def compenetration_check(coords, ids=None, thresh=1.5, max_clashes=0) -> bool:
     '''
     coords: 3D molecule coordinates
@@ -55,13 +65,11 @@ def compenetration_check(coords, ids=None, thresh=1.5, max_clashes=0) -> bool:
     thresh: threshold value for when two atoms are considered clashing
     max_clashes: maximum number of clashes to pass a structure
     returns True if the molecule shows less than max_clashes
+    
     '''
 
     if ids is None:
-        return 0 if np.count_nonzero(
-                                     (all_dists(coords,coords) < 0.5) & (
-                                      all_dists(coords,coords) > 0)
-                                    ) > max_clashes else 1
+        return 0 if count_clashes(coords) > max_clashes else 1
 
     if len(ids) == 2:
     # Bimolecular

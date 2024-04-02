@@ -23,7 +23,7 @@ import argparse
 import os
 import sys
 
-__version__ = '0.4.15'
+__version__ = '0.4.16'
 
 if __name__ == '__main__':
 

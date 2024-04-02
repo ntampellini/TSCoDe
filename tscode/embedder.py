@@ -45,13 +45,13 @@ from tscode.hypermolecule_class import (Hypermolecule, Pivot, align_by_moi,
                                         align_structures)
 from tscode.multiembed import multiembed_dispatcher
 from tscode.nci import get_nci
+from tscode.numba_functions import (compenetration_check, count_clashes,
+                                    prune_conformers_tfd, scramble)
 from tscode.operators import operate
 from tscode.optimization_methods import (fitness_check, opt_funcs_dict,
                                          prune_by_moment_of_inertia)
 from tscode.parameters import orb_dim_dict
 from tscode.pt import pt
-from tscode.numba_functions import (compenetration_check,
-                                     prune_conformers_tfd, scramble)
 from tscode.references import references
 from tscode.rmsd_pruning import prune_conformers_rmsd
 from tscode.settings import CALCULATOR, DEFAULT_LEVELS, PROCS, THREADS
@@ -179,7 +179,7 @@ class Embedder:
         Write banner to log file, containing program and run info
         '''
         banner = '''
-       +   .     ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ .     .    
+       +   .     ____________________________________ .     .    
     *    .   .. /────────────────────────────────────\   *     .  
  .     ..   +  /▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ \ .   .   +  
    +       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ . ..   .  
@@ -204,7 +204,7 @@ class Embedder:
   +  .. .  ▒░╚══════════════════════════════════════════╝░▒  .. .   
     .       ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒     .     
  .     *  +   \\\ ▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒ //  .      .
-     .      .  \\\▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁// .   .    
+     .      .  \\\____________________________________// .   .    
            '''.format(__version__,
                       getuser(),
                       time.ctime()[0:-8],
@@ -329,7 +329,8 @@ class Embedder:
         for mol in self.objects:
             for c, coords in enumerate(mol.atomcoords):
                 if not compenetration_check(coords):
-                    s = f"--> WARNING! {mol.name}, conformer {c+1}, looks compenetrated (interatomic distances < 0.5 A)"
+                    clashes = count_clashes(coords)
+                    s = f"--> WARNING! {mol.name}, conformer {c+1}, looks compenetrated ({clashes} interatomic distance{'s' if clashes > 1 else ''} < 0.5 A)"
                     self.warnings.append(s)
                     self.log(s)
 

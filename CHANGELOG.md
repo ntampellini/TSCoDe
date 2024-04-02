@@ -5,6 +5,10 @@
 <!-- - ... mep_relax> BETA
 - ... IMAGES kw, also implement it for neb>-->
 
+## 0.4.16 (April 2, 2024)
+- Solved bugfix in check_objects_compenetration.
+- Updated compenetration_check warning printouts, specifying the number of compenetrations found.
+
 ## 0.4.15 (March 23, 2024)
 - Reinstated the only_refined option at the end of optimization_refining.
 - Solved bugfix in operators.
