@@ -2,6 +2,12 @@
 
 <div align="center">
 
+__________________________________________________________________________________________________________________________
+
+**This project is now archived, and its expanded successor can be found [here](https://github.com/ntampellini/FIRECODE).**
+
+__________________________________________________________________________________________________________________________
+
 [![License: GNU GPL v3](https://img.shields.io/github/license/ntampellini/TSCoDe)](https://opensource.org/licenses/GPL-3.0)
 [![CodeFactor Grade](https://img.shields.io/codefactor/grade/github/ntampellini/TSCoDe)](https://www.codefactor.io/repository/github/ntampellini/tscode)
 ![Python Version](https://img.shields.io/badge/Python-3.8.10-blue)
